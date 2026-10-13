@@ -8,10 +8,10 @@
 #announce-banner { display: flex; flex-direction: column; gap: 8px; padding: 0; }
 #announce-banner:empty { display: none; }
 .announce-item {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
   background: var(--blue-100); border-bottom: 3px solid var(--blue-500);
   padding: 12px 30px; font-size: .92rem; color: var(--navy-800);
 }
+.announce-item .an-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .announce-item .an-body { flex: 1; }
 .announce-item .an-meta { font-weight: 700; margin-inline-end: 6px; }
 .announce-item .an-close {
@@ -19,6 +19,14 @@
   font-size: 1.1rem; line-height: 1; padding: 2px 6px; border-radius: 6px;
 }
 .announce-item .an-close:hover { background: rgba(11,42,74,.08); }
+.announce-item .an-reply-btn {
+  border: 1px solid var(--blue-500); background: #fff; color: var(--blue-500); cursor: pointer;
+  font-size: .82rem; line-height: 1; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+}
+.announce-item .an-reply-btn:hover { background: var(--blue-500); color: #fff; }
+.announce-item .an-reply-row { display: flex; gap: 8px; margin-top: 10px; }
+.announce-item .an-reply-row.hidden { display: none; }
+.announce-item .an-reply-row .in { flex: 1; }
 
 /* ---- פס התקדמות ---- */
 .progress-wrap { margin-bottom: 18px; }

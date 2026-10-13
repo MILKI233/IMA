@@ -298,14 +298,42 @@ async function refreshAnnouncements() {
   box.innerHTML = '';
   rows.forEach((m) => {
     const item = el('div', 'announce-item');
-    item.innerHTML = `<div class="an-body"><span class="an-meta">📣 ${esc(m.from_user)}:</span>${esc(m.body)}</div>`;
+    const top = el('div', 'an-top');
+    top.innerHTML = `<div class="an-body"><span class="an-meta">📣 ${esc(m.from_user)}:</span>${esc(m.body)}</div>`;
+    const replyBtn = el('button', 'an-reply-btn', '↩ תגובה');
+    replyBtn.title = 'שליחת תגובה חזרה';
     const close = el('button', 'an-close', '✕');
     close.title = 'סגירה';
-    close.addEventListener('click', async () => {
+    const dismiss = async () => {
       item.remove();
       try { await api(`/api/messages/${m.id}/dismiss`, { method: 'POST' }); } catch { /* לא קריטי */ }
+    };
+    close.addEventListener('click', dismiss);
+    top.append(replyBtn, close);
+    item.append(top);
+
+    const replyRow = el('div', 'an-reply-row hidden');
+    const replyInput = el('input', 'in');
+    replyInput.placeholder = `תגובה ל${m.from_user}…`;
+    const sendBtn = el('button', 'btn-primary btn-sm', 'שליחה');
+    const doSend = async () => {
+      const text = replyInput.value.trim();
+      if (!text) return;
+      try {
+        await api(`/api/messages/${m.id}/reply`, { method: 'POST', body: { text } });
+        toast('התגובה נשלחה', 'ok');
+        dismiss();
+      } catch (e) { toast(e.message || 'השליחה נכשלה', 'err'); }
+    };
+    sendBtn.addEventListener('click', doSend);
+    replyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(); });
+    replyRow.append(replyInput, sendBtn);
+    item.append(replyRow);
+
+    replyBtn.addEventListener('click', () => {
+      replyRow.classList.toggle('hidden');
+      if (!replyRow.classList.contains('hidden')) replyInput.focus();
     });
-    item.append(close);
     box.append(item);
   });
 }

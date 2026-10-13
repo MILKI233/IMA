@@ -502,12 +502,18 @@ app.patch('/api/messages/:id/handle', mustLogin, mustManager, (req, res) => {
   res.json({ ok: true });
 });
 
-// תגובת מנהלת להודעה — מוצגת כבאנר בראש האתר אצל מי ששלחה, וגם מסמנת את ההודעה המקורית כטופלה
-app.post('/api/messages/:id/reply', mustLogin, mustManager, (req, res) => {
+// תגובה להודעה — מוצגת כבאנר בראש האתר אצל מי ששלחה, וגם מסמנת את ההודעה המקורית כטופלה.
+// מנהלת יכולה להשיב לכל הודעה (כולל דיווח מקורי); כל משתמשת אחרת יכולה להשיב רק להודעה שהופנתה אליה
+// (כתגובה לבאנר שקיבלה) או להודעה כללית לכולם — כדי שהבאנר יהפוך לשיחה דו-כיוונית ולא רק תצוגה חד-פעמית.
+app.post('/api/messages/:id/reply', mustLogin, (req, res) => {
   const text = (req.body?.text || '').trim();
   if (!text) return res.status(400).json({ error: 'אין תוכן לתגובה' });
   const original = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id);
   if (!original) return res.status(404).json({ error: 'ההודעה לא נמצאה' });
+  // "to_user is null" חייב להתייחס רק להכרזה כללית (announcement) — דיווח מקורי (report) גם הוא עם to_user ריק כברירת מחדל,
+  // אבל אסור שזה יאפשר לכל אחת להשיב לדיווח שלא מופנה אליה
+  const isRecipient = original.kind === 'announcement' && (original.to_user === req.user.name || original.to_user === null);
+  if (!isRecipient && !isManagerOrAbove(req.user.role)) return res.status(403).json({ error: 'אין לך גישה להשיב להודעה זו' });
   const r = db.prepare(`INSERT INTO messages(from_user, body, kind, to_user, reply_to) VALUES (?, ?, 'announcement', ?, ?)`)
     .run(req.user.name, text, original.from_user, original.id);
   db.prepare(`UPDATE messages SET handled_by = ?, handled_at = datetime('now','localtime') WHERE id = ? AND handled_at IS NULL`)
