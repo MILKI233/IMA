@@ -74,6 +74,49 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         res.json(rows);
     });
 
+    // מעקב עסקים — מי פנתה לאיזה עסק ומה הייתה התגובה
+    const BUSINESS_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
+    router.get('/businesses', mustLogin, (req, res) => {
+        res.json(db.prepare('SELECT * FROM campaign_businesses ORDER BY id DESC').all());
+    });
+    router.post('/businesses', mustLogin, (req, res) => {
+        const name = String(req.body?.name ?? '').trim();
+        if (!name) return res.status(400).json({ error: 'יש להזין שם עסק' });
+        const contactedBy = String(req.body?.contacted_by ?? '').trim() || req.user.name;
+        const phone = String(req.body?.phone ?? '').trim() || null;
+        const response = String(req.body?.response ?? '').trim() || null;
+        const status = BUSINESS_STATUSES.includes(req.body?.status) ? req.body.status : 'ממתין';
+        const r = db.prepare(`INSERT INTO campaign_businesses (name, contacted_by, phone, response, status, created_at)
+                              VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))`)
+            .run(name, contactedBy, phone, response, status);
+        audit(req.user.name, 'campaign.business.create', 'campaign_businesses', r.lastInsertRowid, null, { name, contacted_by: contactedBy, status });
+        events?.emit('campaign.update');
+        res.json({ ok: true, id: r.lastInsertRowid });
+    });
+    router.put('/businesses/:id', mustLogin, (req, res) => {
+        const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
+        if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });
+        const name = String(req.body?.name ?? before.name).trim();
+        const contactedBy = String(req.body?.contacted_by ?? before.contacted_by ?? '').trim() || null;
+        const phone = String(req.body?.phone ?? before.phone ?? '').trim() || null;
+        const response = String(req.body?.response ?? before.response ?? '').trim() || null;
+        const status = BUSINESS_STATUSES.includes(req.body?.status) ? req.body.status : before.status;
+        db.prepare(`UPDATE campaign_businesses SET name=?, contacted_by=?, phone=?, response=?, status=?, updated_at=datetime('now','localtime') WHERE id=?`)
+            .run(name, contactedBy, phone, response, status, before.id);
+        audit(req.user.name, 'campaign.business.update', 'campaign_businesses', before.id,
+            { status: before.status }, { name, contacted_by: contactedBy, status, response });
+        events?.emit('campaign.update');
+        res.json({ ok: true });
+    });
+    router.delete('/businesses/:id', mustLogin, mustManager, (req, res) => {
+        const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
+        if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });
+        db.prepare('DELETE FROM campaign_businesses WHERE id = ?').run(before.id);
+        audit(req.user.name, 'campaign.business.delete', 'campaign_businesses', before.id, before, null);
+        events?.emit('campaign.update');
+        res.json({ ok: true });
+    });
+
     // הוספת מתנדבת ידנית — ממסך הדשבורד הרגיל, לא רק דרך ניהול/אקסל
     router.post('/volunteers', mustLogin, (req, res) => {
         const phone = String(req.body?.phone ?? '').replace(/\D/g, '');

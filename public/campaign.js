@@ -14,6 +14,9 @@ const ACTION_LABEL = {
     'campaign.hub.create': 'הוספת מוקד',
     'campaign.hub.update': 'עדכון מוקד',
     'campaign.hub.delete': 'מחיקת מוקד',
+    'campaign.business.create': 'הוספת עסק',
+    'campaign.business.update': 'עדכון עסק',
+    'campaign.business.delete': 'מחיקת עסק',
     'campaign.phone.outreach': 'דיווח פנייה לעסק (טלפון)',
     'campaign.phone.errand': 'דיווח שליחות (טלפון)',
     'campaign.phone.product': 'דיווח גיוס מוצר (טלפון)',
@@ -33,6 +36,9 @@ let lastData = null;
 let volunteerQuery = '';
 let hubQuery = '';
 let editingHubId = null;
+let bizQuery = '';
+let bizLoaded = false;
+let editingBizId = null;
 
 async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -81,6 +87,7 @@ function startApp() {
             btn.classList.add('active');
             document.getElementById(btn.dataset.tab).classList.add('active');
             if (btn.dataset.tab === 'activity') loadActivity();
+            if (btn.dataset.tab === 'businesses') loadBusinesses();
         });
     });
 
@@ -95,6 +102,10 @@ function startApp() {
     document.getElementById('hubSearch').addEventListener('input', (e) => {
         hubQuery = e.target.value.trim();
         if (lastData) renderHubs(lastData);
+    });
+    document.getElementById('bizSearch').addEventListener('input', (e) => {
+        bizQuery = e.target.value.trim();
+        if (bizLoaded) renderBusinesses(window.__bizRows || []);
     });
 
     loadDashboard();
@@ -356,5 +367,81 @@ document.getElementById('addVolBtn').addEventListener('click', async () => {
     } catch (e) { err.textContent = e.message || 'ההוספה נכשלה'; }
 });
 async function deleteHub(id) { if (!confirm('למחוק את המוקד?')) return; await api(`/api/campaign/hubs/${id}`, { method: 'DELETE' }); loadDashboard(); }
+
+/* ---- עסקים: מי פנתה ולמה ---- */
+const BIZ_STATUS_CLASS = { 'ממתין': 'warn', 'נוצר קשר': '', 'תרם': 'ok', 'סירב': '' };
+
+async function loadBusinesses() {
+    try {
+        const rows = await api('/api/campaign/businesses');
+        window.__bizRows = rows;
+        bizLoaded = true;
+        renderBusinesses(rows);
+    } catch (e) { alert(e.message); }
+}
+
+function renderBusinesses(rows) {
+    if (editingBizId !== null) return;
+    const q = bizQuery.toLowerCase();
+    const filtered = rows.filter((b) => !q || b.name.toLowerCase().includes(q));
+    document.getElementById('bizEmpty').style.display = filtered.length ? 'none' : 'block';
+    document.getElementById('bizCards').innerHTML = filtered.map((b) => `
+        <div class="hub-card">
+            <div class="hc-name">${b.name}</div>
+            <div class="hc-meta">${b.contacted_by ? 'פנתה: ' + b.contacted_by : 'לא ידוע מי פנתה'}${b.phone ? ' · ' + b.phone : ''}</div>
+            <div class="hc-meta"><span class="badge ${BIZ_STATUS_CLASS[b.status] || ''}">${b.status}</span></div>
+            <div class="hc-meta">${b.response || 'אין עדיין תגובה רשומה'}</div>
+            <div class="hc-actions">
+                <button class="btn secondary" onclick="toggleBizEdit(${b.id})">עריכה</button>
+                <button class="btn danger" onclick="deleteBusiness(${b.id})">מחיקה</button>
+            </div>
+            <div class="hub-edit-row hidden" id="biz-edit-${b.id}">
+                <select id="be-status-${b.id}">
+                    ${['ממתין', 'נוצר קשר', 'תרם', 'סירב'].map((s) => `<option${s === b.status ? ' selected' : ''}>${s}</option>`).join('')}
+                </select>
+                <input id="be-response-${b.id}" placeholder="תגובה" value="${b.response || ''}" style="flex:2">
+                <button class="btn" onclick="saveBizEdit(${b.id})">שמירה</button>
+            </div>
+        </div>`).join('');
+}
+
+function toggleBizEdit(id) {
+    const open = document.getElementById(`biz-edit-${id}`).classList.toggle('hidden') === false;
+    editingBizId = open ? id : null;
+}
+
+async function saveBizEdit(id) {
+    try {
+        await api(`/api/campaign/businesses/${id}`, { method: 'PUT', body: {
+            status: document.getElementById(`be-status-${id}`).value,
+            response: document.getElementById(`be-response-${id}`).value,
+        } });
+        editingBizId = null;
+        loadBusinesses();
+    } catch (e) { alert(e.message); }
+}
+
+async function deleteBusiness(id) {
+    if (!confirm('למחוק את העסק מהרשימה?')) return;
+    try { await api(`/api/campaign/businesses/${id}`, { method: 'DELETE' }); loadBusinesses(); }
+    catch (e) { alert(e.message); }
+}
+
+document.getElementById('addBizBtn').addEventListener('click', async () => {
+    try {
+        await api('/api/campaign/businesses', { method: 'POST', body: {
+            name: document.getElementById('bizName').value,
+            contacted_by: document.getElementById('bizContactedBy').value,
+            phone: document.getElementById('bizPhone').value,
+            status: document.getElementById('bizStatus').value,
+            response: document.getElementById('bizResponse').value,
+        } });
+        document.getElementById('bizName').value = '';
+        document.getElementById('bizContactedBy').value = '';
+        document.getElementById('bizPhone').value = '';
+        document.getElementById('bizResponse').value = '';
+        loadBusinesses();
+    } catch (e) { alert(e.message); }
+});
 
 if (USER) startApp(); else initLogin();

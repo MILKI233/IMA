@@ -32,6 +32,7 @@
     <button data-tab="dashboard" class="active">לוח בקרה חי</button>
     <button data-tab="pending">אישורים ממתינים <span id="pendingCount"></span></button>
     <button data-tab="hubs">מוקדי הפצה</button>
+    <button data-tab="businesses">עסקים</button>
     <button data-tab="activity">יומן פעולות</button>
 </nav>
 
@@ -85,6 +86,32 @@
             <table id="hubLogsTable"><thead><tr>
                 <th>מוקד</th><th>סוג</th><th>פרטים</th><th>תאריך</th>
             </tr></thead><tbody></tbody></table>
+        </div>
+    </section>
+
+    <section id="businesses" class="c-section">
+        <div class="card">
+            <div class="card-head-row">
+                <h2>עסקים — מי פנתה ולמה</h2>
+                <input id="bizSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם עסק">
+            </div>
+            <div id="bizCards" class="hub-cards"></div>
+            <div class="empty" id="bizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
+        </div>
+        <div class="card">
+            <h2>הוספת עסק</h2>
+            <div class="row">
+                <input id="bizName" placeholder="שם העסק" style="width:200px">
+                <input id="bizContactedBy" placeholder="מי פנתה (שם)" style="width:160px">
+                <input id="bizPhone" placeholder="טלפון העסק (לא חובה)" style="width:150px">
+            </div>
+            <div class="row">
+                <select id="bizStatus" style="width:140px">
+                    <option>ממתין</option><option>נוצר קשר</option><option>תרם</option><option>סירב</option>
+                </select>
+                <input id="bizResponse" placeholder="מה הייתה התגובה (לא חובה)" style="width:300px">
+                <button class="btn" id="addBizBtn">הוספת עסק</button>
+            </div>
         </div>
     </section>
 

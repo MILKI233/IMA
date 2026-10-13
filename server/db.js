@@ -749,6 +749,18 @@ CREATE TABLE IF NOT EXISTS campaign_weekly_goals (
   UNIQUE(volunteer_id, week_start)
 );
 
+-- מעקב פניות לעסקים: מי פנתה, לאיזה עסק, ומה הייתה התגובה
+CREATE TABLE IF NOT EXISTS campaign_businesses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  contacted_by TEXT,
+  phone TEXT,
+  response TEXT,
+  status TEXT NOT NULL DEFAULT 'ממתין',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS campaign_prizes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code INTEGER UNIQUE NOT NULL,
