@@ -742,9 +742,9 @@ const CAMPAIGN_SETTING_DEFAULTS = {
     campaign_points_errand: '4',
     campaign_goal_bonus_percent: '10',
     campaign_product_conversion_percent: '',
-    campaign_brand_primary: '#b06970',
-    campaign_brand_accent: '#cc3366',
-    campaign_brand_dark: '#132d23',
+    campaign_brand_primary: '#14497c',
+    campaign_brand_accent: '#1e5fa8',
+    campaign_brand_dark: '#0b2a4a',
     campaign_brand_logo: ''
 };
 

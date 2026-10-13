@@ -1,15 +1,15 @@
-/* מיתוג אמא במשמרת — ניתן לעדכון מלשונית "מיתוג" בתוך הקמפיין עצמו (צבעים משתנים בזמן אמת) */
+/* מיתוג אמא במשמרת — תואם לפלטת לוח המשמרות (כחול עמוק · שחור · לבן). ניתן לעדכון מלשונית "מיתוג" (צבעים משתנים בזמן אמת) */
 :root {
-    --c-rose: #b06970;
-    --c-raspberry: #cc3366;
-    --c-dark: #132d23;
-    --c-gold: #c9a24b;
+    --c-rose: #14497c;
+    --c-raspberry: #1e5fa8;
+    --c-dark: #0b2a4a;
+    --c-gold: #2f79cf;
 }
 * { box-sizing: border-box; }
 body {
     margin: 0;
     font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-    background: linear-gradient(160deg, #fbeef0 0%, #fdf8ef 55%, #f6efe2 100%);
+    background: linear-gradient(160deg, #eef3fa 0%, #f6f8fb 55%, #eef2f7 100%);
     color: var(--c-dark);
     min-height: 100vh;
 }
@@ -18,17 +18,17 @@ body {
 .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 .login-card {
     background: #fff; border-radius: 20px; padding: 36px 32px; width: 320px; text-align: center;
-    box-shadow: 0 10px 30px rgba(19,45,35,.12); border-top: 4px solid var(--c-gold);
+    box-shadow: 0 10px 30px rgba(11,42,74,.12); border-top: 4px solid var(--c-gold);
 }
 .login-crest { font-size: 2.2rem; color: var(--c-raspberry); }
 .login-title { font-family: Georgia, serif; font-size: 1.3rem; margin-top: 6px; }
-.login-sub { color: #8a6d74; font-size: .9rem; margin-bottom: 18px; }
+.login-sub { color: #6b7a90; font-size: .9rem; margin-bottom: 18px; }
 .login-card input {
-    width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ecd4da; font-size: 1.1rem;
+    width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #e3e8f0; font-size: 1.1rem;
     text-align: center; margin-bottom: 12px;
 }
 .btn-block { width: 100%; }
-.login-error { color: #a73950; font-size: .85rem; min-height: 1.2em; margin-top: 8px; }
+.login-error { color: #c1362f; font-size: .85rem; min-height: 1.2em; margin-top: 8px; }
 .login-alt { display: inline-block; margin-top: 14px; color: var(--c-raspberry); font-size: .85rem; text-decoration: none; }
 
 header.c-header {
@@ -53,42 +53,42 @@ section.c-section { display: none; }
 section.c-section.active { display: block; }
 
 .card {
-    background: #fffdfa; border-radius: 18px; padding: 22px; margin-bottom: 20px;
-    box-shadow: 0 6px 20px rgba(19,45,35,.07); border-top: 3px solid var(--c-gold);
+    background: #ffffff; border-radius: 18px; padding: 22px; margin-bottom: 20px;
+    box-shadow: 0 6px 20px rgba(11,42,74,.07); border-top: 3px solid var(--c-gold);
 }
 .card h2 { margin-top: 0; font-family: Georgia, serif; font-size: 1.25rem; color: var(--c-raspberry); }
 
 table { width: 100%; border-collapse: collapse; font-size: .92rem; }
-th, td { padding: 10px 8px; text-align: right; border-bottom: 1px solid #f3e6ea; }
+th, td { padding: 10px 8px; text-align: right; border-bottom: 1px solid #eef2f7; }
 th { color: var(--c-raspberry); font-weight: 600; }
-tr:hover td { background: #fdf8f5; }
+tr:hover td { background: #f4f6fa; }
 
-.badge { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: .8rem; background: #fbe3ea; color: var(--c-raspberry); }
-.badge.warn { background: #fdf0d6; color: #8a6d00; }
-.badge.ok { background: #e2f1e9; color: var(--c-dark); }
+.badge { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: .8rem; background: #e7f0fb; color: var(--c-raspberry); }
+.badge.warn { background: #fbf1dc; color: #b7791f; }
+.badge.ok { background: #e2f5ee; color: #12805c; }
 
 .btn { border: none; border-radius: 999px; padding: 8px 18px; cursor: pointer; font-size: .88rem; color: #fff; background: var(--c-dark); }
 .btn.secondary { background: var(--c-rose); }
-.btn.danger { background: #a73950; }
+.btn.danger { background: #c1362f; }
 
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-input, select { padding: 8px 11px; border-radius: 10px; border: 1px solid #ecd4da; font-size: .92rem; }
+input, select { padding: 8px 11px; border-radius: 10px; border: 1px solid #e3e8f0; font-size: .92rem; }
 input[type="color"] { width: 46px; height: 36px; padding: 2px; cursor: pointer; }
-label.settingLabel { font-size: .85rem; color: #6b4f55; display: block; margin-bottom: 4px; }
+label.settingLabel { font-size: .85rem; color: #6b7a90; display: block; margin-bottom: 4px; }
 .settingGroup { min-width: 150px; }
-.empty { color: #9a8aa5; padding: 20px 0; text-align: center; }
-.hint { color: #8a7560; font-size: .82rem; }
+.empty { color: #6b7a90; padding: 20px 0; text-align: center; }
+.hint { color: #6b7a90; font-size: .82rem; }
 
 /* כרטיסי סטטיסטיקה בראש הדשבורד */
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .stat-card {
-    background: #fffdfa; border-radius: 16px; padding: 18px; text-align: center;
-    box-shadow: 0 4px 14px rgba(19,45,35,.06); border-top: 3px solid var(--c-gold);
+    background: #ffffff; border-radius: 16px; padding: 18px; text-align: center;
+    box-shadow: 0 4px 14px rgba(11,42,74,.06); border-top: 3px solid var(--c-gold);
 }
 .stat-card .stat-num { font-size: 1.9rem; font-weight: 700; color: var(--c-raspberry); font-family: Georgia, serif; }
-.stat-card .stat-label { font-size: .82rem; color: #6b4f55; margin-top: 2px; }
-.stat-card.alert { border-top-color: #a73950; }
-.stat-card.alert .stat-num { color: #a73950; }
+.stat-card .stat-label { font-size: .82rem; color: #6b7a90; margin-top: 2px; }
+.stat-card.alert { border-top-color: #c1362f; }
+.stat-card.alert .stat-num { color: #c1362f; }
 
 /* חיפוש בראש כרטיס */
 .card-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -98,23 +98,23 @@ label.settingLabel { font-size: .85rem; color: #6b4f55; display: block; margin-b
 /* רשימת אישורים ממתינים כרטיסים */
 .pending-list { display: flex; flex-direction: column; gap: 14px; }
 .pending-card {
-    border: 1px solid #f3e6ea; border-radius: 14px; padding: 16px; background: #fffaf6;
+    border: 1px solid #e3e8f0; border-radius: 14px; padding: 16px; background: #fff;
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
 }
 .pending-card .pc-who { font-weight: 600; }
-.pending-card .pc-meta { font-size: .85rem; color: #6b4f55; }
+.pending-card .pc-meta { font-size: .85rem; color: #6b7a90; }
 .pending-card .pc-value { font-size: 1.3rem; font-weight: 700; color: var(--c-raspberry); font-family: Georgia, serif; }
 .pending-card .pc-actions { display: flex; align-items: center; gap: 8px; }
 .pending-card .pc-actions input { width: 75px; }
 
 /* כרטיסי מוקדים עם פס התקדמות מלאי */
 .hub-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
-.hub-card { border: 1px solid #f3e6ea; border-radius: 14px; padding: 16px; background: #fffaf6; }
+.hub-card { border: 1px solid #e3e8f0; border-radius: 14px; padding: 16px; background: #fff; }
 .hub-card .hc-name { font-weight: 700; font-size: 1.05rem; }
-.hub-card .hc-meta { font-size: .82rem; color: #6b4f55; margin: 4px 0 10px; }
-.hub-bar { height: 10px; border-radius: 999px; background: #f0e0e4; overflow: hidden; margin-bottom: 6px; }
+.hub-card .hc-meta { font-size: .82rem; color: #6b7a90; margin: 4px 0 10px; }
+.hub-bar { height: 10px; border-radius: 999px; background: #eef2f7; overflow: hidden; margin-bottom: 6px; }
 .hub-bar-fill { height: 100%; background: linear-gradient(90deg, var(--c-rose), var(--c-raspberry)); border-radius: 999px; }
-.hub-bar-fill.low { background: #a73950; }
+.hub-bar-fill.low { background: #c1362f; }
 .hub-card .hc-count { font-size: .85rem; color: var(--c-dark); margin-bottom: 10px; }
 .hub-card .hc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .hub-edit-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }

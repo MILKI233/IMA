@@ -175,9 +175,9 @@ function applySettings(s) {
     else { logo.style.display = 'none'; }
 
     if (!brandingFormInitialized) {
-        document.getElementById('brandPrimary').value = s.campaign_brand_primary || '#b06970';
-        document.getElementById('brandAccent').value = s.campaign_brand_accent || '#cc3366';
-        document.getElementById('brandDark').value = s.campaign_brand_dark || '#132d23';
+        document.getElementById('brandPrimary').value = s.campaign_brand_primary || '#14497c';
+        document.getElementById('brandAccent').value = s.campaign_brand_accent || '#1e5fa8';
+        document.getElementById('brandDark').value = s.campaign_brand_dark || '#0b2a4a';
         document.getElementById('setPointsOutreach').value = s.campaign_points_outreach ?? 2;
         document.getElementById('setPointsErrand').value = s.campaign_points_errand ?? 4;
         document.getElementById('setGoalBonus').value = s.campaign_goal_bonus_percent ?? 10;
