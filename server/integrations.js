@@ -11,7 +11,7 @@ import { isoDate } from './hebrew.js';
 const SETTING_KEYS = [
   { key: 'gmail_user', secret: false },
   { key: 'gmail_app_password', secret: true },
-  { key: 'report_email', secret: false },       // למי נשלח הדוח (למשל אהובי)
+  { key: 'report_email', secret: false },       // למי נשלח הדוח (למשל יוטי)
   { key: 'daily_report_auto', secret: false },  // '1' = שליחת דוח יומי אוטומטית
   { key: 'daily_report_hour', secret: false },  // שעה לשליחה (0-23), ברירת מחדל 20
   { key: 'anthropic_api_key', secret: true },

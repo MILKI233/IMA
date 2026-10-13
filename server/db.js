@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url';
 // ---------- דרגת העל ----------
 // שם התפקיד הגיע מתמלול קולי ועשוי להשתנות — לכן כל ההיררכיה נגזרת מהקבוע היחיד הזה.
 // דרגת העל — שם המנהלת הבכירה. שינוי המילה כאן משנה אותה בכל המערכת.
-export const TOP_ROLE = 'אהובי';
+export const TOP_ROLE = 'יוטי';
 // שמות קודמים של אותה דרגה — לצורך מיגרציה של התקנות ותיקות
-export const TOP_ROLE_LEGACY = ['העובי', 'מנהלת ראשית'];
+export const TOP_ROLE_LEGACY = ['העובי', 'מנהלת ראשית', 'אהובי'];
 // קוד כניסת חירום לדרגת העל — כדי שאובדן קוד אחד לא ינעל את המערכת
 export const BACKUP_TOP_CODE = '9119';
-export const BACKUP_TOP_NAME = 'כניסת גיבוי (אהובי)';
+export const BACKUP_TOP_NAME = 'כניסת גיבוי (יוטי)';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // בהתקנה אצל לקוח (Electron) הנתונים יושבים בתיקיית המשתמש — לא בתיקיית התוכנה
@@ -25,7 +25,7 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'אחמ"שית',   -- העובי / מנהלת / אחמ"שית / מתנדבת / כובסת
+  role TEXT NOT NULL DEFAULT 'אחמ"שית',   -- יוטי / מנהלת / אחמ"שית / מתנדבת
   code TEXT NOT NULL UNIQUE,
   active INTEGER NOT NULL DEFAULT 1
 );
@@ -368,13 +368,12 @@ export const FEATURES = [
   { key: 'admin', label: 'ניהול והרשאות' },
 ];
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
-// היררכיית הדרגות מלמעלה למטה. 'כובסת' אינה חלק מההיררכיה — היא תפקיד תפעולי
-// עם workflow משלה (החזרות/כביסה), ולכן יושבת מחוץ לסולם.
+// היררכיית הדרגות מלמעלה למטה.
 export const ROLE_ORDER = [TOP_ROLE, 'מנהלת', 'אחמ"שית', 'מתנדבת'];
-export const ROLES = [...ROLE_ORDER, 'כובסת'];
+export const ROLES = ROLE_ORDER;
 
 export const isTop = (role) => role === TOP_ROLE;
-// "מנהלת ומעלה" — פעולות ניהול רגילות. כובסת (מחוץ להיררכיה) לעולם לא נכללת.
+// "מנהלת ומעלה" — פעולות ניהול רגילות.
 export function isManagerOrAbove(role) {
   const i = ROLE_ORDER.indexOf(role);
   return i !== -1 && i <= ROLE_ORDER.indexOf('מנהלת');
@@ -402,7 +401,6 @@ const PERM_DEFAULTS = {
   [TOP_ROLE]: FEATURE_KEYS,
   'מנהלת': MANAGER_DEFAULTS,
   'אחמ"שית': ['today', 'week', 'periodic', 'calendar', 'problems', 'handover', 'messages', 'inventory', 'campaign', 'ai'],
-  'כובסת': ['today', 'inventory', 'messages'],   // עמדת סריקה להחזרות + מסך היום
   'מתנדבת': ['today', 'messages'],
 };
 
@@ -429,6 +427,11 @@ try {
   db.prepare(`DELETE FROM role_permissions WHERE role = 'עובדת'`).run();
 } catch { /* אין מה לעדכן */ }
 try {
+  // 'כובסת' בוטל — אינו תפקיד רלוונטי לארגון; מי שהייתה בדרגה זו הופכת למתנדבת
+  db.prepare(`UPDATE users SET role = 'מתנדבת' WHERE role = 'כובסת'`).run();
+  db.prepare(`DELETE FROM role_permissions WHERE role = 'כובסת'`).run();
+} catch { /* אין מה לעדכן */ }
+try {
   // המנהלת הראשית (קוד 1111) מקבלת את דרגת העל
   db.prepare(`UPDATE users SET role = ? WHERE code = '1111' AND role != ?`).run(TOP_ROLE, TOP_ROLE);
 } catch { /* אין משתמשת כזאת */ }
@@ -439,6 +442,8 @@ try {
     db.prepare('UPDATE users SET role = ? WHERE role = ?').run(TOP_ROLE, old);
     db.prepare('DELETE FROM role_permissions WHERE role = ?').run(old);
   }
+  // שם התצוגה של משתמשת כניסת הגיבוי מכיל את שם הדרגה הישן — מתקנים גם אותו
+  db.prepare(`UPDATE users SET name = ? WHERE code = ? AND name LIKE 'כניסת גיבוי (%'`).run(BACKUP_TOP_NAME, BACKUP_TOP_CODE);
 } catch { /* אין מה לעדכן */ }
 try {
   // מנהלת כבר לא עוקפת את טבלת ההרשאות — מוודאים שיש לה שורות בפועל, ושאין לה 'admin'

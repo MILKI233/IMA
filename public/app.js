@@ -99,10 +99,10 @@ const NAV_GROUP_LS = 'gemach_nav_admin_open';
 /* ---------- דרגות ----------
    סדר היררכי אחד ויחיד. שינוי שם של דרגה נעשה כאן בלבד.
    שמות התפקיד עצמם מוצגים תמיד לפי מה שמגיע מהשרת. */
-const ROLE_ORDER = ['אהובי', 'מנהלת', 'אחמ"שית', 'מתנדבת'];
+const ROLE_ORDER = ['יוטי', 'מנהלת', 'אחמ"שית', 'מתנדבת'];
 const TOP_ROLE = ROLE_ORDER[0];
 // שמות היסטוריים של הדרגה העליונה — כדי שמסד נתונים ישן ימשיך לעבוד
-const TOP_ROLE_ALIASES = [TOP_ROLE, 'העובי', 'מנהלת ראשית'];
+const TOP_ROLE_ALIASES = [TOP_ROLE, 'העובי', 'מנהלת ראשית', 'אהובי'];
 const isTopRole = (r) => TOP_ROLE_ALIASES.includes(String(r ?? '').trim());
 // דרגות ניהוליות: העליונה + מנהלת
 const isManagerRole = (r) => isTopRole(r) || String(r ?? '').trim() === 'מנהלת';
@@ -1899,7 +1899,7 @@ async function renderIntegrations(main) {
         <input class="in" id="set-gmail_user" value="${esc(settings.gmail_user)}" placeholder="gemach@gmail.com">
         <label class="fld">סיסמת אפליקציה (App Password)</label>
         <input class="in" id="set-gmail_app_password" type="password" value="${esc(settings.gmail_app_password)}" placeholder="16 תווים מהגדרות גוגל">
-        <label class="fld">כתובת לדוחות (למשל אהובי)</label>
+        <label class="fld">כתובת לדוחות (למשל יוטי)</label>
         <input class="in" id="set-report_email" value="${esc(settings.report_email)}" placeholder="report@example.com">
         <div class="row" style="margin-top:12px">
           <button class="btn-secondary" id="email-test">שליחת מייל בדיקה</button>
