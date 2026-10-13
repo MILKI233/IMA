@@ -1,0 +1,499 @@
+/* ===================================================================
+   גמ"ח שמלות · מערכת משימות — רכיבים ייחודיים
+   ערכת העיצוב, המעטפת, הכפתורים והמודאלים מגיעים מ-inventory.css.
+   כאן רק הרכיבים של המשימות, בגווני כחול עמוק / שחור / לבן.
+   =================================================================== */
+
+/* ---- פס התקדמות ---- */
+.progress-wrap { margin-bottom: 18px; }
+.progress-label {
+  display: flex; justify-content: space-between;
+  font-weight: 700; color: var(--ink); margin-bottom: 8px; font-size: .95rem;
+}
+.progress-label .pl-count { color: var(--blue-500); }
+/* "· 1 לא רלוונטי" — נספח משני שלא מתחרה במספר הראשי */
+.progress-label .pl-skip { color: var(--muted); font-weight: 600; }
+.progress-bar {
+  height: 12px; background: var(--line-2); border-radius: 20px; overflow: hidden;
+  transition: box-shadow .35s ease;
+}
+.progress-fill {
+  height: 100%; border-radius: 20px; min-width: 0;
+  background: linear-gradient(90deg, var(--blue-400), var(--navy-700));
+  /* ה"נחש" זוחל עד הסוף ברצף — בלי קפיצות בין רינדורים */
+  transition: width .6s cubic-bezier(.22, .61, .36, 1);
+}
+/* סימון ברור שהמחוון הגיע לסוף — בלי לשנות את הפלטה */
+.progress-bar.is-complete { box-shadow: 0 0 0 2px var(--ok-bg); }
+.progress-bar.is-complete .progress-fill { background: var(--ok); }
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill { transition: none; }
+}
+.celebrate {
+  background: var(--ok-bg); color: var(--ok); border: 1px solid #b7e3d1;
+  border-radius: var(--radius); padding: 14px; text-align: center;
+  font-weight: 700; margin-bottom: 16px;
+}
+
+/* ---- ברכת שלום ---- */
+.greeting {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-bottom: 16px; padding: 2px 0;
+}
+.greeting .greet-hello {
+  font-size: 1.5rem; font-weight: 800; color: var(--navy-800); line-height: 1.3;
+}
+.greeting .greet-wish { font-size: 1rem; font-weight: 600; color: var(--muted); }
+
+/* ---- כותרת-על "הכל" (סך הכל), שהשיוכים מתחתיה הם תתי-קבוצות שלה ---- */
+.scope-total {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; text-align: right; font-family: inherit; cursor: pointer;
+  background: var(--card); border: 1px solid var(--line);
+  border-bottom-width: 3px; border-bottom-color: var(--navy-700);
+  border-radius: var(--radius); padding: 12px 16px; margin-bottom: 10px;
+  transition: background .12s;
+}
+.scope-total:hover { background: var(--blue-100); }
+.scope-total.active { background: var(--blue-100); }
+.scope-total .st-main { font-size: 1.15rem; font-weight: 800; color: var(--navy-800); }
+.scope-total .st-sub { font-size: .85rem; font-weight: 600; color: var(--muted); }
+
+/* ---- סרגל סינון עדיפויות ---- */
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+/* השיוכים הם תתי-קבוצות של הסך הכל — לכן מוסטים פנימה ומקודמים ב"מתוכן:" */
+.filter-bar.scope-bar {
+  padding-inline-start: 16px; border-inline-start: 3px solid var(--line-2);
+}
+.filter-bar.scope-bar:empty { display: none; }
+.filter-bar .subgroup-hint { font-size: .85rem; font-weight: 700; color: var(--muted); }
+.chip-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+/* ---- כרטיס קטגוריה ---- */
+.cat-card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  margin-bottom: 14px; overflow: hidden;
+}
+.cat-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 13px 18px; cursor: pointer; font-weight: 700; color: var(--ink);
+  background: var(--bg); border-bottom: 1px solid var(--line-2);
+  user-select: none; transition: background .12s;
+}
+.cat-head:hover { background: var(--blue-100); }
+.cat-count {
+  font-size: .82rem; font-weight: 700; color: var(--muted);
+  background: var(--white); padding: 3px 11px; border-radius: 20px; border: 1px solid var(--line);
+}
+.cat-count.all-done { background: var(--ok-bg); color: var(--ok); border-color: #b7e3d1; }
+/* שם הקטגוריה + "X מתוך N משימות" — מבהיר שהמספר הוא נתח מהסך הכל, לא תוספת עליו */
+.cat-name { display: flex; flex-direction: column; gap: 2px; }
+.cat-name .cat-share { font-size: .82rem; font-weight: 600; color: var(--muted); }
+
+/* ---- שורת משימה ---- */
+.task-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line-2);
+  cursor: pointer; transition: background .12s;
+}
+.task-row:last-child { border-bottom: none; }
+.task-row:hover { background: var(--bg); }
+.task-check {
+  width: 24px; height: 24px; flex-shrink: 0; margin-top: 1px;
+  border: 2px solid var(--line); border-radius: 7px;
+  display: grid; place-items: center; color: #fff; font-weight: 800; font-size: .9rem;
+  transition: background .14s, border-color .14s;
+}
+.task-row.done .task-check { background: var(--ok); border-color: var(--ok); }
+.task-title { flex: 1; min-width: 0; color: var(--ink); font-weight: 500; line-height: 1.5; }
+.task-row.done .task-title { color: var(--muted); text-decoration: line-through; }
+.task-meta { color: var(--muted); font-size: .78rem; margin-top: 3px; font-weight: 500; text-decoration: none; display: block; }
+.task-row.done .task-meta { text-decoration: none; }
+
+/* נקודת עדיפות */
+.pr-dot {
+  width: 18px; height: 18px; flex-shrink: 0; margin-top: 3px;
+  border: none; border-radius: 50%; cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(0,0,0,.04); transition: transform .12s;
+}
+.pr-dot:hover { transform: scale(1.2); }
+
+/* תגי משימה (מרחיבים את .badge מ-inventory.css) */
+.badge.pr { font-weight: 700; }
+.badge.auto { background: var(--blue-100); color: var(--blue-500); }
+.badge.overdue { background: var(--danger-bg); color: var(--danger); }
+.badge:not(.pr):not(.auto):not(.overdue):not([class*="st-"]) { background: var(--line-2); color: var(--ink-2); }
+.task-title .badge { margin-inline-start: 6px; vertical-align: middle; }
+
+/* ---- לוח בעיות (קנבן) ---- */
+.kanban {
+  display: grid; grid-template-columns: repeat(5, minmax(180px, 1fr));
+  gap: 12px; overflow-x: auto; padding-bottom: 8px;
+}
+.kan-col { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; min-height: 120px; }
+.kan-col h4 {
+  font-size: .9rem; font-weight: 700; color: var(--navy-800);
+  padding-bottom: 10px; margin-bottom: 10px; border-bottom: 2px solid var(--line);
+}
+.prob-card {
+  background: var(--card); border: 1px solid var(--line); border-inline-start: 4px solid var(--blue-400);
+  border-radius: 10px; padding: 12px; margin-bottom: 9px; cursor: pointer;
+  box-shadow: var(--shadow); transition: transform .1s, box-shadow .12s;
+}
+.prob-card:hover { transform: translateX(-2px); box-shadow: var(--shadow-lg); }
+.prob-card.prob-overdue { border-inline-start-color: var(--danger); background: var(--danger-bg); }
+.prob-title { font-weight: 600; color: var(--ink); font-size: .9rem; line-height: 1.4; }
+.prob-meta { color: var(--muted); font-size: .76rem; margin-top: 6px; }
+
+/* ---- לוח שנה ---- */
+.cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+.cal-title { text-align: center; }
+.cal-title strong { font-size: 1.25rem; color: var(--ink); display: block; }
+.cal-title span { color: var(--blue-500); font-size: .85rem; font-weight: 600; }
+.cal-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--ink-2); font-weight: 500; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cal-dow { text-align: center; font-weight: 700; color: var(--muted); padding: 6px 0; font-size: .82rem; }
+.cal-cell {
+  min-height: 88px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; padding: 7px; cursor: pointer; transition: border-color .12s, box-shadow .12s;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.cal-cell:hover { border-color: var(--blue-400); box-shadow: var(--shadow); }
+.cal-cell.pad { background: transparent; border: none; cursor: default; }
+.cal-cell.today { border-color: var(--navy-800); box-shadow: inset 0 0 0 1px var(--navy-800); }
+.cal-cell.selected { border-color: var(--blue-400); box-shadow: 0 0 0 3px var(--blue-100); }
+.cal-cell.weekend { background: var(--bg); }
+.cal-daynum { display: flex; justify-content: space-between; align-items: baseline; }
+.cal-daynum > span:first-child { font-weight: 700; color: var(--ink); }
+.cal-heb { font-size: .72rem; color: var(--muted); }
+.cal-holiday { font-size: .68rem; color: var(--danger); font-weight: 700; }
+.cal-parsha { font-size: .68rem; color: var(--blue-500); font-weight: 600; }
+.cal-dots { display: flex; flex-wrap: wrap; gap: 3px; margin-top: auto; align-items: center; }
+.cal-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.cal-dot.prob { width: auto; height: auto; font-size: .7rem; }
+.cal-more { font-size: .66rem; color: var(--muted); font-weight: 700; }
+.cal-donecount { font-size: .66rem; color: var(--ok); font-weight: 700; }
+.cal-panel { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.cal-panel .task-row { padding-inline: 18px; }
+.cal-panel .section-title { margin: 0; padding: 15px 18px; border-bottom: 1px solid var(--line-2); }
+
+/* ---- רשימה (משמרת / הודעות) ---- */
+.list-item.handled { opacity: .6; }
+.list-item.handled::before { content: '✓ '; color: var(--ok); font-weight: 800; }
+
+/* ---- טבלת ניהול (נשען על table.data מ-inventory.css) ---- */
+table.data tr.inactive td { opacity: .45; text-decoration: line-through; }
+table.data select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; font-family: inherit; }
+
+/* ---- מטריצת הרשאות ---- */
+.perm-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+.perm-table th, .perm-table td { padding: 10px 12px; text-align: center; border-top: 1px solid var(--line-2); font-size: .86rem; }
+.perm-table thead th { background: var(--navy-800); color: #fff; font-weight: 600; }
+.perm-table tbody th { text-align: right; font-weight: 600; color: var(--ink); background: var(--bg); white-space: nowrap; }
+.perm-table td.locked { color: var(--muted); }
+.perm-toggle {
+  width: 40px; height: 23px; border-radius: 20px; border: none; cursor: pointer;
+  background: var(--line); position: relative; transition: background .16s; vertical-align: middle;
+}
+.perm-toggle::after {
+  content: ''; position: absolute; top: 2px; inset-inline-end: 2px;
+  width: 19px; height: 19px; border-radius: 50%; background: #fff;
+  transition: inset-inline-end .16s; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.perm-toggle.on { background: var(--ok); }
+.perm-toggle.on::after { inset-inline-end: 18px; }
+.perm-toggle.locked { background: var(--navy-700); cursor: not-allowed; opacity: .7; }
+.perm-toggle.locked::after { inset-inline-end: 18px; }
+
+/* ---- קבוצת מדדים בלוח מנהלת: נשען על .kpi-grid/.kpi/.panel מ-inventory.css ---- */
+.mini-stat { display: flex; align-items: center; justify-content: space-between; padding: 9px 4px; border-bottom: 1px solid var(--line-2); font-size: .9rem; }
+.mini-stat:last-child { border-bottom: none; }
+.mini-stat .val { font-weight: 800; color: var(--navy-800); }
+.pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.pill { background: var(--bg); border: 1px solid var(--line); border-radius: 20px; padding: 5px 12px; font-size: .82rem; font-weight: 600; color: var(--ink-2); }
+.pill b { color: var(--navy-800); }
+
+/* =================== עוזרת AI =================== */
+.chat-wrap { display: flex; flex-direction: column; max-width: 760px; }
+.chat-log {
+  min-height: 320px; max-height: 55vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 14px;
+}
+.chat-msg {
+  max-width: 85%; padding: 10px 15px; border-radius: 14px;
+  font-size: .95rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+}
+.chat-msg.me {
+  align-self: flex-start; background: var(--navy-800); color: #fff;
+  border-end-start-radius: 4px;
+}
+.chat-msg.bot {
+  align-self: flex-end; background: var(--blue-100); color: var(--ink);
+  border-end-end-radius: 4px;
+}
+.chat-input-row { margin-top: 6px; }
+
+/* =================== חיבורים =================== */
+.integ-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px; align-items: start;
+}
+.integ-grid code { background: var(--line-2); padding: 2px 6px; border-radius: 6px; font-size: .85em; }
+
+/* ---- משימה חד-פעמית: הדגשה כדי שלא תיבלע ---- */
+.task-row.oneoff {
+  background: #fff8e6;
+  border-inline-start: 4px solid var(--warn);
+}
+.task-row.oneoff:hover { background: #fff3d4; }
+.task-row.oneoff .task-title::before {
+  content: '✦ '; color: var(--warn); font-weight: 800;
+}
+
+/* ---- משימה שבוצעה: מעומעמת אבל קריאה, ושם המבצעת בולט ---- */
+.task-row.done { background: #f7fbf9; }
+.task-row.done .task-title { color: var(--ink-2); opacity: .85; }
+.task-meta.done-by {
+  color: var(--ok); font-weight: 700; font-size: .84rem;
+  text-decoration: none; opacity: 1;
+}
+
+/* ---- משימה לתאריך עתידי: אי אפשר לבצע ---- */
+.task-row.future-locked { cursor: not-allowed; opacity: .72; }
+.task-row.future-locked:hover { background: var(--danger-bg); }
+.task-check.disabled { border-style: dashed; color: var(--muted); background: var(--line-2); }
+
+/* ---- מתג תצוגה רשימה/טבלה ---- */
+.view-toggle { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.view-toggle .vt-lbl { font-weight: 700; color: var(--muted); }
+
+/* ---- תצוגת טבלה: שורות קצרות ורחבות ---- */
+.tasks-table-wrap {
+  overflow-x: auto; max-width: 100%;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 16px;
+}
+.tasks-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+.tasks-table thead th {
+  background: var(--navy-800); color: #fff; font-weight: 700;
+  text-align: right; padding: 12px 14px; white-space: nowrap;
+}
+.tasks-table td {
+  padding: 10px 14px; border-top: 1px solid var(--line-2);
+  color: var(--ink); vertical-align: middle; line-height: 1.35;
+}
+.tasks-table .tt-row { cursor: pointer; transition: background .12s; }
+.tasks-table .tt-row:hover { background: var(--blue-100); }
+.tasks-table .c-chk { width: 46px; text-align: center; padding-inline: 8px; }
+.tasks-table .c-title { font-weight: 600; }
+.tasks-table .c-cat, .tasks-table .c-who, .tasks-table .c-done { white-space: nowrap; color: var(--ink-2); }
+.tasks-table .c-done { color: var(--ok); font-weight: 700; }
+.tasks-table .tt-row.done { background: #f7fbf9; }
+.tasks-table .tt-row.done .c-title { color: var(--muted); text-decoration: line-through; }
+.tasks-table .tt-row.future-locked { opacity: .72; }
+.tt-pr { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.tt-check {
+  width: 26px; height: 26px; border: 2px solid var(--line); border-radius: 7px;
+  background: var(--white); cursor: pointer; color: #fff; font-weight: 800;
+  display: grid; place-items: center; font-family: inherit; font-size: .9em;
+}
+.tt-check.on { background: var(--ok); border-color: var(--ok); }
+.tt-check.disabled { border-style: dashed; background: var(--line-2); color: var(--muted); cursor: not-allowed; }
+
+/* =================== קבוצת ניהול מתקפלת בסרגל הצד ===================
+   פריטי הניהול אינם לשימוש יומיומי — הם מקובצים ונפתחים בלחיצה בלבד.
+   העיצוב יורש מ-.nav-item שב-inventory.css: אותם צבעים, גדלים וטיפוגרפיה. */
+.nav-group { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.nav-group-toggle { cursor: pointer; }
+.nav-group-toggle .ng-caret {
+  display: inline-block; /* חובה — טרנספורם לא חל על אלמנט inline */
+  margin-inline-start: auto; font-size: .8em; opacity: .65;
+  transition: transform .16s ease;
+}
+.nav-group.open .nav-group-toggle .ng-caret { transform: rotate(180deg); opacity: 1; }
+.nav-group.open .nav-item.nav-group-toggle { color: var(--white); background: rgba(255,255,255,.05); }
+.nav-group-body { display: none; flex-direction: column; gap: 3px; padding-inline-start: 14px; }
+.nav-group.open .nav-group-body { display: flex; }
+
+/* =================== מסך התבניות: חיפוש, סינון ועריכה ישירה ===================
+   הצבעים והטיפוגרפיה יורשים מהמערכת (navy/לבן, Heebo) — אין כאן פלטה חדשה. */
+.tpl-filters {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px; margin-bottom: 10px;
+  background: var(--white); border: 1px solid var(--line); border-radius: 12px;
+}
+.tpl-search-row { display: flex; gap: 8px; align-items: center; }
+.tpl-search-row .in { font-size: 1em; }
+.tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-chip {
+  border: 1px solid var(--line); background: var(--white); color: var(--navy-800);
+  border-radius: 999px; padding: 6px 16px; cursor: pointer;
+  font-family: inherit; font-size: .95em; font-weight: 600;
+}
+.tpl-chip:hover { border-color: var(--navy-700); }
+.tpl-chip.on { background: var(--navy-800); border-color: var(--navy-800); color: #fff; }
+.tpl-count { font-size: .9em; color: var(--muted); font-weight: 600; }
+.tpl-table td { vertical-align: middle; }
+.tpl-table .in { width: 100%; min-width: 68px; padding: 5px 6px; font-family: inherit; font-size: .95em; }
+.tpl-table .tpl-title { min-width: 130px; }
+/* התוכן רחב מהעמוד — הגלילה האופקית קורית בתוך הטבלה עצמה ולא בגוף הדף */
+#tpl-rows { overflow-x: auto; }
+.tpl-cat-icon { margin-inline-end: 4px; }
+.tpl-personal {
+  display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 999px;
+  background: var(--navy-800); color: #fff; font-size: .8em; font-weight: 700;
+}
+
+/* ===== מוני התראות על פריטי התפריט =====
+   מוצגים כטקסט בסוגריים ליד שם הלשונית. אפס — הספאן ריק ולא נראה כלום. */
+.ni-count { font-weight: 800; color: #ffd9d6; }
+.nav-item.active .ni-count { color: #fff; }
+
+/* ===== הערות העברת משמרת ===== */
+.ho-item .ho-notes { margin-top: 4px; white-space: pre-wrap; }
+.ho-item.ho-active {
+  border-inline-start: 5px solid var(--danger);
+  background: var(--danger-bg);
+}
+.ho-item.ho-active .meta { color: var(--danger); font-weight: 800; }
+.ho-star { color: var(--danger); font-weight: 900; margin-inline-end: 6px; font-size: 1.15em; }
+.ho-item.ho-acked { border-inline-start: 5px solid var(--ok); }
+.ho-ack {
+  margin-top: 8px; font-size: .92em; font-weight: 700;
+  color: var(--ok); background: var(--ok-bg);
+  display: inline-block; padding: 4px 12px; border-radius: 999px;
+}
+.badge.ho-aud { background: var(--blue-100); color: var(--navy-800); }
+.ho-ack-btn { margin-top: 10px; }
+
+/* ===== אירועים מיוחדים ביומן ===== */
+.cal-special {
+  font-size: .68rem; font-weight: 700; color: var(--purple);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cal-special.blocking { color: var(--danger); }
+.cal-cell.cal-blocked { background: var(--danger-bg); border-color: var(--danger); }
+
+.special-box { margin: 12px 0; }
+.special-box:empty { display: none; }
+.special-box.sb-blocked, .special-box.sb-note, .special-box.sb-new {
+  padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+  background: var(--white);
+}
+.special-box.sb-blocked { border-inline-start: 5px solid var(--danger); background: var(--danger-bg); }
+.special-box.sb-note { border-inline-start: 5px solid var(--purple); }
+.sb-title { font-weight: 800; color: var(--navy-800); font-size: 1.05em; }
+.special-box.sb-blocked .sb-title { color: var(--danger); }
+.sb-sub { font-weight: 500; font-size: .88em; color: var(--muted); margin-top: 3px; }
+.special-box .btn-secondary { margin-top: 10px; }
+.special-box.sb-new .row { margin-top: 10px; }
+.sb-check {
+  display: flex; align-items: center; gap: 7px; white-space: nowrap;
+  font-weight: 600; color: var(--navy-800);
+}
+.sb-check input { width: auto; }
+
+/* ===== מצב שלישי: "לא רלוונטי היום" ===== */
+/* משימה שלא הייתה רלוונטית — מסומנת אך לא נראית כמו כישלון או כמו ביצוע */
+.task-row.irrelevant { opacity: .72; }
+.task-row.irrelevant .task-title { text-decoration: none; }
+.task-check.irr, .tt-check.irr.on { background: var(--blue-100); color: var(--navy-800); border-color: var(--navy-800); }
+.task-meta.irr-by { color: var(--navy-800); font-weight: 700; }
+.badge.irrelevant { background: var(--blue-100); color: var(--navy-800); }
+.irr-btn {
+  margin-inline-start: auto; background: none; border: 2px solid var(--line);
+  color: var(--muted); border-radius: 999px; padding: 6px 14px;
+  font-family: inherit; font-size: .8em; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.irr-btn:hover { border-color: var(--navy-800); color: var(--navy-800); }
+.irr-btn.on { border-color: var(--navy-800); color: var(--navy-800); background: var(--blue-100); }
+.tt-row.irrelevant { opacity: .72; }
+
+/* ===== העברת משמרת: מה שנכתב היום גדול, השאר קטן ===== */
+.ho-band {
+  margin: 18px 0 8px; font-weight: 800; color: var(--navy-800);
+  font-size: 1.05em; display: block; width: 100%; text-align: start;
+}
+.ho-band-toggle {
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  padding: 10px 0; color: var(--muted);
+}
+.ho-band-toggle:hover { color: var(--navy-800); }
+.ho-item.ho-big .ho-notes { font-size: 1.25em; font-weight: 700; line-height: 1.65; }
+.ho-item.ho-compact { padding: 10px 14px; opacity: .82; }
+.ho-item.ho-compact .ho-notes { font-size: .92em; font-weight: 500; }
+.ho-item.ho-compact .meta { font-size: .8em; }
+.ho-none-today { padding: 14px; }
+
+/* ===== מקרא: מי רואה מה ===== */
+.scope-legend { margin: 10px 0 4px; padding: 14px 16px; background: var(--blue-100); border-radius: 12px; }
+.scope-legend b { color: var(--navy-800); }
+.scope-legend .sl-row { margin-top: 6px; line-height: 1.7; }
+
+/* ===== לוח מנהלת: כרטיסים ולוחות לחיצים ===== */
+.kpi-link { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.kpi-link:hover, .kpi-link:focus-visible { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(11,42,74,.16); outline: none; }
+.kpi-link:focus-visible { box-shadow: 0 0 0 3px var(--navy-800); }
+.kpi-go { margin-top: 8px; font-size: .78em; font-weight: 700; color: var(--navy-800); opacity: .75; }
+.panel-head.head-link { cursor: pointer; }
+.panel-head.head-link:hover .head-go { text-decoration: underline; }
+.head-go { font-size: .8em; font-weight: 700; opacity: .8; }
+.mini-stat.mini-link { cursor: pointer; }
+.mini-stat.mini-link:hover { background: var(--blue-100); }
+
+/* ===== כוכב "חשוב" — מעלה את המשימה לראש הרשימה ===== */
+.pin-btn {
+  background: none; border: none; cursor: pointer; font-size: 1.15em;
+  padding: 4px 8px; border-radius: 8px; opacity: .6; line-height: 1;
+}
+.pin-btn:hover { opacity: 1; background: var(--blue-100); }
+.pin-btn.on { opacity: 1; }
+.pinned-card { border: 2px solid var(--navy-800); }
+.pinned-head { background: var(--navy-800); color: #fff; }
+.pinned-head .cat-count { color: #fff; }
+.tt-row.pinned { background: var(--blue-100); }
+
+/* ===== סרגל פתיחה/סגירה של קטגוריות ===== */
+.cat-tools { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+
+/* ===== שיוך מרוכז של תבניות ===== */
+.tpl-bulk {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 10px 0 12px; padding: 12px 14px;
+  background: var(--blue-100); border-radius: var(--radius);
+}
+.tpl-bulk-all { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.tpl-bulk-n { color: var(--muted); font-weight: 600; }
+.tpl-bulk-n.on { color: var(--navy-800); font-weight: 800; }
+.tpl-bulk button[disabled] { opacity: .45; cursor: not-allowed; }
+.tpl-pick { width: 42px; text-align: center; }
+.tpl-pick input { cursor: pointer; }
+
+/* ===== מצב שיוך אחראית בתבניות ===== */
+.tpl-own { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.tpl-own-lbl { font-weight: 700; color: var(--navy-800); }
+.tpl-own-bar { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9em; }
+.tob-track {
+  display: inline-block; width: 120px; height: 10px;
+  background: var(--line-2); border-radius: 20px; overflow: hidden;
+}
+.tob-fill { display: block; height: 100%; background: var(--ok); transition: width .5s ease; }
+
+/* ===== תיבת הסימון כיעד לחיצה אמיתי =====
+   קודם כל שורת המשימה הייתה לחיצה וסימנה "בוצע", והכפתורים תפסו ~8% ממנה בלבד —
+   כך שהחטאה קטנה של "לא רלוונטי" סימנה בטעות "בוצע". עכשיו רק התיבה מסמנת,
+   ולכן היא חייבת להיות גדולה וברורה מספיק ללחיצה. */
+button.task-check {
+  width: 40px; height: 40px; padding: 0; cursor: pointer;
+  background: var(--card); font-family: inherit; font-size: 1.1rem;
+  align-self: flex-start;
+}
+button.task-check:hover:not(.disabled) { border-color: var(--ok); background: var(--ok-bg); }
+button.task-check:focus-visible { outline: 3px solid var(--navy-800); outline-offset: 2px; }
+button.task-check.disabled { cursor: not-allowed; }
+.task-row.done button.task-check { background: var(--ok); border-color: var(--ok); color: #fff; }
+.task-row.irrelevant button.task-check { background: var(--blue-100); border-color: var(--navy-800); color: var(--navy-800); }
+/* השורה עצמה כבר אינה לחיצה — לא להציג סמן יד שמרמז אחרת */
+.task-row { cursor: default; }

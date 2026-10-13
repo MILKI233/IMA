@@ -1,0 +1,25 @@
+# הגדרות פריסה ל-Fly.io — מערכת אמא במשמרת (משימות + קמפיין המכירה הסינית)
+app = "ama-mishmeret-tasks"
+primary_region = "fra"
+
+[build]
+
+[env]
+  PORT = "3900"
+  GEMACH_DATA_DIR = "/data"
+
+[[mounts]]
+  source = "ama_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3900
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

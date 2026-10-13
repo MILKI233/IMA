@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>גמ"ח שמלות · מערכת CRM והשכרה</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="inventory.css">
+</head>
+<body>
+
+  <!-- ============ מסך כניסה ============ -->
+  <div id="login-screen" class="login-wrap">
+    <div class="login-card">
+      <div class="login-crest">◆</div>
+      <div class="login-title">גמ"ח שמלות</div>
+      <div class="login-sub">מערכת CRM וניהול השכרה</div>
+      <div id="login-hebdate" class="login-hebdate"></div>
+      <input id="login-code" type="password" inputmode="numeric" placeholder="קוד עובדת" autocomplete="off">
+      <button id="login-btn" class="btn-primary btn-block">כניסה למערכת</button>
+      <div id="login-error" class="login-error"></div>
+      <a href="/" class="login-alt">← למערכת המשימות</a>
+    </div>
+  </div>
+
+  <!-- ============ אפליקציה ============ -->
+  <div id="app" class="app-shell hidden">
+
+    <!-- סרגל צד -->
+    <aside class="sidebar">
+      <div class="side-brand">
+        <div class="side-crest">◆</div>
+        <div>
+          <div class="side-name">גמ"ח שמלות</div>
+          <div class="side-tag">CRM והשכרה</div>
+        </div>
+      </div>
+
+      <nav class="side-nav" id="side-nav">
+        <button class="nav-item active" data-tab="dashboard"><span class="ni-ic">▤</span> לוח בקרה</button>
+        <button class="nav-item" data-tab="orders"><span class="ni-ic">▦</span> הזמנות</button>
+        <button class="nav-item" data-tab="search"><span class="ni-ic">⌕</span> חיפוש</button>
+        <button class="nav-item" data-tab="station"><span class="ni-ic">◨</span> עמדת סריקה</button>
+        <button class="nav-item" data-tab="returns"><span class="ni-ic">↩</span> החזרות</button>
+        <button class="nav-item" data-tab="catalog"><span class="ni-ic">▧</span> קטלוג ומלאי</button>
+        <button class="nav-item" data-tab="customers"><span class="ni-ic">◉</span> לקוחות</button>
+        <button class="nav-item" data-tab="cash"><span class="ni-ic">₪</span> קופה</button>
+        <button class="nav-item" data-tab="cancellations"><span class="ni-ic">⊘</span> ביטולים</button>
+        <button class="nav-item" data-tab="stockcheck"><span class="ni-ic">◈</span> בדיקת מלאי</button>
+        <button class="nav-item" data-tab="manual"><span class="ni-ic">⌨</span> ברקודים ידניים</button>
+      </nav>
+
+      <div class="side-foot">
+        <a href="/" class="side-link">↩ מערכת משימות</a>
+        <div class="side-user">
+          <div class="su-avatar" id="su-avatar">?</div>
+          <div class="su-info">
+            <div class="su-name" id="user-name"></div>
+            <div class="su-role" id="user-role"></div>
+          </div>
+          <button class="su-logout" id="logout-btn" title="יציאה">⏻</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- אזור תוכן -->
+    <div class="content">
+      <header class="topbar">
+        <div class="tb-title">
+          <h1 id="page-title">לוח בקרה</h1>
+          <div id="heb-context" class="tb-context"></div>
+        </div>
+        <div class="tb-tools">
+          <label class="station-wrap" title="עמדת מחשב">
+            <span class="station-ic">▣</span>
+            <select id="station-sel" class="station-sel">
+              <option value="">בחרי עמדה</option>
+              <option value="1">מחשב 1</option><option value="2">מחשב 2</option>
+              <option value="3">מחשב 3</option><option value="4">מחשב 4</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <main id="main" class="main-area"></main>
+    </div>
+  </div>
+
+  <!-- שכבת התראות -->
+  <div id="toast-host" class="toast-host"></div>
+
+  <!-- שומר מסך: מונע תקיעה של שכבות מודאל יתומות (חייב להיטען לפני קוד המערכת) -->
+  <script src="ui-guard.js"></script>
+  <script src="inventory.js"></script>
+</body>
+</html>

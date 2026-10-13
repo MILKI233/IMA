@@ -1,0 +1,80 @@
+/* מיתוג אמא במשמרת — ניתן לעדכון מלשונית "מיתוג" בתוך הקמפיין עצמו (צבעים משתנים בזמן אמת) */
+:root {
+    --c-rose: #b06970;
+    --c-raspberry: #cc3366;
+    --c-dark: #132d23;
+    --c-gold: #c9a24b;
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    background: linear-gradient(160deg, #fbeef0 0%, #fdf8ef 55%, #f6efe2 100%);
+    color: var(--c-dark);
+    min-height: 100vh;
+}
+.hidden { display: none !important; }
+
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.login-card {
+    background: #fff; border-radius: 20px; padding: 36px 32px; width: 320px; text-align: center;
+    box-shadow: 0 10px 30px rgba(19,45,35,.12); border-top: 4px solid var(--c-gold);
+}
+.login-crest { font-size: 2.2rem; color: var(--c-raspberry); }
+.login-title { font-family: Georgia, serif; font-size: 1.3rem; margin-top: 6px; }
+.login-sub { color: #8a6d74; font-size: .9rem; margin-bottom: 18px; }
+.login-card input {
+    width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ecd4da; font-size: 1.1rem;
+    text-align: center; margin-bottom: 12px;
+}
+.btn-block { width: 100%; }
+.login-error { color: #a73950; font-size: .85rem; min-height: 1.2em; margin-top: 8px; }
+.login-alt { display: inline-block; margin-top: 14px; color: var(--c-raspberry); font-size: .85rem; text-decoration: none; }
+
+header.c-header {
+    background: linear-gradient(120deg, var(--c-rose), var(--c-raspberry));
+    color: #fff; padding: 22px 24px; text-align: center; position: relative;
+}
+header.c-header::after { content: ''; display: block; width: 90px; height: 3px; margin: 14px auto 0; background: var(--c-gold); border-radius: 2px; }
+header.c-header img.brand-logo { height: 46px; margin-bottom: 8px; display: block; margin-inline: auto; }
+header.c-header h1 { margin: 0; font-family: Georgia, serif; font-size: 1.5rem; }
+header.c-header p { margin: 6px 0 0; opacity: .92; font-size: .9rem; }
+header.c-header a.back-link { position: absolute; inset-inline-start: 20px; top: 24px; color: #fff; text-decoration: none; font-size: .85rem; opacity: .9; }
+
+nav.c-nav { display: flex; justify-content: center; gap: 10px; padding: 14px; flex-wrap: wrap; }
+nav.c-nav button {
+    border: none; background: #fff; color: var(--c-raspberry); border-radius: 999px; padding: 10px 22px;
+    font-size: .95rem; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+nav.c-nav button.active { background: var(--c-dark); color: var(--c-gold); }
+
+main.c-main { max-width: 1100px; margin: 0 auto; padding: 10px 16px 60px; }
+section.c-section { display: none; }
+section.c-section.active { display: block; }
+
+.card {
+    background: #fffdfa; border-radius: 18px; padding: 22px; margin-bottom: 20px;
+    box-shadow: 0 6px 20px rgba(19,45,35,.07); border-top: 3px solid var(--c-gold);
+}
+.card h2 { margin-top: 0; font-family: Georgia, serif; font-size: 1.25rem; color: var(--c-raspberry); }
+
+table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+th, td { padding: 10px 8px; text-align: right; border-bottom: 1px solid #f3e6ea; }
+th { color: var(--c-raspberry); font-weight: 600; }
+tr:hover td { background: #fdf8f5; }
+
+.badge { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: .8rem; background: #fbe3ea; color: var(--c-raspberry); }
+.badge.warn { background: #fdf0d6; color: #8a6d00; }
+.badge.ok { background: #e2f1e9; color: var(--c-dark); }
+
+.btn { border: none; border-radius: 999px; padding: 8px 18px; cursor: pointer; font-size: .88rem; color: #fff; background: var(--c-dark); }
+.btn.secondary { background: var(--c-rose); }
+.btn.danger { background: #a73950; }
+
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+input, select { padding: 8px 11px; border-radius: 10px; border: 1px solid #ecd4da; font-size: .92rem; }
+input[type="color"] { width: 46px; height: 36px; padding: 2px; cursor: pointer; }
+label.settingLabel { font-size: .85rem; color: #6b4f55; display: block; margin-bottom: 4px; }
+.settingGroup { min-width: 150px; }
+.empty { color: #9a8aa5; padding: 20px 0; text-align: center; }
+.hint { color: #8a7560; font-size: .82rem; }

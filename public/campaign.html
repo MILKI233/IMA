@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>קמפיין המכירה הסינית — אמא במשמרת</title>
+<link rel="stylesheet" href="campaign.css">
+</head>
+<body>
+
+<div id="login-screen" class="login-wrap">
+    <div class="login-card">
+        <div class="login-crest">🎗</div>
+        <div class="login-title">אמא במשמרת</div>
+        <div class="login-sub">קמפיין המכירה הסינית</div>
+        <input id="login-code" type="password" inputmode="numeric" placeholder="קוד עובדת" autocomplete="off">
+        <button id="login-btn" class="btn btn-block">כניסה למערכת</button>
+        <div id="login-error" class="login-error"></div>
+        <a href="/" class="login-alt">← למערכת המשימות</a>
+    </div>
+</div>
+
+<div id="app" class="hidden">
+<header class="c-header">
+    <a href="/" class="back-link">← למערכת המשימות</a>
+    <img id="brandLogo" class="brand-logo" style="display:none">
+    <h1>קמפיין המכירה הסינית — אמא במשמרת</h1>
+    <p>מערכת נקודות למתנדבות, מסונכרנת משלוחת ימות המשיח</p>
+</header>
+
+<nav class="c-nav">
+    <button data-tab="dashboard" class="active">לוח בקרה חי</button>
+    <button data-tab="pending">אישורים ממתינים <span id="pendingCount"></span></button>
+    <button data-tab="hubs">מוקדי הפצה</button>
+    <button data-tab="admin">ניהול</button>
+    <button data-tab="branding">מיתוג והגדרות</button>
+</nav>
+
+<main class="c-main">
+    <section id="dashboard" class="c-section active">
+        <div class="card">
+            <h2>לוח מתנדבות ונקודות</h2>
+            <table id="volunteersTable"><thead><tr>
+                <th>שם</th><th>טלפון</th><th>נקודות</th><th>יעד שבועי</th>
+            </tr></thead><tbody></tbody></table>
+        </div>
+        <div class="card">
+            <h2>פעילות אחרונה</h2>
+            <table id="activityTable"><thead><tr>
+                <th>מתנדבת</th><th>סוג</th><th>נקודות</th><th>סטטוס</th><th>תאריך</th>
+            </tr></thead><tbody></tbody></table>
+        </div>
+    </section>
+
+    <section id="pending" class="c-section">
+        <div class="card">
+            <h2>דיווחי גיוס מוצר הממתינים לאישור</h2>
+            <table id="pendingTable"><thead><tr>
+                <th>מתנדבת</th><th>טלפון</th><th>שווי מוצר (₪)</th><th>הקלטה</th><th>תאריך</th><th>אישור / דחייה</th>
+            </tr></thead><tbody></tbody></table>
+            <div class="empty" id="pendingEmpty" style="display:none">אין דיווחים ממתינים</div>
+        </div>
+    </section>
+
+    <section id="hubs" class="c-section">
+        <div class="card">
+            <h2>מוקדי הפצה — מלאי ערכות</h2>
+            <table id="hubsTable"><thead><tr>
+                <th>מוקד</th><th>קוד</th><th>אזור בשלוחת ימות</th><th>פרטי מסירה</th><th>פנויות</th><th>סה"כ</th><th></th>
+            </tr></thead><tbody></tbody></table>
+        </div>
+        <div class="card">
+            <h2>יומן מוקדים אחרון</h2>
+            <table id="hubLogsTable"><thead><tr>
+                <th>מוקד</th><th>סוג</th><th>פרטים</th><th>תאריך</th>
+            </tr></thead><tbody></tbody></table>
+        </div>
+    </section>
+
+    <section id="admin" class="c-section">
+        <div class="card">
+            <h2>מתנדבות שעדיין לא זוהו בשם</h2>
+            <table id="unidentifiedTable"><thead><tr><th>טלפון</th><th>קביעת שם</th></tr></thead><tbody></tbody></table>
+            <div class="empty" id="unidentifiedEmpty" style="display:none">כל המתנדבות מזוהות בשם</div>
+        </div>
+
+        <div class="card">
+            <h2>קטלוג מתנות בנקודות</h2>
+            <div class="row">
+                <input id="prizeCode" placeholder="קוד מוצר" style="width:100px">
+                <input id="prizeName" placeholder="שם המתנה" style="width:180px">
+                <input id="prizeValue" placeholder="שווי בש״ח" style="width:100px">
+                <input id="prizePoints" placeholder="עלות בנקודות" style="width:110px">
+                <button class="btn" id="addPrizeBtn">הוספת מתנה</button>
+            </div>
+            <table id="prizesTable"><thead><tr>
+                <th>קוד</th><th>שם</th><th>שווי</th><th>עלות בנקודות</th><th>פעיל</th><th></th>
+            </tr></thead><tbody></tbody></table>
+        </div>
+
+        <div class="card">
+            <h2>מוקדי הפצה — הוספה</h2>
+            <p class="hint">"אזור בשלוחת ימות" הוא מה שהמתנדבת שומעת בטלפון בשלוחה 4. בלי בחירת אזור, המוקד נגיש רק לאחראית עם קוד PIN.</p>
+            <div class="row">
+                <input id="hubName" placeholder="שם המוקד" style="width:160px">
+                <input id="hubPin" placeholder="קוד מוקד (ייחודי)" style="width:110px">
+                <input id="hubTotal" placeholder="כמות ערכות" style="width:100px">
+                <select id="hubAreaPath" style="width:200px"><option value="">— ללא אזור בשלוחה —</option></select>
+            </div>
+            <div class="row">
+                <input id="hubPickupInfo" placeholder="פרטי מסירה שיוקראו בטלפון" style="width:380px">
+                <button class="btn" id="addHubBtn">הוספת מוקד</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="branding" class="c-section">
+        <div class="card">
+            <h2>לוגו וצבעי המותג</h2>
+            <div class="row">
+                <div class="settingGroup"><label class="settingLabel">לוגו (קובץ תמונה)</label><input type="file" id="logoFile" accept="image/*"></div>
+                <div class="settingGroup"><label class="settingLabel">צבע עיקרי</label><input type="color" id="brandPrimary"></div>
+                <div class="settingGroup"><label class="settingLabel">צבע הדגשה</label><input type="color" id="brandAccent"></div>
+                <div class="settingGroup"><label class="settingLabel">צבע כהה</label><input type="color" id="brandDark"></div>
+            </div>
+            <button class="btn" id="saveBrandingBtn">שמירת מיתוג</button>
+        </div>
+        <div class="card">
+            <h2>נקודות וחישובים</h2>
+            <p class="hint">שינוי כאן חל מיידית גם בטלפון, בלי תכנות.</p>
+            <div class="row">
+                <div class="settingGroup"><label class="settingLabel">נקודות לפנייה לעסק (מקש 1)</label><input type="number" id="setPointsOutreach" style="width:90px"></div>
+                <div class="settingGroup"><label class="settingLabel">נקודות לשליחות (מקש 2)</label><input type="number" id="setPointsErrand" style="width:90px"></div>
+                <div class="settingGroup"><label class="settingLabel">אחוז בונוס יעד שבועי</label><input type="number" id="setGoalBonus" style="width:90px"></div>
+                <div class="settingGroup"><label class="settingLabel">אחוז המרה לגיוס מוצר (הצעה בלבד)</label><input type="number" id="setProductConversion" placeholder="ריק = אין הצעה" style="width:130px"></div>
+            </div>
+            <button class="btn" id="saveCalcBtn">שמירת הגדרות נקודות</button>
+        </div>
+    </section>
+</main>
+</div>
+
+<script src="campaign.js"></script>
+</body>
+</html>

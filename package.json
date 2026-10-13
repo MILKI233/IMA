@@ -1,0 +1,68 @@
+{
+  "name": "ama-mishmeret-tasks",
+  "version": "1.0.0",
+  "description": "מערכת ניהול אמא במשמרת — משימות + קמפיין המכירה הסינית (מבוסס על מערכת הגמ\"ח)",
+  "main": "electron/main.js",
+  "scripts": {
+    "server": "node server.js",
+    "app": "electron .",
+    "native:electron": "cd node_modules/better-sqlite3 && prebuild-install --runtime=electron --target=42.7.0 --arch=x64 --platform=win32 --force",
+    "native:node": "cd node_modules/better-sqlite3 && prebuild-install --runtime=node --arch=x64 --platform=win32 --force",
+    "dist": "npm run native:electron && electron-builder --win nsis && npm run native:node"
+  },
+  "author": "Gemach System",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
+    "@hebcal/core": "^6.6.0",
+    "better-sqlite3": "^12.11.1",
+    "electron-updater": "^6.8.9",
+    "express": "^5.2.1",
+    "nodemailer": "^9.0.3",
+    "yemot-router2": "^6.2.1"
+  },
+  "type": "module",
+  "build": {
+    "appId": "com.gemach.system",
+    "productName": "Gemach System",
+    "directories": {
+      "output": "dist-installer",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**",
+      "server.js",
+      "server/**",
+      "public/**",
+      "build/icon.ico",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "מערכת הגמח",
+      "artifactName": "GemachSystem-Setup-${version}.exe",
+      "runAfterFinish": true
+    },
+    "npmRebuild": false,
+    "electronDist": "node_modules/electron/dist",
+    "publish": {
+      "provider": "generic",
+      "url": "https://updates.gemach.local"
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.7.0",
+    "electron-builder": "^26.15.3"
+  }
+}
