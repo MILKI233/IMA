@@ -84,7 +84,15 @@ CREATE TABLE IF NOT EXISTS messages (
   from_user TEXT NOT NULL,
   body TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  handled_by TEXT, handled_at TEXT
+  handled_by TEXT, handled_at TEXT,
+  kind TEXT NOT NULL DEFAULT 'report',  -- report = דיווח עובדת למנהלת (הזרימה המקורית) / announcement = תגובת מנהלת או הודעה כללית, מוצגת כבאנר
+  to_user TEXT,                          -- יעד הודעת announcement; NULL = לכולם
+  reply_to INTEGER REFERENCES messages(id)
+);
+CREATE TABLE IF NOT EXISTS message_dismissals (
+  message_id INTEGER NOT NULL REFERENCES messages(id),
+  user_name TEXT NOT NULL,
+  PRIMARY KEY (message_id, user_name)
 );
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,
@@ -277,6 +285,10 @@ for (const stmt of [
   `ALTER TABLE handovers ADD COLUMN acked_at TEXT`,
   // תיאור קצר למשימה חד־פעמית (למשל כשמשבצים משימה מלוח השנה ליום מסוים)
   `ALTER TABLE task_instances ADD COLUMN description TEXT`,
+  // הודעות: תגובת מנהלת / הכרזה כללית שמוצגת כבאנר בראש האתר
+  `ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'report'`,
+  `ALTER TABLE messages ADD COLUMN to_user TEXT`,
+  `ALTER TABLE messages ADD COLUMN reply_to INTEGER REFERENCES messages(id)`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

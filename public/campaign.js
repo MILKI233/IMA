@@ -25,6 +25,7 @@ const ACTION_LABEL = {
     'campaign.hub.message': 'הודעה למזכירות (טלפון)',
     'campaign.import.volunteers': 'ייבוא רשימת מתנדבות מאקסל',
     'campaign.import.prizes': 'ייבוא קטלוג מתנות מאקסל',
+    'campaign.import.recruitment': 'ייבוא דיווחי גיוס מוצרים מאקסל',
 };
 let activityQuery = '';
 let activityLoaded = false;
@@ -121,8 +122,9 @@ function describeActivity(row) {
         if (row.action === 'campaign.phone.goal_set') return `יעד ${after.goal_points} נקודות`;
         if (row.action === 'campaign.hub.catalogs_taken') return `${after.amount} קטלוגים ל-${after.phone}`;
         if (row.action === 'campaign.hub.message') return 'הודעה מוקלטת למזכירות';
-        if (row.action === 'campaign.import.volunteers' || row.action === 'campaign.import.prizes') {
-            return `נוספו ${after.added}, עודכנו ${after.updated}, דולגו ${after.skipped} (מתוך ${after.total})`;
+        if (row.action === 'campaign.import.volunteers' || row.action === 'campaign.import.prizes' || row.action === 'campaign.import.recruitment') {
+            const updatedPart = after.updated !== undefined ? `, עודכנו ${after.updated}` : '';
+            return `נוספו ${after.added}${updatedPart}, דולגו ${after.skipped} (מתוך ${after.total})`;
         }
         if (row.action && row.action.startsWith('campaign.phone.') && after.points != null) {
             return `${after.points} נקודות (${STATUS_LABEL[after.status] || after.status})${after.value_nis != null ? ` · שווי ${after.value_nis} ₪` : ''}`;
@@ -450,7 +452,10 @@ async function handleImport(inputId, endpoint, resultId) {
         try {
             const data = await readFileAsBase64(file);
             const r = await api(endpoint, { method: 'POST', body: { data } });
-            resultBox.textContent = `נוספו ${r.added}, עודכנו ${r.updated}, דולגו ${r.skipped} (מתוך ${r.total} שורות)`;
+            const updatedPart = r.updated !== undefined ? `, עודכנו ${r.updated}` : '';
+            let msg = `נוספו ${r.added}${updatedPart}, דולגו ${r.skipped} (מתוך ${r.total} שורות)`;
+            if (r.skippedReasons && r.skippedReasons.length) msg += ' — ' + r.skippedReasons.join('; ');
+            resultBox.textContent = msg;
             loadDashboard();
         } catch (e) { resultBox.textContent = e.message || 'הייבוא נכשל'; }
         input.value = '';
@@ -458,6 +463,7 @@ async function handleImport(inputId, endpoint, resultId) {
 }
 handleImport('importVolunteersFile', '/api/campaign/import/volunteers', 'importVolunteersResult');
 handleImport('importPrizesFile', '/api/campaign/import/prizes', 'importPrizesResult');
+handleImport('importRecruitmentFile', '/api/campaign/import/recruitment', 'importRecruitmentResult');
 
 document.getElementById('saveBrandingBtn').addEventListener('click', async () => {
     const payload = {

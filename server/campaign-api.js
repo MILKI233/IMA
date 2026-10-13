@@ -169,6 +169,40 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         res.json({ added, updated, skipped, total: rows.length });
     });
 
+    // ייבוא דיווחי גיוס מוצרים מרכזת הגיוס — עמודות טלפון (של השומרת), שווי/שם עסק, ואופציונלית נקודות מפורש.
+    // כל שורה הופכת מיידית לנקודות מאושרות (לא ממתינות) — האקסל הוא כבר "המקור האמין" לפי תוכנית העבודה.
+    router.post('/import/recruitment', mustLogin, mustManager, (req, res) => {
+        let rows;
+        try { rows = parseSpreadsheet(req.body?.data || ''); }
+        catch { return res.status(400).json({ error: 'לא ניתן לקרוא את הקובץ — יש להעלות אקסל (xlsx/xls/csv) תקין' }); }
+
+        const conversionPercent = parseFloat(getAllCampaignSettings().campaign_product_conversion_percent);
+        let added = 0, skipped = 0;
+        const skippedReasons = [];
+        rows.forEach((row, idx) => {
+            const rawPhone = findCol(row, ['טלפון', 'נייד', 'פלאפון']);
+            const phone = String(rawPhone ?? '').replace(/\D/g, '');
+            const valueNis = parseInt(findCol(row, ['שווי']), 10) || null;
+            const explicitPoints = parseInt(findCol(row, ['נקוד']), 10);
+            const business = String(findCol(row, ['עסק', 'הערה', 'תיאור']) ?? '').trim();
+
+            if (!phone) { skipped++; skippedReasons.push(`שורה ${idx + 2}: אין מספר טלפון`); return; }
+            let points = Number.isFinite(explicitPoints) ? explicitPoints : null;
+            if (points === null && valueNis && conversionPercent) points = Math.round(valueNis * conversionPercent / 100);
+            if (points === null) { skipped++; skippedReasons.push(`שורה ${idx + 2}: אין נקודות ואין שווי+אחוז המרה מוגדר`); return; }
+
+            const vol = findOrCreateVolunteer(phone);
+            db.prepare(`INSERT INTO campaign_point_transactions (volunteer_id, type, points, status, value_nis, note, created_at, approved_at)
+                        VALUES (?, 'product', ?, 'approved', ?, ?, datetime('now','localtime'), datetime('now','localtime'))`)
+                .run(vol.id, points, valueNis, business || null);
+            added++;
+        });
+        audit(req.user.name, 'campaign.import.recruitment', 'campaign_point_transactions', null, null,
+            { added, skipped, total: rows.length });
+        events?.emit('campaign.update');
+        res.json({ added, skipped, total: rows.length, skippedReasons: skippedReasons.slice(0, 10) });
+    });
+
     // ייבוא קטלוג מתנות מאקסל — עמודות קוד, שם, שווי, נקודות. נכנסות לא-פעיל כברירת מחדל לבדיקה
     router.post('/import/prizes', mustLogin, mustManager, (req, res) => {
         let rows;

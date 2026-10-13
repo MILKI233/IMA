@@ -40,6 +40,7 @@ let OPEN_CAT = null;
 // מוני "חדש/לא טופל" שמוצגים בסוגריים על פריטי התפריט. אפס = לא מוצג כלום.
 let COUNTERS = { problems: 0, messages: 0, handover: 0 };
 const COUNTER_TABS = { problems: 'problems', handover: 'handover', messages: 'messages' };
+let ANNOUNCE_TIMER = null;
 // תצוגת מסך העברת המשמרת: הערות פעילות בלבד או גם היסטוריה
 let HO_SHOW_HISTORY = false;
 // הערות פעילות מימים קודמים — מכווצות כברירת מחדל, כדי שמה שנכתב היום יבלוט
@@ -207,6 +208,8 @@ async function startApp() {
 
   buildNav();
   mountZoomControl();
+  refreshAnnouncements();
+  if (!ANNOUNCE_TIMER) ANNOUNCE_TIMER = setInterval(refreshAnnouncements, 30000);
   $('#logout-btn').onclick = () => {
     if (!confirm('לסיים משמרת ולצאת?')) return;
     document.querySelectorAll('.modal-back').forEach((b) => b.remove());
@@ -286,6 +289,27 @@ function paintCounters() {
   }
 }
 
+async function refreshAnnouncements() {
+  if (!USER) return;
+  const box = $('#announce-banner');
+  if (!box) return;
+  let rows = [];
+  try { rows = await api('/api/messages/banner'); } catch { return; }
+  box.innerHTML = '';
+  rows.forEach((m) => {
+    const item = el('div', 'announce-item');
+    item.innerHTML = `<div class="an-body"><span class="an-meta">📣 ${esc(m.from_user)}:</span>${esc(m.body)}</div>`;
+    const close = el('button', 'an-close', '✕');
+    close.title = 'סגירה';
+    close.addEventListener('click', async () => {
+      item.remove();
+      try { await api(`/api/messages/${m.id}/dismiss`, { method: 'POST' }); } catch { /* לא קריטי */ }
+    });
+    item.append(close);
+    box.append(item);
+  });
+}
+
 async function refreshCounters() {
   if (!USER) return;
   try {
@@ -299,6 +323,8 @@ function logout() {
   localStorage.removeItem('gemach_user');
   localStorage.removeItem(NAV_GROUP_LS);
   USER = null; TAB = null;
+  if (ANNOUNCE_TIMER) { clearInterval(ANNOUNCE_TIMER); ANNOUNCE_TIMER = null; }
+  const box = $('#announce-banner'); if (box) box.innerHTML = '';
   COUNTERS = { problems: 0, messages: 0, handover: 0 };
   HO_SHOW_HISTORY = false;
   // סוגרים כל חלון צף שנשאר פתוח — אחרת הוא חוסם את מסך הכניסה
@@ -1339,7 +1365,17 @@ async function renderMessages(main) {
       <div class="form-actions"><button class="btn-primary" id="msg-btn">שליחת ההודעה</button></div>
       <div id="msg-sent" class="ok-line"></div>
     </div>
-    ${manager ? '<div class="section-title">הודעות אחרונות</div><div id="msg-list"></div>' : ''}`;
+    ${manager ? `
+    <div class="card">
+      <div class="section-title" style="margin-top:0">📣 שליחת הודעה כללית</div>
+      <div class="row">
+        <select id="bc-to" class="in" style="max-width:200px"><option value="">— לכולם —</option></select>
+        <input id="bc-body" class="in grow" placeholder="תוכן ההודעה — תוצג כבאנר בראש האתר">
+        <button class="btn-primary" id="bc-btn">שליחה</button>
+      </div>
+      <div id="bc-sent" class="ok-line"></div>
+    </div>
+    <div class="section-title">הודעות אחרונות</div><div id="msg-list"></div>` : ''}`;
   $('#msg-btn').addEventListener('click', async () => {
     const body = $('#msg-body').value.trim();
     if (!body) return;
@@ -1350,11 +1386,35 @@ async function renderMessages(main) {
     $('#msg-sent').textContent = '✓ ההודעה נשלחה להנהלה';
   });
   if (!manager) return;
+  fillNamesSelect2(document, '#bc-to');
+  $('#bc-btn').addEventListener('click', async () => {
+    const text = $('#bc-body').value.trim();
+    if (!text) return;
+    try {
+      await api('/api/messages/broadcast', { method: 'POST', body: { text, to_user: $('#bc-to').value || null } });
+      $('#bc-body').value = '';
+      $('#bc-sent').textContent = '✓ ההודעה נשלחה';
+      toast('ההודעה נשלחה', 'ok');
+    } catch (e) { toast(e.message || 'השליחה נכשלה', 'err'); }
+  });
   const list = $('#msg-list');
   if (!items.length) list.append(el('div', 'empty-state', 'אין הודעות'));
   items.forEach((msg) => {
     const item = el('div', 'list-item' + (msg.handled_at ? ' handled' : ''));
     item.innerHTML = `<div class="meta"><b style="color:var(--navy-800);font-size:1.02em">✍️ ${esc(msg.from_user)}</b> · ${esc((msg.created_at || '').slice(0, 16).replace('T', ' '))}${msg.handled_at ? ` · טופל ע"י ${esc(msg.handled_by)}` : ''}</div>${esc(msg.body)}`;
+    const replyRow = el('div', 'row', '');
+    replyRow.style.marginTop = '8px';
+    const replyInput = el('input', 'in grow');
+    replyInput.placeholder = `תגובה ל${msg.from_user} — תוצג לה בראש האתר`;
+    const replyBtn = el('button', 'btn-secondary btn-sm', 'שליחת תגובה');
+    replyBtn.addEventListener('click', async () => {
+      const text = replyInput.value.trim();
+      if (!text) return;
+      try { await api(`/api/messages/${msg.id}/reply`, { method: 'POST', body: { text } }); toast('התגובה נשלחה', 'ok'); render(); }
+      catch (e) { toast(e.message || 'השליחה נכשלה', 'err'); }
+    });
+    replyRow.append(replyInput, replyBtn);
+    item.append(replyRow);
     if (!msg.handled_at) {
       const b = el('button', 'btn-secondary btn-sm', 'סימון כטופל');
       b.style.marginTop = '8px';

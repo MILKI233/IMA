@@ -488,7 +488,7 @@ app.post('/api/handovers/:id/ack', mustLogin, requireFeature('handover'), (req, 
 // ---------- הודעות פנימיות ----------
 // היסטוריית ההודעות גלויה למנהלת בלבד; שאר התפקידים רק כותבים
 app.get('/api/messages', mustLogin, mustManager, (req, res) => {
-  res.json(db.prepare('SELECT * FROM messages ORDER BY handled_at IS NOT NULL, id DESC LIMIT 50').all());
+  res.json(db.prepare("SELECT * FROM messages WHERE kind = 'report' ORDER BY handled_at IS NOT NULL, id DESC LIMIT 50").all());
 });
 app.post('/api/messages', mustLogin, requireFeature('messages'), (req, res) => {
   const { body } = req.body || {};
@@ -499,6 +499,48 @@ app.post('/api/messages', mustLogin, requireFeature('messages'), (req, res) => {
 app.patch('/api/messages/:id/handle', mustLogin, mustManager, (req, res) => {
   db.prepare(`UPDATE messages SET handled_by=?, handled_at=datetime('now','localtime') WHERE id=?`)
     .run(req.user.name, req.params.id);
+  res.json({ ok: true });
+});
+
+// תגובת מנהלת להודעה — מוצגת כבאנר בראש האתר אצל מי ששלחה, וגם מסמנת את ההודעה המקורית כטופלה
+app.post('/api/messages/:id/reply', mustLogin, mustManager, (req, res) => {
+  const text = (req.body?.text || '').trim();
+  if (!text) return res.status(400).json({ error: 'אין תוכן לתגובה' });
+  const original = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id);
+  if (!original) return res.status(404).json({ error: 'ההודעה לא נמצאה' });
+  const r = db.prepare(`INSERT INTO messages(from_user, body, kind, to_user, reply_to) VALUES (?, ?, 'announcement', ?, ?)`)
+    .run(req.user.name, text, original.from_user, original.id);
+  db.prepare(`UPDATE messages SET handled_by = ?, handled_at = datetime('now','localtime') WHERE id = ? AND handled_at IS NULL`)
+    .run(req.user.name, original.id);
+  audit(req.user.name, 'message.reply', 'messages', r.lastInsertRowid, null, { to: original.from_user, body: text });
+  res.json({ id: r.lastInsertRowid });
+});
+
+// הכרזה כללית ממנהלת — לכולם (to_user ריק) או למשתמשת ספציפית
+app.post('/api/messages/broadcast', mustLogin, mustManager, (req, res) => {
+  const text = (req.body?.text || '').trim();
+  const toUser = (req.body?.to_user || '').trim() || null;
+  if (!text) return res.status(400).json({ error: 'אין תוכן להודעה' });
+  const r = db.prepare(`INSERT INTO messages(from_user, body, kind, to_user) VALUES (?, ?, 'announcement', ?)`)
+    .run(req.user.name, text, toUser);
+  audit(req.user.name, 'message.broadcast', 'messages', r.lastInsertRowid, null, { to: toUser || 'הכול', body: text });
+  res.json({ id: r.lastInsertRowid });
+});
+
+// הודעות שעדיין לא נסגרו עבור המשתמשת המחוברת — להצגה כבאנר בראש האתר
+app.get('/api/messages/banner', mustLogin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT m.* FROM messages m
+    WHERE m.kind = 'announcement' AND m.from_user != ?
+      AND (m.to_user = ? OR m.to_user IS NULL)
+      AND m.id NOT IN (SELECT message_id FROM message_dismissals WHERE user_name = ?)
+    ORDER BY m.id DESC LIMIT 5
+  `).all(req.user.name, req.user.name, req.user.name);
+  res.json(rows);
+});
+app.post('/api/messages/:id/dismiss', mustLogin, (req, res) => {
+  db.prepare('INSERT OR IGNORE INTO message_dismissals (message_id, user_name) VALUES (?, ?)')
+    .run(req.params.id, req.user.name);
   res.json({ ok: true });
 });
 
@@ -515,7 +557,7 @@ app.get('/api/counters', mustLogin, (req, res) => {
     ? db.prepare(`SELECT COUNT(*) c FROM problems WHERE status = 'פתוח'`).get().c : 0;
   // היסטוריית ההודעות גלויה למנהלת ומעלה בלבד — ולכן גם המונה
   const messages = (hasFeature(role, 'messages') && isManagerOrAbove(role))
-    ? db.prepare(`SELECT COUNT(*) c FROM messages WHERE handled_at IS NULL`).get().c : 0;
+    ? db.prepare(`SELECT COUNT(*) c FROM messages WHERE handled_at IS NULL AND kind = 'report'`).get().c : 0;
   const handover = hasFeature(role, 'handover')
     ? db.prepare(`SELECT COUNT(*) c FROM handovers WHERE ${HANDOVER_UNACKED_BY_ME_SQL}`).get(req.user.name).c : 0;
   res.json({ problems, messages, handover });
@@ -656,7 +698,7 @@ app.get('/api/dashboard', mustLogin, requireFeature('dashboard'), (req, res) => 
   const onShift = db.prepare(`SELECT u.name, u.role, a.check_in FROM attendance a
                               JOIN users u ON u.id = a.user_id WHERE a.check_out IS NULL ORDER BY a.check_in`).all();
   const team = db.prepare(`SELECT role, COUNT(*) c FROM users WHERE active = 1 GROUP BY role`).all();
-  const unhandledMsgs = db.prepare(`SELECT COUNT(*) c FROM messages WHERE handled_at IS NULL`).get().c;
+  const unhandledMsgs = db.prepare(`SELECT COUNT(*) c FROM messages WHERE handled_at IS NULL AND kind = 'report'`).get().c;
   const auditTail = db.prepare(`SELECT user_name, action, entity, at FROM audit_log ORDER BY id DESC LIMIT 10`).all();
   const catPerf = db.prepare(`
     SELECT COALESCE(i.category, t.category) AS category,
