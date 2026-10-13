@@ -1811,6 +1811,12 @@ async function renderIntegrations(main) {
           <button class="btn-secondary" id="email-test">שליחת מייל בדיקה</button>
           <button class="btn-secondary" id="email-report">📊 שליחת דוח יומי עכשיו</button>
         </div>
+        <label class="fld" style="display:flex;align-items:center;gap:8px;margin-top:14px">
+          <input type="checkbox" id="set-daily_report_auto" ${settings.daily_report_auto === '1' ? 'checked' : ''} style="width:auto">
+          שליחת דוח יומי אוטומטית (משימות + פעילות קמפיין)
+        </label>
+        <label class="fld">בשעה (0-23)</label>
+        <input class="in" id="set-daily_report_hour" type="number" min="0" max="23" style="max-width:90px" value="${esc(settings.daily_report_hour || '20')}">
         <div class="sub muted" style="margin-top:8px">סיסמת אפליקציה מנפיקים בחשבון גוגל ← אבטחה ← אימות דו-שלבי ← סיסמאות אפליקציה.</div>
       </div>
 
@@ -1902,6 +1908,8 @@ async function renderIntegrations(main) {
     gmail_user: $('#set-gmail_user').value.trim(),
     gmail_app_password: $('#set-gmail_app_password').value.trim(),
     report_email: $('#set-report_email').value.trim(),
+    daily_report_auto: $('#set-daily_report_auto').checked ? '1' : '',
+    daily_report_hour: $('#set-daily_report_hour').value.trim(),
     anthropic_api_key: $('#set-anthropic_api_key').value.trim(),
     backup_dir: $('#set-backup_dir').value.trim(),
     backup_auto: $('#set-backup_auto').checked ? '1' : '',

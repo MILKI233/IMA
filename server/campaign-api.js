@@ -1,6 +1,6 @@
 import express from 'express';
 import {
-    db, getVolunteerBalance, campaignWeekStart, getAllCampaignSettings, setCampaignSettings, campaignGeoLeaves
+    db, audit, getVolunteerBalance, campaignWeekStart, getAllCampaignSettings, setCampaignSettings, campaignGeoLeaves
 } from './db.js';
 
 export function campaignApiRouter({ mustLogin, mustManager, events }) {
@@ -49,12 +49,25 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         res.json({ volunteers, pending: pendingWithSuggestion, recentTxns, goals, prizes, hubs, hubLogs, weekStart: ws, settings });
     });
 
+    // יומן פעולות הקמפיין — מי עשה מה ומתי (אדמין + מתנדבות דרך הטלפון)
+    router.get('/activity', mustLogin, (req, res) => {
+        const rows = db.prepare(`
+            SELECT user_name, action, entity, entity_id, before_state, after_state, at
+            FROM audit_log WHERE entity LIKE 'campaign_%' ORDER BY id DESC LIMIT 200
+        `).all();
+        res.json(rows);
+    });
+
     router.get('/geo-leaves', mustLogin, (req, res) => {
         res.json(campaignGeoLeaves());
     });
 
     router.put('/settings', mustLogin, mustManager, (req, res) => {
         setCampaignSettings(req.body || {});
+        // לא לרשום את הלוגו (data URL ענק) ליומן הפעולות — רק שהוא השתנה
+        const logged = { ...(req.body || {}) };
+        if (logged.campaign_brand_logo) logged.campaign_brand_logo = '(עודכן לוגו)';
+        audit(req.user.name, 'campaign.settings.update', 'campaign_settings', null, null, logged);
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
@@ -67,6 +80,9 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         if (!txn) return res.status(404).json({ error: 'הדיווח לא נמצא או שכבר טופל' });
         db.prepare("UPDATE campaign_point_transactions SET status = 'approved', points = ?, approved_at = datetime('now') WHERE id = ?")
             .run(pts, txn.id);
+        const vol = db.prepare('SELECT phone, name FROM campaign_volunteers WHERE id = ?').get(txn.volunteer_id);
+        audit(req.user.name, 'campaign.points.approve', 'campaign_point_transactions', txn.id,
+            { status: 'pending', value_nis: txn.value_nis }, { status: 'approved', points: pts, volunteer: vol?.name || vol?.phone });
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
@@ -76,6 +92,9 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         if (!txn) return res.status(404).json({ error: 'הדיווח לא נמצא או שכבר טופל' });
         db.prepare("UPDATE campaign_point_transactions SET status = 'rejected', points = 0, approved_at = datetime('now') WHERE id = ?")
             .run(txn.id);
+        const vol = db.prepare('SELECT phone, name FROM campaign_volunteers WHERE id = ?').get(txn.volunteer_id);
+        audit(req.user.name, 'campaign.points.reject', 'campaign_point_transactions', txn.id,
+            { status: 'pending' }, { status: 'rejected', volunteer: vol?.name || vol?.phone });
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
@@ -83,7 +102,10 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
     router.put('/volunteers/:id', mustLogin, mustManager, (req, res) => {
         const { name } = req.body;
         if (!name || !name.trim()) return res.status(400).json({ error: 'יש להזין שם' });
+        const before = db.prepare('SELECT phone, name FROM campaign_volunteers WHERE id = ?').get(req.params.id);
         db.prepare('UPDATE campaign_volunteers SET name = ?, identified = 1 WHERE id = ?').run(name.trim(), req.params.id);
+        audit(req.user.name, 'campaign.volunteer.identify', 'campaign_volunteers', req.params.id,
+            { name: before?.name, phone: before?.phone }, { name: name.trim() });
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
@@ -92,26 +114,34 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         const { code, name, value_nis, points_cost } = req.body;
         const c = parseInt(code, 10);
         if (!Number.isFinite(c) || !name || !name.trim()) return res.status(400).json({ error: 'יש להזין קוד ושם תקינים' });
+        let id;
         try {
-            db.prepare('INSERT INTO campaign_prizes (code, name, value_nis, points_cost) VALUES (?, ?, ?, ?)')
+            const r = db.prepare('INSERT INTO campaign_prizes (code, name, value_nis, points_cost) VALUES (?, ?, ?, ?)')
                 .run(c, name.trim(), parseInt(value_nis, 10) || null, parseInt(points_cost, 10) || 0);
+            id = r.lastInsertRowid;
         } catch (e) {
             return res.status(400).json({ error: 'קוד מוצר זה כבר קיים' });
         }
+        audit(req.user.name, 'campaign.prize.create', 'campaign_prizes', id, null, { code: c, name: name.trim() });
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
 
     router.put('/prizes/:id', mustLogin, mustManager, (req, res) => {
         const { name, value_nis, points_cost, active } = req.body;
+        const before = db.prepare('SELECT * FROM campaign_prizes WHERE id = ?').get(req.params.id);
         db.prepare('UPDATE campaign_prizes SET name = ?, value_nis = ?, points_cost = ?, active = ? WHERE id = ?')
             .run(name, parseInt(value_nis, 10) || null, parseInt(points_cost, 10) || 0, active ? 1 : 0, req.params.id);
+        audit(req.user.name, 'campaign.prize.update', 'campaign_prizes', req.params.id,
+            before, { name, value_nis, points_cost, active: !!active });
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
 
     router.delete('/prizes/:id', mustLogin, mustManager, (req, res) => {
+        const before = db.prepare('SELECT * FROM campaign_prizes WHERE id = ?').get(req.params.id);
         db.prepare('DELETE FROM campaign_prizes WHERE id = ?').run(req.params.id);
+        audit(req.user.name, 'campaign.prize.delete', 'campaign_prizes', req.params.id, before, null);
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
@@ -120,26 +150,34 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         const { name, pin, kits_total, area_path, pickup_info } = req.body;
         if (!name || !name.trim() || !pin || !String(pin).trim()) return res.status(400).json({ error: 'יש להזין שם וקוד מוקד' });
         const total = parseInt(kits_total, 10) || 0;
+        let id;
         try {
-            db.prepare('INSERT INTO campaign_hubs (name, pin, kits_total, kits_available, area_path, pickup_info) VALUES (?, ?, ?, ?, ?, ?)')
+            const r = db.prepare('INSERT INTO campaign_hubs (name, pin, kits_total, kits_available, area_path, pickup_info) VALUES (?, ?, ?, ?, ?, ?)')
                 .run(name.trim(), String(pin).trim(), total, total, area_path || null, pickup_info || null);
+            id = r.lastInsertRowid;
         } catch (e) {
             return res.status(400).json({ error: 'קוד מוקד זה כבר קיים' });
         }
+        audit(req.user.name, 'campaign.hub.create', 'campaign_hubs', id, null, { name: name.trim(), kits_total: total });
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
 
     router.put('/hubs/:id', mustLogin, mustManager, (req, res) => {
         const { name, kits_total, kits_available, area_path, pickup_info } = req.body;
+        const before = db.prepare('SELECT * FROM campaign_hubs WHERE id = ?').get(req.params.id);
         db.prepare('UPDATE campaign_hubs SET name = ?, kits_total = ?, kits_available = ?, area_path = ?, pickup_info = ? WHERE id = ?')
             .run(name, parseInt(kits_total, 10) || 0, parseInt(kits_available, 10) || 0, area_path || null, pickup_info || null, req.params.id);
+        audit(req.user.name, 'campaign.hub.update', 'campaign_hubs', req.params.id,
+            before, { name, kits_total, kits_available, area_path, pickup_info });
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
 
     router.delete('/hubs/:id', mustLogin, mustManager, (req, res) => {
+        const before = db.prepare('SELECT * FROM campaign_hubs WHERE id = ?').get(req.params.id);
         db.prepare('DELETE FROM campaign_hubs WHERE id = ?').run(req.params.id);
+        audit(req.user.name, 'campaign.hub.delete', 'campaign_hubs', req.params.id, before, null);
         events?.emit('campaign.update');
         res.json({ ok: true });
     });

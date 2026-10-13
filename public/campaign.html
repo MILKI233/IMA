@@ -34,15 +34,21 @@
     <button data-tab="hubs">מוקדי הפצה</button>
     <button data-tab="admin">ניהול</button>
     <button data-tab="branding">מיתוג והגדרות</button>
+    <button data-tab="activity">יומן פעולות</button>
 </nav>
 
 <main class="c-main">
     <section id="dashboard" class="c-section active">
+        <div class="stat-row" id="statRow"></div>
         <div class="card">
-            <h2>לוח מתנדבות ונקודות</h2>
+            <div class="card-head-row">
+                <h2>לוח מתנדבות ונקודות</h2>
+                <input id="volunteerSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם או טלפון">
+            </div>
             <table id="volunteersTable"><thead><tr>
                 <th>שם</th><th>טלפון</th><th>נקודות</th><th>יעד שבועי</th>
             </tr></thead><tbody></tbody></table>
+            <div class="empty" id="volunteersEmpty" style="display:none">אין מתנדבות עדיין</div>
         </div>
         <div class="card">
             <h2>פעילות אחרונה</h2>
@@ -55,19 +61,19 @@
     <section id="pending" class="c-section">
         <div class="card">
             <h2>דיווחי גיוס מוצר הממתינים לאישור</h2>
-            <table id="pendingTable"><thead><tr>
-                <th>מתנדבת</th><th>טלפון</th><th>שווי מוצר (₪)</th><th>הקלטה</th><th>תאריך</th><th>אישור / דחייה</th>
-            </tr></thead><tbody></tbody></table>
-            <div class="empty" id="pendingEmpty" style="display:none">אין דיווחים ממתינים</div>
+            <div class="pending-list" id="pendingList"></div>
+            <div class="empty" id="pendingEmpty" style="display:none">אין דיווחים ממתינים — הכל מעודכן ✓</div>
         </div>
     </section>
 
     <section id="hubs" class="c-section">
         <div class="card">
-            <h2>מוקדי הפצה — מלאי ערכות</h2>
-            <table id="hubsTable"><thead><tr>
-                <th>מוקד</th><th>קוד</th><th>אזור בשלוחת ימות</th><th>פרטי מסירה</th><th>פנויות</th><th>סה"כ</th><th></th>
-            </tr></thead><tbody></tbody></table>
+            <div class="card-head-row">
+                <h2>מוקדי הפצה — מלאי ערכות</h2>
+                <input id="hubSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם מוקד">
+            </div>
+            <div class="hub-cards" id="hubCards"></div>
+            <div class="empty" id="hubsEmpty" style="display:none">אין מוקדים מוגדרים עדיין</div>
         </div>
         <div class="card">
             <h2>יומן מוקדים אחרון</h2>
@@ -135,6 +141,19 @@
                 <div class="settingGroup"><label class="settingLabel">אחוז המרה לגיוס מוצר (הצעה בלבד)</label><input type="number" id="setProductConversion" placeholder="ריק = אין הצעה" style="width:130px"></div>
             </div>
             <button class="btn" id="saveCalcBtn">שמירת הגדרות נקודות</button>
+        </div>
+    </section>
+
+    <section id="activity" class="c-section">
+        <div class="card">
+            <div class="card-head-row">
+                <h2>יומן פעולות — מי עשה מה</h2>
+                <input id="activitySearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/פעולה">
+            </div>
+            <p class="hint">כולל פעולות ניהול (אישורים, הוספת מתנות/מוקדים, שינוי הגדרות) ופעולות מתנדבות בטלפון. מציג 200 אחרונות.</p>
+            <table id="activityLogTable"><thead><tr>
+                <th>מי</th><th>פעולה</th><th>פרטים</th><th>מתי</th>
+            </tr></thead><tbody></tbody></table>
         </div>
     </section>
 </main>

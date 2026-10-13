@@ -2,7 +2,34 @@ let USER = JSON.parse(localStorage.getItem('gemach_user') || 'null');
 
 const TXN_TYPE_LABEL = { outreach: 'פנייה לעסק', errand: 'שליחות', product: 'גיוס מוצר', bonus: 'בונוס יעד', redeem: 'מימוש מתנה' };
 const STATUS_LABEL = { approved: 'מאושר', pending: 'ממתין', rejected: 'נדחה' };
+const ACTION_LABEL = {
+    'campaign.settings.update': 'עדכון הגדרות',
+    'campaign.points.approve': 'אישור נקודות',
+    'campaign.points.reject': 'דחיית דיווח',
+    'campaign.volunteer.identify': 'קביעת שם מתנדבת',
+    'campaign.prize.create': 'הוספת מתנה',
+    'campaign.prize.update': 'עדכון מתנה',
+    'campaign.prize.delete': 'מחיקת מתנה',
+    'campaign.hub.create': 'הוספת מוקד',
+    'campaign.hub.update': 'עדכון מוקד',
+    'campaign.hub.delete': 'מחיקת מוקד',
+    'campaign.phone.outreach': 'דיווח פנייה לעסק (טלפון)',
+    'campaign.phone.errand': 'דיווח שליחות (טלפון)',
+    'campaign.phone.product': 'דיווח גיוס מוצר (טלפון)',
+    'campaign.phone.bonus': 'בונוס יעד שבועי (טלפון)',
+    'campaign.phone.redeem': 'מימוש מתנה (טלפון)',
+    'campaign.phone.goal_set': 'קביעת יעד שבועי (טלפון)',
+    'campaign.phone.new_volunteer': 'מתנדבת חדשה נרשמה (טלפון)',
+    'campaign.hub.catalogs_taken': 'דיווח קטלוגים שנלקחו (טלפון)',
+    'campaign.hub.message': 'הודעה למזכירות (טלפון)',
+};
+let activityQuery = '';
+let activityLoaded = false;
 let brandingFormInitialized = false;
+let lastData = null;
+let volunteerQuery = '';
+let hubQuery = '';
+let editingHubId = null;
 
 async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -50,11 +77,66 @@ function startApp() {
             document.querySelectorAll('main.c-main section').forEach((s) => s.classList.remove('active'));
             btn.classList.add('active');
             document.getElementById(btn.dataset.tab).classList.add('active');
+            if (btn.dataset.tab === 'activity') loadActivity();
         });
     });
+
+    document.getElementById('activitySearch').addEventListener('input', (e) => {
+        activityQuery = e.target.value.trim();
+        if (activityLoaded) renderActivity(window.__activityRows || []);
+    });
+    document.getElementById('volunteerSearch').addEventListener('input', (e) => {
+        volunteerQuery = e.target.value.trim();
+        if (lastData) renderVolunteers(lastData);
+    });
+    document.getElementById('hubSearch').addEventListener('input', (e) => {
+        hubQuery = e.target.value.trim();
+        if (lastData) renderHubs(lastData);
+    });
+
     loadDashboard();
     setInterval(loadDashboard, 5000);
     loadGeoLeaves();
+}
+
+async function loadActivity() {
+    try {
+        const rows = await api('/api/campaign/activity');
+        window.__activityRows = rows;
+        activityLoaded = true;
+        renderActivity(rows);
+    } catch (e) { alert(e.message); }
+}
+
+function describeActivity(row) {
+    try {
+        const after = row.after_state ? JSON.parse(row.after_state) : null;
+        if (!after) return '';
+        if (row.action === 'campaign.points.approve') return `${after.volunteer || ''} · ${after.points} נקודות`;
+        if (row.action === 'campaign.phone.new_volunteer') return after.phone || '';
+        if (row.action === 'campaign.phone.goal_set') return `יעד ${after.goal_points} נקודות`;
+        if (row.action === 'campaign.hub.catalogs_taken') return `${after.amount} קטלוגים ל-${after.phone}`;
+        if (row.action === 'campaign.hub.message') return 'הודעה מוקלטת למזכירות';
+        if (row.action && row.action.startsWith('campaign.phone.') && after.points != null) {
+            return `${after.points} נקודות (${STATUS_LABEL[after.status] || after.status})${after.value_nis != null ? ` · שווי ${after.value_nis} ₪` : ''}`;
+        }
+        if (after.name) return after.name;
+        return '';
+    } catch { return ''; }
+}
+
+function renderActivity(rows) {
+    const q = activityQuery.toLowerCase();
+    const filtered = rows.filter((r) => !q
+        || (r.user_name || '').toLowerCase().includes(q)
+        || (ACTION_LABEL[r.action] || r.action).toLowerCase().includes(q));
+    document.querySelector('#activityLogTable tbody').innerHTML = filtered.map((r) => `
+        <tr>
+            <td>${r.user_name || '—'}</td>
+            <td>${ACTION_LABEL[r.action] || r.action}</td>
+            <td>${describeActivity(r)}</td>
+            <td>${fmtDate(r.at)}</td>
+        </tr>`).join('');
 }
 
 async function loadGeoLeaves() {
@@ -104,18 +186,97 @@ function applySettings(s) {
     }
 }
 
-function render(data) {
-    applySettings(data.settings || {});
+function renderStats(data) {
+    const weekPoints = data.recentTxns
+        .filter((t) => t.status === 'approved' && t.points > 0 && t.created_at >= data.weekStart)
+        .reduce((sum, t) => sum + t.points, 0);
+    const lowHubs = data.hubs.filter((h) => h.kits_total > 0 && h.kits_available / h.kits_total <= 0.2).length;
+    const cards = [
+        { num: data.volunteers.length, label: 'מתנדבות', alert: false },
+        { num: weekPoints, label: 'נקודות השבוע', alert: false },
+        { num: data.pending.length, label: 'ממתינות לאישור', alert: data.pending.length > 0 },
+        { num: data.hubs.length, label: 'מוקדי הפצה', alert: false },
+        { num: lowHubs, label: 'מוקדים כמעט ריקים', alert: lowHubs > 0 },
+    ];
+    document.getElementById('statRow').innerHTML = cards.map((c) => `
+        <div class="stat-card${c.alert ? ' alert' : ''}">
+            <div class="stat-num">${c.num}</div>
+            <div class="stat-label">${c.label}</div>
+        </div>`).join('');
+}
+
+function renderVolunteers(data) {
     const goalByVol = {};
     data.goals.forEach((g) => { goalByVol[g.volunteer_id] = g.goal_points; });
-
-    document.querySelector('#volunteersTable tbody').innerHTML = data.volunteers.map((v) => `
+    const q = volunteerQuery.toLowerCase();
+    const filtered = data.volunteers
+        .filter((v) => !q || (v.name || '').toLowerCase().includes(q) || v.phone.includes(q))
+        .sort((a, b) => b.balance - a.balance);
+    document.getElementById('volunteersEmpty').style.display = filtered.length ? 'none' : 'block';
+    document.querySelector('#volunteersTable tbody').innerHTML = filtered.map((v) => `
         <tr>
             <td>${v.name || '<span class="badge warn">לא מזוהה</span>'}</td>
             <td>${v.phone}</td>
             <td><b>${v.balance}</b></td>
             <td>${goalByVol[v.id] ?? '—'}</td>
         </tr>`).join('');
+}
+
+function renderHubs(data) {
+    // לא בונים מחדש בזמן שמישהי באמצע עריכת מוקד — אחרת הרענון התקופתי מוחק מה שהיא הקלידה
+    if (editingHubId !== null) return;
+    const q = hubQuery.toLowerCase();
+    const filtered = data.hubs.filter((h) => !q || h.name.toLowerCase().includes(q));
+    document.getElementById('hubsEmpty').style.display = filtered.length ? 'none' : 'block';
+    document.getElementById('hubCards').innerHTML = filtered.map((h) => {
+        const pct = h.kits_total > 0 ? Math.round((h.kits_available / h.kits_total) * 100) : 0;
+        const low = h.kits_total > 0 && pct <= 20;
+        return `
+        <div class="hub-card">
+            <div class="hc-name">${h.name}</div>
+            <div class="hc-meta">קוד ${h.pin} · ${h.area_path ? h.area_path.replace(/\//g, ' / ') : '<span class="badge warn">ללא אזור בשלוחה</span>'}</div>
+            <div class="hc-meta">${h.pickup_info || 'אין פרטי מסירה'}</div>
+            <div class="hub-bar"><div class="hub-bar-fill${low ? ' low' : ''}" style="width:${pct}%"></div></div>
+            <div class="hc-count">${h.kits_available} פנויות מתוך ${h.kits_total}${low ? ' ⚠️' : ''}</div>
+            <div class="hc-actions">
+                <button class="btn secondary" onclick="toggleHubEdit(${h.id})">עריכה</button>
+                <button class="btn danger" onclick="deleteHub(${h.id})">מחיקה</button>
+            </div>
+            <div class="hub-edit-row hidden" id="hub-edit-${h.id}">
+                <input id="he-total-${h.id}" type="number" placeholder="סה״כ ערכות" value="${h.kits_total}">
+                <input id="he-avail-${h.id}" type="number" placeholder="פנויות כעת" value="${h.kits_available}">
+                <input id="he-pickup-${h.id}" placeholder="פרטי מסירה" value="${h.pickup_info || ''}" style="flex:2">
+                <button class="btn" onclick="saveHubEdit(${h.id})">שמירה</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function toggleHubEdit(id) {
+    const open = document.getElementById(`hub-edit-${id}`).classList.toggle('hidden') === false;
+    editingHubId = open ? id : null;
+}
+
+async function saveHubEdit(id) {
+    const hub = lastData.hubs.find((h) => h.id === id);
+    try {
+        await api(`/api/campaign/hubs/${id}`, { method: 'PUT', body: {
+            name: hub.name,
+            area_path: hub.area_path,
+            kits_total: document.getElementById(`he-total-${id}`).value,
+            kits_available: document.getElementById(`he-avail-${id}`).value,
+            pickup_info: document.getElementById(`he-pickup-${id}`).value,
+        } });
+        editingHubId = null;
+        loadDashboard();
+    } catch (e) { alert(e.message); }
+}
+
+function render(data) {
+    lastData = data;
+    applySettings(data.settings || {});
+    renderStats(data);
+    renderVolunteers(data);
 
     document.querySelector('#activityTable tbody').innerHTML = data.recentTxns.map((tx) => `
         <tr>
@@ -128,31 +289,22 @@ function render(data) {
 
     document.getElementById('pendingCount').textContent = data.pending.length ? `(${data.pending.length})` : '';
     document.getElementById('pendingEmpty').style.display = data.pending.length ? 'none' : 'block';
-    document.querySelector('#pendingTable tbody').innerHTML = data.pending.map((p) => `
-        <tr>
-            <td>${p.name || p.phone}</td>
-            <td>${p.phone}</td>
-            <td>${p.value_nis ?? '—'}</td>
-            <td>${p.recording_path ? `<code>${p.recording_path}</code>` : '—'}</td>
-            <td>${fmtDate(p.created_at)}</td>
-            <td>
-                <input type="number" min="0" placeholder="נקודות" style="width:75px" id="pts-${p.id}" value="${p.suggested_points ?? ''}">
+    document.getElementById('pendingList').innerHTML = data.pending.map((p) => `
+        <div class="pending-card">
+            <div>
+                <div class="pc-who">${p.name || p.phone}</div>
+                <div class="pc-meta">${p.phone} · ${fmtDate(p.created_at)}${p.recording_path ? ` · <code>${p.recording_path}</code>` : ''}</div>
+            </div>
+            <div class="pc-value">${p.value_nis ?? '—'} ₪</div>
+            <div class="pc-actions">
+                <input type="number" min="0" placeholder="נקודות" id="pts-${p.id}" value="${p.suggested_points ?? ''}">
                 ${p.suggested_points != null ? `<span class="hint">(הצעה)</span>` : ''}
                 <button class="btn" onclick="approveTxn(${p.id})">אישור</button>
                 <button class="btn danger" onclick="rejectTxn(${p.id})">דחייה</button>
-            </td>
-        </tr>`).join('');
+            </div>
+        </div>`).join('');
 
-    document.querySelector('#hubsTable tbody').innerHTML = data.hubs.map((h) => `
-        <tr>
-            <td>${h.name}</td>
-            <td>${h.pin}</td>
-            <td>${h.area_path ? h.area_path.replace(/\//g, ' / ') : '<span class="badge warn">ללא אזור</span>'}</td>
-            <td>${h.pickup_info || '—'}</td>
-            <td>${h.kits_available}</td>
-            <td>${h.kits_total}</td>
-            <td><button class="btn danger" onclick="deleteHub(${h.id})">מחיקה</button></td>
-        </tr>`).join('');
+    renderHubs(data);
 
     document.querySelector('#hubLogsTable tbody').innerHTML = data.hubLogs.map((l) => `
         <tr>

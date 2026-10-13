@@ -78,3 +78,44 @@ label.settingLabel { font-size: .85rem; color: #6b4f55; display: block; margin-b
 .settingGroup { min-width: 150px; }
 .empty { color: #9a8aa5; padding: 20px 0; text-align: center; }
 .hint { color: #8a7560; font-size: .82rem; }
+
+/* כרטיסי סטטיסטיקה בראש הדשבורד */
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.stat-card {
+    background: #fffdfa; border-radius: 16px; padding: 18px; text-align: center;
+    box-shadow: 0 4px 14px rgba(19,45,35,.06); border-top: 3px solid var(--c-gold);
+}
+.stat-card .stat-num { font-size: 1.9rem; font-weight: 700; color: var(--c-raspberry); font-family: Georgia, serif; }
+.stat-card .stat-label { font-size: .82rem; color: #6b4f55; margin-top: 2px; }
+.stat-card.alert { border-top-color: #a73950; }
+.stat-card.alert .stat-num { color: #a73950; }
+
+/* חיפוש בראש כרטיס */
+.card-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.card-head-row h2 { margin: 0; }
+.search-box { min-width: 220px; }
+
+/* רשימת אישורים ממתינים כרטיסים */
+.pending-list { display: flex; flex-direction: column; gap: 14px; }
+.pending-card {
+    border: 1px solid #f3e6ea; border-radius: 14px; padding: 16px; background: #fffaf6;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
+}
+.pending-card .pc-who { font-weight: 600; }
+.pending-card .pc-meta { font-size: .85rem; color: #6b4f55; }
+.pending-card .pc-value { font-size: 1.3rem; font-weight: 700; color: var(--c-raspberry); font-family: Georgia, serif; }
+.pending-card .pc-actions { display: flex; align-items: center; gap: 8px; }
+.pending-card .pc-actions input { width: 75px; }
+
+/* כרטיסי מוקדים עם פס התקדמות מלאי */
+.hub-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.hub-card { border: 1px solid #f3e6ea; border-radius: 14px; padding: 16px; background: #fffaf6; }
+.hub-card .hc-name { font-weight: 700; font-size: 1.05rem; }
+.hub-card .hc-meta { font-size: .82rem; color: #6b4f55; margin: 4px 0 10px; }
+.hub-bar { height: 10px; border-radius: 999px; background: #f0e0e4; overflow: hidden; margin-bottom: 6px; }
+.hub-bar-fill { height: 100%; background: linear-gradient(90deg, var(--c-rose), var(--c-raspberry)); border-radius: 999px; }
+.hub-bar-fill.low { background: #a73950; }
+.hub-card .hc-count { font-size: .85rem; color: var(--c-dark); margin-bottom: 10px; }
+.hub-card .hc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.hub-edit-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.hub-edit-row input { flex: 1; min-width: 90px; }

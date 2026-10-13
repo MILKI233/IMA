@@ -1,8 +1,10 @@
 import { YemotRouter } from 'yemot-router2';
 import {
-    db, CAMPAIGN_POINTS, CAMPAIGN_GOAL_BONUS_RATE, findOrCreateVolunteer, getVolunteerBalance,
+    db, audit, CAMPAIGN_POINTS, CAMPAIGN_GOAL_BONUS_RATE, findOrCreateVolunteer, getVolunteerBalance,
     campaignWeekStart, pointsEarnedSinceWeekStart, CAMPAIGN_GEO_TREE, findHubByAreaPath
 } from './db.js';
+
+const volunteerLabel = (v) => v.name || v.phone;
 
 export function createCampaignYemotRouter({ events }) {
     const router = YemotRouter({
@@ -17,11 +19,13 @@ export function createCampaignYemotRouter({ events }) {
     const t = (data) => ({ type: 'text', data });
     const n = (data) => ({ type: 'number', data: String(data) });
 
-    function logTxn({ volunteerId, type, points, status = 'approved', value_nis = null, note = null, recording_path = null }) {
+    function logTxn({ volunteer, type, points, status = 'approved', value_nis = null, note = null, recording_path = null }) {
         db.prepare(
             `INSERT INTO campaign_point_transactions (volunteer_id, type, points, status, value_nis, note, recording_path, approved_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(volunteerId, type, points, status, value_nis, note, recording_path, status === 'approved' ? new Date().toISOString() : null);
+        ).run(volunteer.id, type, points, status, value_nis, note, recording_path, status === 'approved' ? new Date().toISOString() : null);
+        audit(volunteerLabel(volunteer), `campaign.phone.${type}`, 'campaign_point_transactions', volunteer.id,
+            null, { points, status, value_nis, note });
         events?.emit('campaign.update');
     }
 
@@ -86,7 +90,7 @@ export function createCampaignYemotRouter({ events }) {
 
         if (key === '1') {
             const pts = CAMPAIGN_POINTS().outreach;
-            logTxn({ volunteerId: volunteer.id, type: 'outreach', points: pts, note: 'פנייה לעסק' });
+            logTxn({ volunteer, type: 'outreach', points: pts, note: 'פנייה לעסק' });
             await call.read([
                 t('נרשם, קיבלת'), n(pts), t('נקודות'),
                 t('היתרה החדשה שלך היא'), n(getVolunteerBalance(volunteer.id)), t('נקודות'),
@@ -97,7 +101,7 @@ export function createCampaignYemotRouter({ events }) {
 
         if (key === '2') {
             const pts = CAMPAIGN_POINTS().errand;
-            logTxn({ volunteerId: volunteer.id, type: 'errand', points: pts, note: 'שליחות' });
+            logTxn({ volunteer, type: 'errand', points: pts, note: 'שליחות' });
             await call.read([
                 t('נרשם, קיבלת'), n(pts), t('נקודות'),
                 t('היתרה החדשה שלך היא'), n(getVolunteerBalance(volunteer.id)), t('נקודות'),
@@ -115,7 +119,7 @@ export function createCampaignYemotRouter({ events }) {
         ], 'record', { min_length: '2', max_length: '60' });
 
         logTxn({
-            volunteerId: volunteer.id, type: 'product', points: null, status: 'pending',
+            volunteer, type: 'product', points: null, status: 'pending',
             value_nis: parseInt(value, 10) || 0, note: 'גיוס מוצר - מחכה לאישור הנהלה', recording_path: recordingPath
         });
 
@@ -149,6 +153,7 @@ export function createCampaignYemotRouter({ events }) {
                 `INSERT INTO campaign_weekly_goals (volunteer_id, week_start, goal_points) VALUES (?, ?, ?)
                  ON CONFLICT(volunteer_id, week_start) DO UPDATE SET goal_points = excluded.goal_points`
             ).run(volunteer.id, ws, goalPoints);
+            audit(volunteerLabel(volunteer), 'campaign.phone.goal_set', 'campaign_weekly_goals', volunteer.id, null, { goal_points: goalPoints });
             events?.emit('campaign.update');
             await call.read([
                 t('נקבע יעד שבועי של'), n(goalPoints), t('נקודות'), t('בהצלחה!'),
@@ -172,7 +177,7 @@ export function createCampaignYemotRouter({ events }) {
         const earned = pointsEarnedSinceWeekStart(volunteer.id, ws);
         if (earned >= goalRow.goal_points) {
             const bonus = Math.round(goalRow.goal_points * CAMPAIGN_GOAL_BONUS_RATE());
-            logTxn({ volunteerId: volunteer.id, type: 'bonus', points: bonus, note: 'בונוס עמידה ביעד שבועי' });
+            logTxn({ volunteer, type: 'bonus', points: bonus, note: 'בונוס עמידה ביעד שבועי' });
             db.prepare('UPDATE campaign_weekly_goals SET bonus_claimed = 1 WHERE id = ?').run(goalRow.id);
             events?.emit('campaign.update');
             await call.read([
@@ -219,7 +224,7 @@ export function createCampaignYemotRouter({ events }) {
             return mainMenu(call, volunteer);
         }
 
-        logTxn({ volunteerId: volunteer.id, type: 'redeem', points: -prize.points_cost, note: `מימוש מתנה: ${prize.name} (קוד ${prize.code})` });
+        logTxn({ volunteer, type: 'redeem', points: -prize.points_cost, note: `מימוש מתנה: ${prize.name} (קוד ${prize.code})` });
         await call.read([
             t('המתנה אושרה, תודה!'),
             t('היתרה החדשה שלך היא'), n(getVolunteerBalance(volunteer.id)), t('נקודות'),
@@ -310,6 +315,8 @@ export function createCampaignYemotRouter({ events }) {
             db.prepare('UPDATE campaign_hubs SET kits_available = ? WHERE id = ?').run(newAvailable, hub.id);
             db.prepare('INSERT INTO campaign_hub_logs (hub_id, kind, phone, amount) VALUES (?, ?, ?, ?)')
                 .run(hub.id, 'catalogs_taken', phone, amount);
+            audit(volunteerLabel(volunteer), 'campaign.hub.catalogs_taken', 'campaign_hubs', hub.id,
+                { kits_available: hub.kits_available }, { kits_available: newAvailable, amount, phone });
             events?.emit('campaign.update');
             await call.read([
                 t('נרשם, נשארו'), n(newAvailable), t('ערכות פנויות'),
@@ -323,6 +330,7 @@ export function createCampaignYemotRouter({ events }) {
         ], 'record', { min_length: '1', max_length: '90' });
         db.prepare('INSERT INTO campaign_hub_logs (hub_id, kind, message) VALUES (?, ?, ?)')
             .run(hub.id, 'message', recordingPath);
+        audit(volunteerLabel(volunteer), 'campaign.hub.message', 'campaign_hubs', hub.id, null, { recording: recordingPath });
         events?.emit('campaign.update');
         await call.read([t('ההודעה נשלחה למזכירות, תודה'), t('לתפריט הראשי הקישי 9')],
             'tap', { max_digits: 1, digits_allowed: ['9'], sec_wait: 12 });

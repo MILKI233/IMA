@@ -8,7 +8,7 @@ import { hebInfo, isoDate, dayInfo, hebMonthTitle } from './server/hebrew.js';
 import { ensureInstances, tasksForScope, FREQS } from './server/tasks.js';
 import { inventoryRouter } from './server/inventory.js';
 import { vText, vEnum, vDate, vAmount, firstError } from './server/validate.js';
-import { integrationsRouter, scheduleAutoBackup } from './server/integrations.js';
+import { integrationsRouter, scheduleAutoBackup, scheduleDailyReport } from './server/integrations.js';
 import { createYemotRouter } from './server/yemot.js';
 import { createCampaignYemotRouter } from './server/campaign-yemot.js';
 import { campaignApiRouter } from './server/campaign-api.js';
@@ -687,4 +687,5 @@ app.get('/api/integration/health', (req, res) => res.json({ ok: true, module: 't
 // יצירת מופעים להיום בעת עליית השרת + תזמון גיבוי אוטומטי
 ensureInstances();
 scheduleAutoBackup();
+scheduleDailyReport();
 app.listen(PORT, () => console.log(`מערכת אמא במשמרת עלתה על http://localhost:${PORT}`));

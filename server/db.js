@@ -779,6 +779,7 @@ export function findOrCreateVolunteer(phone) {
     if (!v) {
         const info = db.prepare('INSERT INTO campaign_volunteers (phone, identified) VALUES (?, 0)').run(phone);
         v = db.prepare('SELECT * FROM campaign_volunteers WHERE id = ?').get(info.lastInsertRowid);
+        audit(phone, 'campaign.phone.new_volunteer', 'campaign_volunteers', v.id, null, { phone });
     }
     return v;
 }
