@@ -610,6 +610,7 @@ function taskRow(t, refresh, { showBadges = true } = {}) {
   const meta = isHandled(t)
     ? `<div class="task-meta ${irrelevant ? 'irr-by' : 'done-by'}">${irrelevant ? '⊘' : '✓'} ${esc(doneLabel(t))}</div>`
     : (future ? `<div class="task-meta">🔒 ${esc(futureReason(t))}</div>` : '');
+  const descLine = t.description ? `<div class="task-meta task-desc">${esc(t.description)}</div>` : '';
   // תיבת הסימון היא **המקום היחיד** שמסמן "בוצע". קודם כל השורה הייתה לחיצה,
   // והכפתורים תפסו רק 8% ממנה — כך שהחטאה קטנה של "לא רלוונטי" סימנה "בוצע" במקום.
   const check = el('button', 'task-check' + (future ? ' disabled' : '') + (irrelevant ? ' irr' : ''),
@@ -620,7 +621,7 @@ function taskRow(t, refresh, { showBadges = true } = {}) {
   if (!future) check.addEventListener('click', (e) => { e.stopPropagation(); toggleTask(t, refresh); });
   row.append(
     check,
-    el('div', 'task-title', esc(t.title) + scopeBadge + assigneeBadge + badges + meta),
+    el('div', 'task-title', esc(t.title) + scopeBadge + assigneeBadge + badges + descLine + meta),
     pinButton(t, refresh),
     priorityDot(t, refresh)
   );
@@ -949,13 +950,13 @@ async function renderTasks(main, scope) {
   main.append(newTaskForm());
 }
 
-/* ---- טופס משימה חד־פעמית חדשה (בתחתית לוח המשימות) ---- */
-function newTaskForm() {
+/* ---- טופס משימה חד־פעמית חדשה (בתחתית לוח המשימות, וגם בלוח השנה לאחר פתיחת יום) ---- */
+function newTaskForm(defaultDue) {
   const form = el('div', 'card new-task-card');
-  // תאריך היעד מתמלא מראש ביום של היום — לפי השרת, כדי שלא יהיו הפרשי אזור זמן
-  const today = esc(CTX.today || '');
+  // תאריך היעד: יום שנבחר בלוח השנה, או ברירת מחדל היום — לפי השרת, כדי שלא יהיו הפרשי אזור זמן
+  const due = esc(defaultDue || CTX.today || '');
   form.innerHTML = `
-    <div class="section-title" style="margin-top:0">➕ משימה חד־פעמית חדשה</div>
+    <div class="section-title" style="margin-top:0">➕ שיבוץ משימה${defaultDue ? ' ליום הזה' : ' חד־פעמית חדשה'}</div>
     <div class="row">
       <input id="new-task-title" class="in grow" placeholder="מה צריך לעשות?">
       <select id="new-task-pr" class="in" style="max-width:120px">${PRIORITIES.map((p) => `<option>${p}</option>`).join('')}</select>
@@ -963,7 +964,10 @@ function newTaskForm() {
         ${scopeOptions()}
       </select>
       <select id="new-task-who" class="in" style="max-width:160px" title="למי אישית?"><option value="">לא אישי</option></select>` : ''}
-      <input id="new-task-due" class="in" type="date" title="תאריך יעד — ברירת מחדל היום, אפשר לשנות" style="max-width:170px" value="${today}">
+      <input id="new-task-due" class="in" type="date" title="תאריך יעד" style="max-width:170px" value="${due}">
+    </div>
+    <div class="row">
+      <input id="new-task-desc" class="in grow" placeholder="תיאור קצר (לא חובה)" maxlength="300">
       <button class="btn-primary" id="new-task-btn">הוספה</button>
     </div>`;
 
@@ -982,6 +986,7 @@ function newTaskForm() {
           due_date: q('#new-task-due').value || null,
           assignee: q('#new-task-who')?.value || null,
           scope: q('#new-task-scope')?.value || DEFAULT_SCOPE,
+          description: q('#new-task-desc').value.trim() || null,
         },
       });
       toast('המשימה נוספה', 'ok');
@@ -1070,6 +1075,7 @@ async function renderCalendar(main) {
         row.addEventListener('click', () => { if ((USER.features || []).includes('problems')) { TAB = 'problems'; buildNav(); render(); } });
         panel.append(row);
       });
+      panel.append(newTaskForm(day.date));
       main.append(panel);
     }
   } else {

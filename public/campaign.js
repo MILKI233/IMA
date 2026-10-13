@@ -1,10 +1,11 @@
 let USER = JSON.parse(localStorage.getItem('gemach_user') || 'null');
 
-const TXN_TYPE_LABEL = { outreach: 'פנייה לעסק', errand: 'שליחות', product: 'גיוס מוצר', bonus: 'בונוס יעד', redeem: 'מימוש מתנה' };
+const TXN_TYPE_LABEL = { outreach: 'פנייה לעסק', errand: 'שליחות', product: 'גיוס מוצר', bonus: 'בונוס יעד', redeem: 'מימוש מתנה', manual: 'עדכון ידני' };
 const STATUS_LABEL = { approved: 'מאושר', pending: 'ממתין', rejected: 'נדחה' };
 const ACTION_LABEL = {
     'campaign.settings.update': 'עדכון הגדרות',
     'campaign.points.approve': 'אישור נקודות',
+    'campaign.points.manual_adjust': 'עדכון נקודות ידני',
     'campaign.points.reject': 'דחיית דיווח',
     'campaign.volunteer.identify': 'קביעת שם מתנדבת',
     'campaign.prize.create': 'הוספת מתנה',
@@ -22,6 +23,8 @@ const ACTION_LABEL = {
     'campaign.phone.new_volunteer': 'מתנדבת חדשה נרשמה (טלפון)',
     'campaign.hub.catalogs_taken': 'דיווח קטלוגים שנלקחו (טלפון)',
     'campaign.hub.message': 'הודעה למזכירות (טלפון)',
+    'campaign.import.volunteers': 'ייבוא רשימת מתנדבות מאקסל',
+    'campaign.import.prizes': 'ייבוא קטלוג מתנות מאקסל',
 };
 let activityQuery = '';
 let activityLoaded = false;
@@ -113,10 +116,14 @@ function describeActivity(row) {
         const after = row.after_state ? JSON.parse(row.after_state) : null;
         if (!after) return '';
         if (row.action === 'campaign.points.approve') return `${after.volunteer || ''} · ${after.points} נקודות`;
+        if (row.action === 'campaign.points.manual_adjust') return `${after.volunteer || ''} · ${after.points > 0 ? '+' : ''}${after.points} נקודות`;
         if (row.action === 'campaign.phone.new_volunteer') return after.phone || '';
         if (row.action === 'campaign.phone.goal_set') return `יעד ${after.goal_points} נקודות`;
         if (row.action === 'campaign.hub.catalogs_taken') return `${after.amount} קטלוגים ל-${after.phone}`;
         if (row.action === 'campaign.hub.message') return 'הודעה מוקלטת למזכירות';
+        if (row.action === 'campaign.import.volunteers' || row.action === 'campaign.import.prizes') {
+            return `נוספו ${after.added}, עודכנו ${after.updated}, דולגו ${after.skipped} (מתוך ${after.total})`;
+        }
         if (row.action && row.action.startsWith('campaign.phone.') && after.points != null) {
             return `${after.points} נקודות (${STATUS_LABEL[after.status] || after.status})${after.value_nis != null ? ` · שווי ${after.value_nis} ₪` : ''}`;
         }
@@ -154,6 +161,28 @@ async function loadGeoLeaves() {
 function fmtDate(s) {
     if (!s) return '';
     return s.replace('T', ' ').slice(0, 16);
+}
+
+function timeAgo(s) {
+    if (!s) return '';
+    const diffMin = Math.round((Date.now() - new Date(s.replace(' ', 'T')).getTime()) / 60000);
+    if (diffMin < 1) return 'הרגע';
+    if (diffMin < 60) return `לפני ${diffMin} דק׳`;
+    const diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24) return `לפני ${diffHr} שעות`;
+    return `לפני ${Math.round(diffHr / 24)} ימים`;
+}
+
+/* בנר "התקשרה לאחרונה" — זיהוי מיידי כשמתנדבת מתקשרת ודיווחה דרך הטלפון */
+function renderLastCall(data) {
+    const banner = document.getElementById('lastCallBanner');
+    const last = data.recentTxns.find((t) => t.type !== 'manual');
+    if (!last) { banner.classList.add('hidden'); return; }
+    const vol = data.volunteers.find((v) => v.phone === last.phone);
+    banner.classList.remove('hidden');
+    banner.innerHTML = `📞 התקשרה לאחרונה: <b>${last.name || last.phone}</b>` +
+        `<span class="lcb-balance">${vol ? vol.balance : '—'} נקודות</span>` +
+        `<span class="lcb-time">${timeAgo(last.created_at)} · ${TXN_TYPE_LABEL[last.type] || last.type}</span>`;
 }
 
 async function loadDashboard() {
@@ -219,6 +248,7 @@ function renderVolunteers(data) {
             <td>${v.phone}</td>
             <td><b>${v.balance}</b></td>
             <td>${goalByVol[v.id] ?? '—'}</td>
+            <td><button class="btn secondary" onclick="adjustPoints(${v.id})">✎ נקודות</button></td>
         </tr>`).join('');
 }
 
@@ -276,6 +306,7 @@ function render(data) {
     lastData = data;
     applySettings(data.settings || {});
     renderStats(data);
+    renderLastCall(data);
     renderVolunteers(data);
 
     document.querySelector('#activityTable tbody').innerHTML = data.recentTxns.map((tx) => `
@@ -325,7 +356,7 @@ function render(data) {
     document.querySelector('#prizesTable tbody').innerHTML = data.prizes.map((pr) => `
         <tr>
             <td>${pr.code}</td><td>${pr.name}</td><td>${pr.value_nis ?? '—'}</td><td>${pr.points_cost}</td>
-            <td>${pr.active ? 'כן' : 'לא'}</td>
+            <td><button class="btn ${pr.active ? '' : 'secondary'}" onclick="togglePrizeActive(${pr.id})">${pr.active ? '✓ פעיל' : 'לא פעיל'}</button></td>
             <td><button class="btn danger" onclick="deletePrize(${pr.id})">מחיקה</button></td>
         </tr>`).join('');
 }
@@ -337,12 +368,33 @@ async function approveTxn(id) {
     catch (e) { alert(e.message); }
 }
 async function rejectTxn(id) { await api(`/api/campaign/reject/${id}`, { method: 'POST' }); loadDashboard(); }
+async function adjustPoints(id) {
+    const v = lastData.volunteers.find((x) => x.id === id);
+    const val = prompt(`כמה נקודות להוסיף ל${v ? (v.name || v.phone) : 'המתנדבת'}? (מספר שלילי = הפחתה)`);
+    if (val === null) return;
+    const pts = parseInt(val, 10);
+    if (!Number.isFinite(pts) || pts === 0) { alert('יש להזין מספר שלם תקין, לא אפס'); return; }
+    try {
+        await api(`/api/campaign/volunteers/${id}/points`, { method: 'POST', body: { points: pts } });
+        loadDashboard();
+    } catch (e) { alert(e.message); }
+}
 async function setName(id) {
     const name = document.getElementById(`name-${id}`).value;
     try { await api(`/api/campaign/volunteers/${id}`, { method: 'PUT', body: { name } }); loadDashboard(); }
     catch (e) { alert(e.message); }
 }
 async function deletePrize(id) { if (!confirm('למחוק את המתנה?')) return; await api(`/api/campaign/prizes/${id}`, { method: 'DELETE' }); loadDashboard(); }
+async function togglePrizeActive(id) {
+    const pr = lastData.prizes.find((p) => p.id === id);
+    if (!pr) return;
+    try {
+        await api(`/api/campaign/prizes/${id}`, { method: 'PUT', body: {
+            name: pr.name, value_nis: pr.value_nis, points_cost: pr.points_cost, active: !pr.active,
+        } });
+        loadDashboard();
+    } catch (e) { alert(e.message); }
+}
 async function deleteHub(id) { if (!confirm('למחוק את המוקד?')) return; await api(`/api/campaign/hubs/${id}`, { method: 'DELETE' }); loadDashboard(); }
 
 document.getElementById('addPrizeBtn').addEventListener('click', async () => {
@@ -378,6 +430,34 @@ document.getElementById('addHubBtn').addEventListener('click', async () => {
         loadDashboard();
     } catch (e) { alert(e.message); }
 });
+
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+async function handleImport(inputId, endpoint, resultId) {
+    const input = document.getElementById(inputId);
+    const resultBox = document.getElementById(resultId);
+    input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file) return;
+        resultBox.textContent = 'מייבאת...';
+        try {
+            const data = await readFileAsBase64(file);
+            const r = await api(endpoint, { method: 'POST', body: { data } });
+            resultBox.textContent = `נוספו ${r.added}, עודכנו ${r.updated}, דולגו ${r.skipped} (מתוך ${r.total} שורות)`;
+            loadDashboard();
+        } catch (e) { resultBox.textContent = e.message || 'הייבוא נכשל'; }
+        input.value = '';
+    });
+}
+handleImport('importVolunteersFile', '/api/campaign/import/volunteers', 'importVolunteersResult');
+handleImport('importPrizesFile', '/api/campaign/import/prizes', 'importPrizesResult');
 
 document.getElementById('saveBrandingBtn').addEventListener('click', async () => {
     const payload = {

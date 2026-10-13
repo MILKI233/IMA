@@ -14,6 +14,8 @@ COPY public ./public
 
 ENV NODE_ENV=production
 ENV GEMACH_DATA_DIR=/data
+# בלי זה, "localtime" ב-SQLite (ובתיאורי זמן יחסיים כמו "לפני X דקות") מחושב לפי UTC
+ENV TZ=Asia/Jerusalem
 EXPOSE 3900
 
 CMD ["node", "server.js"]

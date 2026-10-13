@@ -47,7 +47,7 @@ export function ensureInstances(date = new Date()) {
 
 // תנאי הרשאה: מה משתמשת רואה — מנהלת ומעלה רואות הכל; אחרת: לא רואה שיוך "מנהלת",
 // ורואה רק משימות לא-משויכות או משויכות אליה אישית (שיוך אישי בשם — כדי שלא תופיע לכולן).
-function visibilityClause(user) {
+export function visibilityClause(user) {
   if (isManagerOrAbove(user?.role)) return { sql: '', params: [] };
   return {
     sql: `AND COALESCE(i.scope,${SQL_DEFAULT_SCOPE}) != 'מנהלת' AND (i.assignee IS NULL OR i.assignee = ?)`,
@@ -69,6 +69,7 @@ export function tasksForScope(scope, date = new Date(), user = null) {
 
   const rows = db.prepare(`
     SELECT i.id, i.period_key, i.due_date, i.status, i.done_by, i.done_at, i.note, i.source, i.assignee,
+           i.description,
            COALESCE(i.priority, 'רגיל') AS priority, COALESCE(i.pinned, 0) AS pinned,
            COALESCE(i.scope, ${SQL_DEFAULT_SCOPE}) AS scope,
            COALESCE(i.title, t.title) AS title,
@@ -89,6 +90,7 @@ export function tasksForScope(scope, date = new Date(), user = null) {
   if (scope === 'today') {
     const extras = db.prepare(`
       SELECT i.id, i.period_key, i.due_date, i.status, i.done_by, i.done_at, i.note, i.source, i.assignee,
+             i.description,
              COALESCE(i.priority, 'רגיל') AS priority, COALESCE(i.pinned, 0) AS pinned,
              COALESCE(i.scope, ${SQL_DEFAULT_SCOPE}) AS scope,
              i.title, i.category, 'once' AS frequency, 9999 AS sort

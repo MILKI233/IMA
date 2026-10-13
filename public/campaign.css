@@ -79,6 +79,16 @@ label.settingLabel { font-size: .85rem; color: #6b7a90; display: block; margin-b
 .empty { color: #6b7a90; padding: 20px 0; text-align: center; }
 .hint { color: #6b7a90; font-size: .82rem; }
 
+/* בנר "התקשרה לאחרונה" — זיהוי מיידי של מי שהתקשרה וכמה נקודות יש לה */
+#lastCallBanner {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: linear-gradient(120deg, var(--c-rose), var(--c-raspberry)); color: #fff;
+    border-radius: 14px; padding: 12px 18px; margin-bottom: 16px; font-size: .95rem;
+}
+#lastCallBanner b { font-size: 1.1rem; }
+#lastCallBanner .lcb-balance { background: rgba(255,255,255,.2); border-radius: 999px; padding: 2px 12px; font-weight: 700; }
+#lastCallBanner .lcb-time { opacity: .85; font-size: .82rem; }
+
 /* כרטיסי סטטיסטיקה בראש הדשבורד */
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .stat-card {

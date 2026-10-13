@@ -39,6 +39,7 @@
 
 <main class="c-main">
     <section id="dashboard" class="c-section active">
+        <div id="lastCallBanner" class="hidden"></div>
         <div class="stat-row" id="statRow"></div>
         <div class="card">
             <div class="card-head-row">
@@ -46,7 +47,7 @@
                 <input id="volunteerSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם או טלפון">
             </div>
             <table id="volunteersTable"><thead><tr>
-                <th>שם</th><th>טלפון</th><th>נקודות</th><th>יעד שבועי</th>
+                <th>שם</th><th>טלפון</th><th>נקודות</th><th>יעד שבועי</th><th></th>
             </tr></thead><tbody></tbody></table>
             <div class="empty" id="volunteersEmpty" style="display:none">אין מתנדבות עדיין</div>
         </div>
@@ -88,6 +89,14 @@
             <h2>מתנדבות שעדיין לא זוהו בשם</h2>
             <table id="unidentifiedTable"><thead><tr><th>טלפון</th><th>קביעת שם</th></tr></thead><tbody></tbody></table>
             <div class="empty" id="unidentifiedEmpty" style="display:none">כל המתנדבות מזוהות בשם</div>
+            <div class="row" style="margin-top:14px">
+                <label class="btn secondary" style="cursor:pointer">
+                    📥 ייבוא רשימת מתנדבות מאקסל
+                    <input type="file" id="importVolunteersFile" accept=".xlsx,.xls,.csv" class="hidden">
+                </label>
+                <span class="hint">עמודות: טלפון, שם. ניתן גם כתבנית בלי להקפיד על שם עמודה מדויק.</span>
+            </div>
+            <div id="importVolunteersResult" class="hint"></div>
         </div>
 
         <div class="card">
@@ -102,6 +111,14 @@
             <table id="prizesTable"><thead><tr>
                 <th>קוד</th><th>שם</th><th>שווי</th><th>עלות בנקודות</th><th>פעיל</th><th></th>
             </tr></thead><tbody></tbody></table>
+            <div class="row" style="margin-top:10px">
+                <label class="btn secondary" style="cursor:pointer">
+                    📥 ייבוא קטלוג מתנות מאקסל
+                    <input type="file" id="importPrizesFile" accept=".xlsx,.xls,.csv" class="hidden">
+                </label>
+                <span class="hint">עמודות: קוד, שם, שווי, נקודות. מתנות מיובאות נכנסות "לא פעיל" לבדיקה — הפעלה בלחיצה בטבלה.</span>
+            </div>
+            <div id="importPrizesResult" class="hint"></div>
         </div>
 
         <div class="card">

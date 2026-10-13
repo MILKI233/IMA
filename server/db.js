@@ -275,6 +275,8 @@ for (const stmt of [
   `ALTER TABLE handovers ADD COLUMN audience TEXT NOT NULL DEFAULT 'next'`,  // next = המשמרת הבאה / all = כל המשמרות
   `ALTER TABLE handovers ADD COLUMN acked_by TEXT`,
   `ALTER TABLE handovers ADD COLUMN acked_at TEXT`,
+  // תיאור קצר למשימה חד־פעמית (למשל כשמשבצים משימה מלוח השנה ליום מסוים)
+  `ALTER TABLE task_instances ADD COLUMN description TEXT`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------
@@ -679,7 +681,7 @@ CREATE TABLE IF NOT EXISTS campaign_volunteers (
   phone TEXT UNIQUE NOT NULL,
   name TEXT,
   identified INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS campaign_point_transactions (
@@ -691,7 +693,7 @@ CREATE TABLE IF NOT EXISTS campaign_point_transactions (
   value_nis INTEGER,
   note TEXT,
   recording_path TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   approved_at TEXT
 );
 
@@ -701,7 +703,7 @@ CREATE TABLE IF NOT EXISTS campaign_weekly_goals (
   week_start TEXT NOT NULL,
   goal_points INTEGER NOT NULL,
   bonus_claimed INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   UNIQUE(volunteer_id, week_start)
 );
 
@@ -712,7 +714,7 @@ CREATE TABLE IF NOT EXISTS campaign_prizes (
   value_nis INTEGER,
   points_cost INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS campaign_hubs (
@@ -723,7 +725,7 @@ CREATE TABLE IF NOT EXISTS campaign_hubs (
   kits_available INTEGER NOT NULL DEFAULT 0,
   area_path TEXT,
   pickup_info TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS campaign_hub_logs (
@@ -733,7 +735,7 @@ CREATE TABLE IF NOT EXISTS campaign_hub_logs (
   phone TEXT,
   amount INTEGER,
   message TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 `);
 
@@ -777,7 +779,7 @@ export const CAMPAIGN_GOAL_BONUS_RATE = () => (parseFloat(getCampaignSetting('ca
 export function findOrCreateVolunteer(phone) {
     let v = db.prepare('SELECT * FROM campaign_volunteers WHERE phone = ?').get(phone);
     if (!v) {
-        const info = db.prepare('INSERT INTO campaign_volunteers (phone, identified) VALUES (?, 0)').run(phone);
+        const info = db.prepare("INSERT INTO campaign_volunteers (phone, identified, created_at) VALUES (?, 0, datetime('now','localtime'))").run(phone);
         v = db.prepare('SELECT * FROM campaign_volunteers WHERE id = ?').get(info.lastInsertRowid);
         audit(phone, 'campaign.phone.new_volunteer', 'campaign_volunteers', v.id, null, { phone });
     }

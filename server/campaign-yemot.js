@@ -21,9 +21,9 @@ export function createCampaignYemotRouter({ events }) {
 
     function logTxn({ volunteer, type, points, status = 'approved', value_nis = null, note = null, recording_path = null }) {
         db.prepare(
-            `INSERT INTO campaign_point_transactions (volunteer_id, type, points, status, value_nis, note, recording_path, approved_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(volunteer.id, type, points, status, value_nis, note, recording_path, status === 'approved' ? new Date().toISOString() : null);
+            `INSERT INTO campaign_point_transactions (volunteer_id, type, points, status, value_nis, note, recording_path, created_at, approved_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), CASE WHEN ? = 'approved' THEN datetime('now','localtime') ELSE NULL END)`
+        ).run(volunteer.id, type, points, status, value_nis, note, recording_path, status);
         audit(volunteerLabel(volunteer), `campaign.phone.${type}`, 'campaign_point_transactions', volunteer.id,
             null, { points, status, value_nis, note });
         events?.emit('campaign.update');
@@ -150,7 +150,7 @@ export function createCampaignYemotRouter({ events }) {
             ], 'tap', { max_digits: 5, min_digits: 1, sec_wait: 15 });
             const goalPoints = parseInt(goalDigits, 10) || 0;
             db.prepare(
-                `INSERT INTO campaign_weekly_goals (volunteer_id, week_start, goal_points) VALUES (?, ?, ?)
+                `INSERT INTO campaign_weekly_goals (volunteer_id, week_start, goal_points, created_at) VALUES (?, ?, ?, datetime('now','localtime'))
                  ON CONFLICT(volunteer_id, week_start) DO UPDATE SET goal_points = excluded.goal_points`
             ).run(volunteer.id, ws, goalPoints);
             audit(volunteerLabel(volunteer), 'campaign.phone.goal_set', 'campaign_weekly_goals', volunteer.id, null, { goal_points: goalPoints });
@@ -313,7 +313,7 @@ export function createCampaignYemotRouter({ events }) {
             const amount = parseInt(amountDigits, 10) || 0;
             const newAvailable = Math.max(0, hub.kits_available - amount);
             db.prepare('UPDATE campaign_hubs SET kits_available = ? WHERE id = ?').run(newAvailable, hub.id);
-            db.prepare('INSERT INTO campaign_hub_logs (hub_id, kind, phone, amount) VALUES (?, ?, ?, ?)')
+            db.prepare("INSERT INTO campaign_hub_logs (hub_id, kind, phone, amount, created_at) VALUES (?, ?, ?, ?, datetime('now','localtime'))")
                 .run(hub.id, 'catalogs_taken', phone, amount);
             audit(volunteerLabel(volunteer), 'campaign.hub.catalogs_taken', 'campaign_hubs', hub.id,
                 { kits_available: hub.kits_available }, { kits_available: newAvailable, amount, phone });
@@ -328,7 +328,7 @@ export function createCampaignYemotRouter({ events }) {
         const recordingPath = await call.read([
             t('אנא השאירי הודעה למזכירות ואז סולמית')
         ], 'record', { min_length: '1', max_length: '90' });
-        db.prepare('INSERT INTO campaign_hub_logs (hub_id, kind, message) VALUES (?, ?, ?)')
+        db.prepare("INSERT INTO campaign_hub_logs (hub_id, kind, message, created_at) VALUES (?, ?, ?, datetime('now','localtime'))")
             .run(hub.id, 'message', recordingPath);
         audit(volunteerLabel(volunteer), 'campaign.hub.message', 'campaign_hubs', hub.id, null, { recording: recordingPath });
         events?.emit('campaign.update');

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { db, audit, hasFeature, featuresFor, permissionMatrix, setPermission, inventoryEnabled,
          FEATURES, ROLES, TASK_SCOPES, SCOPE_KEYS, DEFAULT_SCOPE, TASK_STATUSES, TASK_IRRELEVANT, TOP_ROLE, isTop, isManagerOrAbove } from './server/db.js';
 import { hebInfo, isoDate, dayInfo, hebMonthTitle } from './server/hebrew.js';
-import { ensureInstances, tasksForScope, FREQS } from './server/tasks.js';
+import { ensureInstances, tasksForScope, FREQS, visibilityClause } from './server/tasks.js';
 import { inventoryRouter } from './server/inventory.js';
 import { vText, vEnum, vDate, vAmount, firstError } from './server/validate.js';
 import { integrationsRouter, scheduleAutoBackup, scheduleDailyReport } from './server/integrations.js';
@@ -22,7 +22,8 @@ const PORT = process.env.PORT || 3900;
 export const events = new EventEmitter();
 
 const app = express();
-app.use(express.json());
+// מגבלת ברירת המחדל (100kb) קטנה מדי עבור לוגו ממותג וקובצי אקסל מיובאים בבסיס 64
+app.use(express.json({ limit: '8mb' }));
 
 // מודול המלאי כבוי — חוסמים גם כניסה ישירה לכתובת הדף, לפני הגשת הקבצים הסטטיים,
 // כדי שלא ייפתח מסך שבור. ההפעלה מחדש היא בלשונית "חיבורים" אצל המנהלת.
@@ -200,21 +201,22 @@ app.post('/api/tasks/:id/priority', mustLogin, (req, res) => {
 
 // משימה חד-פעמית ידנית
 app.post('/api/tasks', mustLogin, (req, res) => {
-  const { title, category = 'בקרה', due_date = null, priority = 'רגיל', assignee = null, scope = DEFAULT_SCOPE } = req.body || {};
+  const { title, category = 'בקרה', due_date = null, priority = 'רגיל', assignee = null, scope = DEFAULT_SCOPE, description = null } = req.body || {};
   const vErr = firstError(
     vText(title, 'כותרת המשימה', { min: 2, max: 200 }),
     vText(category, 'קטגוריה', { max: 50 }),
     vDate(due_date, 'תאריך יעד', { required: false }),
     vEnum(priority, 'עדיפות', PRIORITIES, { required: false }),
+    vText(description, 'תיאור', { required: false, max: 300 }),
   );
   if (vErr) return res.status(400).json({ error: vErr });
   const isMgr = isManagerOrAbove(req.user.role);
   // רק מנהלת קובעת שיוך ואחראית; עובדת יוצרת משימה בשיוך ברירת המחדל
   const useScope = isMgr && SCOPE_KEYS.includes(scope) ? scope : DEFAULT_SCOPE;
   const useAssignee = isMgr ? (assignee || null) : null;
-  const r = db.prepare(`INSERT INTO task_instances(title, category, period_key, due_date, source, priority, assignee, scope)
-                        VALUES (?,?,?,?,'manual',?,?,?)`)
-    .run(title, category, 'once-' + Date.now(), due_date, PRIORITIES.includes(priority) ? priority : 'רגיל', useAssignee, useScope);
+  const r = db.prepare(`INSERT INTO task_instances(title, category, period_key, due_date, source, priority, assignee, scope, description)
+                        VALUES (?,?,?,?,'manual',?,?,?,?)`)
+    .run(title, category, 'once-' + Date.now(), due_date, PRIORITIES.includes(priority) ? priority : 'רגיל', useAssignee, useScope, description || null);
   audit(req.user.name, 'task.create', 'task_instance', r.lastInsertRowid, null, { title, scope: useScope });
   events.emit('task.created', { id: r.lastInsertRowid, title, source: 'manual' });
   res.json({ id: r.lastInsertRowid });
@@ -341,15 +343,18 @@ app.get('/api/calendar', mustLogin, requireFeature('calendar'), (req, res) => {
   while (gen <= last) { ensureInstances(new Date(gen)); gen.setDate(gen.getDate() + 1); }
 
   const fromIso = isoDate(first), toIso = isoDate(last);
+  const vis = visibilityClause(req.user);
   const items = db.prepare(`
     SELECT i.id, 'task' AS type, COALESCE(i.title, t.title) AS title,
            COALESCE(i.category, t.category) AS category,
+           i.description, i.assignee, COALESCE(i.scope, '${DEFAULT_SCOPE}') AS scope,
            i.status, COALESCE(i.priority,'רגיל') AS priority, i.due_date, i.source,
            COALESCE(t.frequency,'once') AS frequency
     FROM task_instances i LEFT JOIN task_templates t ON t.id = i.template_id
     WHERE i.due_date BETWEEN ? AND ?
+      ${vis.sql}
     ORDER BY CASE COALESCE(i.priority,'רגיל')
-      WHEN 'דחוף' THEN 0 WHEN 'חשוב' THEN 1 WHEN 'רגיל' THEN 2 ELSE 3 END, i.id`).all(fromIso, toIso);
+      WHEN 'דחוף' THEN 0 WHEN 'חשוב' THEN 1 WHEN 'רגיל' THEN 2 ELSE 3 END, i.id`).all(fromIso, toIso, ...vis.params);
   const problems = db.prepare(`
     SELECT id, 'problem' AS type, title, status, due_date FROM problems
     WHERE due_date BETWEEN ? AND ? AND status != 'נבדק'`).all(fromIso, toIso);
