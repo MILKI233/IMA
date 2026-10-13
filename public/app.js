@@ -1397,9 +1397,10 @@ function emojiRow(onPick) {
 
 async function renderMessages(main) {
   const manager = isManagerRole(USER.role);
-  const [reports, mine] = await Promise.all([
+  const [reports, mine, drafts] = await Promise.all([
     manager ? api('/api/messages') : Promise.resolve([]),
     api('/api/messages/mine').catch(() => []),
+    api('/api/messages/drafts').catch(() => []),
   ]);
   main.innerHTML = `
     <div class="card">
@@ -1414,12 +1415,22 @@ async function renderMessages(main) {
       <div class="row">
         <select id="bc-to" class="in" style="max-width:200px"><option value="">— לכולם —</option></select>
         <input id="bc-body" class="in grow" placeholder="תוכן ההודעה — תוצג כבאנר בראש האתר">
+      </div>
+      <div class="row">
         <button class="btn-primary" id="bc-btn">שליחה</button>
+        <button class="btn-secondary" id="bc-draft-btn">שמירה כטיוטה</button>
       </div>
       <div id="bc-emoji"></div>
       <div id="bc-sent" class="ok-line"></div>
     </div>
-    <div class="section-title">✉️ ההיסטוריה שלי</div><div id="mine-list"></div>
+    <div class="msg-tabs">
+      <button class="msg-tab active" data-tab="inbox">📥 נכנס</button>
+      <button class="msg-tab" data-tab="sent">📤 נשלחו</button>
+      <button class="msg-tab" data-tab="drafts">📝 טיוטות${drafts.length ? ` (${drafts.length})` : ''}</button>
+    </div>
+    <div id="msg-folder-inbox" class="msg-folder"></div>
+    <div id="msg-folder-sent" class="msg-folder hidden"></div>
+    <div id="msg-folder-drafts" class="msg-folder hidden"></div>
     ${manager ? '<div class="section-title">הודעות אחרונות (ניהול)</div><div id="msg-list"></div>' : ''}`;
 
   $('#msg-emoji').append(emojiRow(async (em) => {
@@ -1448,19 +1459,75 @@ async function renderMessages(main) {
     const text = $('#bc-body').value.trim();
     if (text) sendBroadcast(text);
   });
+  $('#bc-draft-btn').addEventListener('click', async () => {
+    const text = $('#bc-body').value.trim();
+    if (!text) return;
+    try {
+      await api('/api/messages/draft', { method: 'POST', body: { text, to_user: $('#bc-to').value || null } });
+      toast('נשמר כטיוטה', 'ok');
+      render();
+    } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+  });
 
-  // ---- ההיסטוריה שלי: כל מה ששלחתי, קיבלתי אישית, או הכרזה כללית שראיתי — כמו תיבת מייל ----
-  const mineList = $('#mine-list');
-  if (!mine.length) mineList.append(el('div', 'empty-state', 'אין עדיין הודעות'));
-  mine.forEach((msg) => {
-    const sentByMe = msg.from_user === USER.name;
+  // ---- טאבים: נכנס / נשלחו / טיוטות ----
+  document.querySelectorAll('.msg-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.msg-tab').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.msg-folder').forEach((f) => f.classList.add('hidden'));
+      btn.classList.add('active');
+      $(`#msg-folder-${btn.dataset.tab}`).classList.remove('hidden');
+    });
+  });
+
+  const received = mine.filter((m) => m.from_user !== USER.name);
+  const sent = mine.filter((m) => m.from_user === USER.name);
+
+  const inboxBox = $('#msg-folder-inbox');
+  if (!received.length) inboxBox.append(el('div', 'empty-state', 'אין הודעות נכנסות'));
+  received.forEach((msg) => {
     const item = el('div', 'list-item');
-    const dirBadge = sentByMe ? '<span class="badge-dir out">נשלח</span>' : '<span class="badge-dir in">התקבל</span>';
-    const whoLine = sentByMe
-      ? `אל ${esc(msg.to_user || 'כולם')}`
-      : `מאת ${esc(msg.from_user)}${msg.to_user ? '' : ' (לכולם)'}`;
-    item.innerHTML = `<div class="meta">${dirBadge} ${whoLine} · ${esc((msg.created_at || '').slice(0, 16))}</div>${esc(msg.body)}`;
-    mineList.append(item);
+    const whoLine = `מאת ${esc(msg.from_user)}${msg.to_user ? '' : ' (לכולם)'}`;
+    item.innerHTML = `<div class="meta">${whoLine} · ${esc((msg.created_at || '').slice(0, 16))}</div>${esc(msg.body)}`;
+    inboxBox.append(item);
+  });
+
+  const sentBox = $('#msg-folder-sent');
+  if (!sent.length) sentBox.append(el('div', 'empty-state', 'לא שלחת עדיין הודעות'));
+  sent.forEach((msg) => {
+    const item = el('div', 'list-item');
+    item.innerHTML = `<div class="meta">אל ${esc(msg.to_user || 'כולם')} · ${esc((msg.created_at || '').slice(0, 16))}</div>${esc(msg.body)}`;
+    sentBox.append(item);
+  });
+
+  const draftsBox = $('#msg-folder-drafts');
+  if (!drafts.length) draftsBox.append(el('div', 'empty-state', 'אין טיוטות'));
+  drafts.forEach((d) => {
+    const item = el('div', 'list-item draft-item');
+    item.innerHTML = `<div class="meta">אל ${esc(d.to_user || 'כולם')}</div>`;
+    const textarea = el('textarea', 'in');
+    textarea.value = d.body;
+    textarea.style.minHeight = '70px';
+    const actions = el('div', 'row');
+    actions.style.marginTop = '8px';
+    const saveBtn = el('button', 'btn-secondary btn-sm', 'שמירת שינויים');
+    const sendBtn = el('button', 'btn-primary btn-sm', 'שליחה');
+    const delBtn = el('button', 'btn-secondary btn-sm', 'מחיקה');
+    saveBtn.addEventListener('click', async () => {
+      try { await api(`/api/messages/${d.id}/draft`, { method: 'PUT', body: { text: textarea.value.trim(), to_user: d.to_user } }); toast('הטיוטה נשמרה', 'ok'); render(); }
+      catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+    });
+    sendBtn.addEventListener('click', async () => {
+      try { await api(`/api/messages/${d.id}/send`, { method: 'POST' }); toast('ההודעה נשלחה', 'ok'); render(); }
+      catch (e) { toast(e.message || 'השליחה נכשלה', 'err'); }
+    });
+    delBtn.addEventListener('click', async () => {
+      if (!confirm('למחוק את הטיוטה?')) return;
+      await api(`/api/messages/${d.id}/draft`, { method: 'DELETE' });
+      render();
+    });
+    actions.append(saveBtn, sendBtn, delBtn);
+    item.append(textarea, actions);
+    draftsBox.append(item);
   });
 
   if (!manager) return;
@@ -1559,18 +1626,20 @@ async function renderAdmin(main) {
     } catch (e) { $('#nu-err').textContent = e.message; }
   });
 
-  // קישור ישיר לניהול הקמפיין (מתנות/מוקדים/מיתוג) — כדי שלא יהיה צריך לחפש
+  // קישור ללוח הקמפיין החי (דשבורד/אישורים/מוקדים/יומן) — נשאר מסך נפרד, תפעולי יומיומי
   if ((USER.features || []).includes('campaign')) {
     const campaignLink = el('div', 'card');
     campaignLink.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap';
     campaignLink.innerHTML = `
       <div>
         <div class="section-title" style="margin:0">🎗 קמפיין המכירה הסינית</div>
-        <div class="sub muted">מתנות, מוקדי הפצה, מיתוג ונקודות — מסך נפרד</div>
+        <div class="sub muted">לוח בקרה חי, אישורי נקודות, מוקדים ויומן פעולות</div>
       </div>
-      <a href="/campaign.html" class="btn-primary">לניהול הקמפיין ←</a>`;
+      <a href="/campaign.html" class="btn-primary">ללוח הקמפיין ←</a>`;
     main.append(campaignLink);
   }
+  // ניהול הקמפיין עצמו (מתנות/מוקדים/הגדרות/ייבוא) — כאן, לפי הרשאה לכל פעולה בנפרד
+  await renderCampaignAdminCards(main);
 
   // מטריצת ההרשאות (כולל גישה לקמפיין) — ממש ליד יצירת המשתמשת, לא בסוף העמוד הארוך
   if ((USER.features || []).includes('admin') || isManagerRole(USER.role)) {
@@ -1854,6 +1923,203 @@ async function renderAdmin(main) {
   aT.innerHTML = '<tr><th>מי</th><th>פעולה</th><th>מתי</th></tr>' +
     report.auditTail.map((a) => `<tr><td>${esc(a.user_name || '')}</td><td>${esc(a.action)}</td><td>${esc(a.at)}</td></tr>`).join('');
   main.append(aT);
+}
+
+/* ---- ניהול הקמפיין (מתנות/מוקדים/הגדרות/ייבוא) — כאן במסך הניהול הראשי, לפי הרשאה לכל פעולה ---- */
+async function renderCampaignAdminCards(main) {
+  const feats = USER.features || [];
+  const canPrizes = feats.includes('campaign_prizes');
+  const canHubs = feats.includes('campaign_hubs');
+  const canSettings = feats.includes('campaign_settings');
+  const canImport = feats.includes('campaign_import');
+  if (!canPrizes && !canHubs && !canSettings && !canImport) return;
+
+  let data, geoLeaves = [];
+  try {
+    [data, geoLeaves] = await Promise.all([
+      api('/api/campaign/dashboard'),
+      api('/api/campaign/geo-leaves').catch(() => []),
+    ]);
+  } catch { return; }
+
+  main.append(el('div', 'section-title', '🎗 ניהול קמפיין המכירה הסינית'));
+
+  if (canImport) {
+    const unidentified = data.volunteers.filter((v) => !v.name);
+    const card = el('div', 'card');
+    card.innerHTML = `
+      <div class="section-title" style="margin-top:0">מתנדבות שעדיין לא זוהו בשם</div>
+      <table class="data" id="ca-unident"><tr><th>טלפון</th><th>קביעת שם</th></tr>${
+        unidentified.map((v) => `<tr><td>${esc(v.phone)}</td><td>
+          <input class="in" id="ca-name-${v.id}" placeholder="שם המתנדבת" style="max-width:150px">
+          <button class="btn-secondary btn-sm" data-vol="${v.id}">שמירה</button></td></tr>`).join('')
+      }</table>
+      ${!unidentified.length ? '<div class="empty-state">כל המתנדבות מזוהות בשם</div>' : ''}
+      <div class="row" style="margin-top:12px">
+        <label class="btn-secondary" style="cursor:pointer">📥 ייבוא רשימת מתנדבות מאקסל<input type="file" id="ca-imp-vol" accept=".xlsx,.xls,.csv" class="hidden"></label>
+        <span class="sub muted">עמודות: טלפון, שם</span>
+      </div>
+      <div id="ca-imp-vol-result" class="sub muted"></div>
+      <div class="row" style="margin-top:12px">
+        <label class="btn-secondary" style="cursor:pointer">📥 ייבוא דיווחי גיוס מוצרים מאקסל<input type="file" id="ca-imp-rec" accept=".xlsx,.xls,.csv" class="hidden"></label>
+        <span class="sub muted">טלפון+שווי → נקודות אוטומטיות (לפי אחוז המרה בהגדרות)</span>
+      </div>
+      <div id="ca-imp-rec-result" class="sub muted"></div>`;
+    main.append(card);
+    card.querySelectorAll('[data-vol]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const name = $(`#ca-name-${btn.dataset.vol}`).value.trim();
+        try { await api(`/api/campaign/volunteers/${btn.dataset.vol}`, { method: 'PUT', body: { name } }); toast('נשמר', 'ok'); render(); }
+        catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+      });
+    });
+    campaignFileImport('ca-imp-vol', '/api/campaign/import/volunteers', 'ca-imp-vol-result');
+    campaignFileImport('ca-imp-rec', '/api/campaign/import/recruitment', 'ca-imp-rec-result');
+  }
+
+  if (canPrizes) {
+    const card = el('div', 'card');
+    card.innerHTML = `
+      <div class="section-title" style="margin-top:0">קטלוג מתנות בנקודות</div>
+      <div class="row">
+        <input id="ca-pz-code" class="in" placeholder="קוד מוצר" style="max-width:100px">
+        <input id="ca-pz-name" class="in" placeholder="שם המתנה" style="max-width:180px">
+        <input id="ca-pz-value" class="in" placeholder="שווי בש״ח" style="max-width:100px">
+        <input id="ca-pz-points" class="in" placeholder="עלות בנקודות" style="max-width:110px">
+        <button class="btn-primary" id="ca-pz-add">הוספת מתנה</button>
+      </div>
+      <table class="data"><tr><th>קוד</th><th>שם</th><th>שווי</th><th>נקודות</th><th>פעיל</th><th></th></tr>${
+        data.prizes.map((pr) => `<tr>
+          <td>${pr.code}</td><td>${esc(pr.name)}</td><td>${pr.value_nis ?? '—'}</td><td>${pr.points_cost}</td>
+          <td><button class="btn-secondary btn-sm" data-toggle-prize="${pr.id}">${pr.active ? '✓ פעיל' : 'לא פעיל'}</button></td>
+          <td><button class="btn-secondary btn-sm" data-del-prize="${pr.id}">מחיקה</button></td>
+        </tr>`).join('')
+      }</table>
+      ${canImport ? `<div class="row" style="margin-top:12px">
+        <label class="btn-secondary" style="cursor:pointer">📥 ייבוא קטלוג מתנות מאקסל<input type="file" id="ca-imp-prz" accept=".xlsx,.xls,.csv" class="hidden"></label>
+        <span class="sub muted">עמודות: קוד, שם, שווי, נקודות — נכנס לא-פעיל לבדיקה</span>
+      </div><div id="ca-imp-prz-result" class="sub muted"></div>` : ''}`;
+    main.append(card);
+    $('#ca-pz-add').addEventListener('click', async () => {
+      try {
+        await api('/api/campaign/prizes', { method: 'POST', body: {
+          code: $('#ca-pz-code').value, name: $('#ca-pz-name').value,
+          value_nis: $('#ca-pz-value').value, points_cost: $('#ca-pz-points').value,
+        } });
+        toast('המתנה נוספה', 'ok'); render();
+      } catch (e) { toast(e.message || 'ההוספה נכשלה', 'err'); }
+    });
+    card.querySelectorAll('[data-toggle-prize]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const target = data.prizes.find((p) => p.id === Number(btn.dataset.togglePrize));
+        try {
+          await api(`/api/campaign/prizes/${target.id}`, { method: 'PUT', body: {
+            name: target.name, value_nis: target.value_nis, points_cost: target.points_cost, active: !target.active,
+          } });
+          render();
+        } catch (e) { toast(e.message || 'העדכון נכשל', 'err'); }
+      });
+    });
+    card.querySelectorAll('[data-del-prize]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('למחוק את המתנה?')) return;
+        await api(`/api/campaign/prizes/${btn.dataset.delPrize}`, { method: 'DELETE' });
+        render();
+      });
+    });
+    if (canImport) campaignFileImport('ca-imp-prz', '/api/campaign/import/prizes', 'ca-imp-prz-result');
+  }
+
+  if (canHubs) {
+    const card = el('div', 'card');
+    card.innerHTML = `
+      <div class="section-title" style="margin-top:0">מוקדי הפצה — הוספה</div>
+      <p class="sub muted">קוד המוקד מתמספר אוטומטית. "אזור בשלוחת ימות" הוא מה שהמתנדבת שומעת בטלפון.</p>
+      <div class="row">
+        <input id="ca-hub-name" class="in" placeholder="שם המוקד" style="max-width:160px">
+        <input id="ca-hub-total" class="in" placeholder="כמות ערכות" style="max-width:100px">
+        <select id="ca-hub-area" class="in" style="max-width:200px"><option value="">— ללא אזור בשלוחה —</option></select>
+      </div>
+      <div class="row">
+        <input id="ca-hub-pickup" class="in grow" placeholder="פרטי מסירה שיוקראו בטלפון">
+        <button class="btn-primary" id="ca-hub-add">הוספת מוקד</button>
+      </div>`;
+    main.append(card);
+    const areaSel = $('#ca-hub-area');
+    geoLeaves.forEach((leaf) => {
+      const opt = el('option', '', leaf.label);
+      opt.value = leaf.path;
+      areaSel.append(opt);
+    });
+    $('#ca-hub-add').addEventListener('click', async () => {
+      try {
+        const r = await api('/api/campaign/hubs', { method: 'POST', body: {
+          name: $('#ca-hub-name').value, kits_total: $('#ca-hub-total').value,
+          area_path: $('#ca-hub-area').value, pickup_info: $('#ca-hub-pickup').value,
+        } });
+        toast(`המוקד נוסף — קוד PIN: ${r.pin}`, 'ok'); render();
+      } catch (e) { toast(e.message || 'ההוספה נכשלה', 'err'); }
+    });
+  }
+
+  if (canSettings) {
+    const s = data.settings;
+    const card = el('div', 'card');
+    card.innerHTML = `
+      <div class="section-title" style="margin-top:0">מיתוג הקמפיין</div>
+      <div class="row">
+        <div><label class="sub muted">לוגו</label><br><input type="file" id="ca-logo" accept="image/*"></div>
+        <div><label class="sub muted">צבע עיקרי</label><br><input type="color" id="ca-c1" value="${esc(s.campaign_brand_primary || '#14497c')}"></div>
+        <div><label class="sub muted">צבע הדגשה</label><br><input type="color" id="ca-c2" value="${esc(s.campaign_brand_accent || '#1e5fa8')}"></div>
+        <div><label class="sub muted">צבע כהה</label><br><input type="color" id="ca-c3" value="${esc(s.campaign_brand_dark || '#0b2a4a')}"></div>
+      </div>
+      <button class="btn-secondary" id="ca-save-brand" style="margin-top:10px">שמירת מיתוג</button>
+      <div class="section-title">נקודות וחישובים</div>
+      <p class="sub muted">שינוי כאן חל מיידית גם בטלפון, בלי תכנות.</p>
+      <div class="row">
+        <div><label class="sub muted">נקודות לפנייה לעסק</label><br><input type="number" class="in" id="ca-pts-out" style="max-width:90px" value="${esc(s.campaign_points_outreach ?? 2)}"></div>
+        <div><label class="sub muted">נקודות לשליחות</label><br><input type="number" class="in" id="ca-pts-err" style="max-width:90px" value="${esc(s.campaign_points_errand ?? 4)}"></div>
+        <div><label class="sub muted">אחוז בונוס יעד שבועי</label><br><input type="number" class="in" id="ca-goal-bonus" style="max-width:90px" value="${esc(s.campaign_goal_bonus_percent ?? 10)}"></div>
+        <div><label class="sub muted">אחוז המרה לגיוס מוצר</label><br><input type="number" class="in" id="ca-conv" placeholder="ריק = אין" style="max-width:130px" value="${esc(s.campaign_product_conversion_percent ?? '')}"></div>
+      </div>
+      <button class="btn-secondary" id="ca-save-calc" style="margin-top:10px">שמירת הגדרות נקודות</button>`;
+    main.append(card);
+    $('#ca-save-brand').addEventListener('click', async () => {
+      const payload = { campaign_brand_primary: $('#ca-c1').value, campaign_brand_accent: $('#ca-c2').value, campaign_brand_dark: $('#ca-c3').value };
+      const file = $('#ca-logo').files[0];
+      if (file) payload.campaign_brand_logo = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+      try { await api('/api/campaign/settings', { method: 'PUT', body: payload }); toast('המיתוג נשמר', 'ok'); }
+      catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+    });
+    $('#ca-save-calc').addEventListener('click', async () => {
+      try {
+        await api('/api/campaign/settings', { method: 'PUT', body: {
+          campaign_points_outreach: $('#ca-pts-out').value, campaign_points_errand: $('#ca-pts-err').value,
+          campaign_goal_bonus_percent: $('#ca-goal-bonus').value, campaign_product_conversion_percent: $('#ca-conv').value,
+        } });
+        toast('ההגדרות נשמרו', 'ok');
+      } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+    });
+  }
+}
+
+function campaignFileImport(inputId, endpoint, resultId) {
+  const input = $('#' + inputId);
+  if (!input) return;
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const resultBox = $('#' + resultId);
+    resultBox.textContent = 'מייבאת...';
+    try {
+      const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
+      const r = await api(endpoint, { method: 'POST', body: { data } });
+      const updatedPart = r.updated !== undefined ? `, עודכנו ${r.updated}` : '';
+      resultBox.textContent = `נוספו ${r.added}${updatedPart}, דולגו ${r.skipped} (מתוך ${r.total} שורות)`;
+      render();
+    } catch (e) { resultBox.textContent = e.message || 'הייבוא נכשל'; }
+    input.value = '';
+  });
 }
 
 /* ===================== עוזרת AI ===================== */

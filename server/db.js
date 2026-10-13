@@ -289,6 +289,8 @@ for (const stmt of [
   `ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'report'`,
   `ALTER TABLE messages ADD COLUMN to_user TEXT`,
   `ALTER TABLE messages ADD COLUMN reply_to INTEGER REFERENCES messages(id)`,
+  // טיוטה: נשמרת אך לא נשלחת עדיין — לא מופיעה בתיבה הנכנסת/באנר של אף אחת חוץ מהכותבת
+  `ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'sent'`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------
@@ -363,6 +365,10 @@ export const FEATURES = [
   { key: 'messages', label: 'הודעות' },
   { key: 'inventory', label: 'מלאי והשכרה (CRM)' },
   { key: 'campaign', label: 'קמפיין המכירה הסינית' },
+  { key: 'campaign_prizes', label: 'קמפיין · ניהול קטלוג מתנות' },
+  { key: 'campaign_hubs', label: 'קמפיין · הוספת מוקדים' },
+  { key: 'campaign_settings', label: 'קמפיין · הגדרות ומיתוג' },
+  { key: 'campaign_import', label: 'קמפיין · ייבוא מאקסל' },
   { key: 'ai', label: 'עוזרת AI' },
   { key: 'integrations', label: 'חיבורים (מייל/ימות/גיבוי)' },
   { key: 'admin', label: 'ניהול והרשאות' },

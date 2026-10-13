@@ -29,7 +29,6 @@ const ACTION_LABEL = {
 };
 let activityQuery = '';
 let activityLoaded = false;
-let brandingFormInitialized = false;
 let lastData = null;
 let volunteerQuery = '';
 let hubQuery = '';
@@ -100,7 +99,6 @@ function startApp() {
 
     loadDashboard();
     setInterval(loadDashboard, 5000);
-    loadGeoLeaves();
 }
 
 async function loadActivity() {
@@ -148,18 +146,6 @@ function renderActivity(rows) {
         </tr>`).join('');
 }
 
-async function loadGeoLeaves() {
-    const leaves = await api('/api/campaign/geo-leaves');
-    const select = document.getElementById('hubAreaPath');
-    select.innerHTML = '<option value="">— ללא אזור בשלוחה —</option>';
-    for (const leaf of leaves) {
-        const opt = document.createElement('option');
-        opt.value = leaf.path;
-        opt.textContent = leaf.label;
-        select.appendChild(opt);
-    }
-}
-
 function fmtDate(s) {
     if (!s) return '';
     return s.replace('T', ' ').slice(0, 16);
@@ -196,6 +182,7 @@ async function loadDashboard() {
     }
 }
 
+// עריכת המיתוג עברה למסך "ניהול" הראשי — כאן רק מיישמים את הצבעים/לוגו השמורים על הדף
 function applySettings(s) {
     const root = document.documentElement.style;
     if (s.campaign_brand_primary) root.setProperty('--c-rose', s.campaign_brand_primary);
@@ -204,17 +191,6 @@ function applySettings(s) {
     const logo = document.getElementById('brandLogo');
     if (s.campaign_brand_logo) { logo.src = s.campaign_brand_logo; logo.style.display = 'block'; }
     else { logo.style.display = 'none'; }
-
-    if (!brandingFormInitialized) {
-        document.getElementById('brandPrimary').value = s.campaign_brand_primary || '#14497c';
-        document.getElementById('brandAccent').value = s.campaign_brand_accent || '#1e5fa8';
-        document.getElementById('brandDark').value = s.campaign_brand_dark || '#0b2a4a';
-        document.getElementById('setPointsOutreach').value = s.campaign_points_outreach ?? 2;
-        document.getElementById('setPointsErrand').value = s.campaign_points_errand ?? 4;
-        document.getElementById('setGoalBonus').value = s.campaign_goal_bonus_percent ?? 10;
-        document.getElementById('setProductConversion').value = s.campaign_product_conversion_percent ?? '';
-        brandingFormInitialized = true;
-    }
 }
 
 function renderStats(data) {
@@ -346,21 +322,6 @@ function render(data) {
             <td>${l.kind === 'catalogs_taken' ? `${l.amount} ל-${l.phone}` : (l.message || '')}</td>
             <td>${fmtDate(l.created_at)}</td>
         </tr>`).join('');
-
-    const unidentified = data.volunteers.filter((v) => !v.name);
-    document.getElementById('unidentifiedEmpty').style.display = unidentified.length ? 'none' : 'block';
-    document.querySelector('#unidentifiedTable tbody').innerHTML = unidentified.map((v) => `
-        <tr>
-            <td>${v.phone}</td>
-            <td><input id="name-${v.id}" placeholder="שם המתנדבת" style="width:150px"> <button class="btn" onclick="setName(${v.id})">שמירה</button></td>
-        </tr>`).join('');
-
-    document.querySelector('#prizesTable tbody').innerHTML = data.prizes.map((pr) => `
-        <tr>
-            <td>${pr.code}</td><td>${pr.name}</td><td>${pr.value_nis ?? '—'}</td><td>${pr.points_cost}</td>
-            <td><button class="btn ${pr.active ? '' : 'secondary'}" onclick="togglePrizeActive(${pr.id})">${pr.active ? '✓ פעיל' : 'לא פעיל'}</button></td>
-            <td><button class="btn danger" onclick="deletePrize(${pr.id})">מחיקה</button></td>
-        </tr>`).join('');
 }
 
 async function approveTxn(id) {
@@ -381,11 +342,6 @@ async function adjustPoints(id) {
         loadDashboard();
     } catch (e) { alert(e.message); }
 }
-async function setName(id) {
-    const name = document.getElementById(`name-${id}`).value;
-    try { await api(`/api/campaign/volunteers/${id}`, { method: 'PUT', body: { name } }); loadDashboard(); }
-    catch (e) { alert(e.message); }
-}
 document.getElementById('addVolBtn').addEventListener('click', async () => {
     const phone = document.getElementById('newVolPhone').value.trim();
     const name = document.getElementById('newVolName').value.trim();
@@ -399,113 +355,6 @@ document.getElementById('addVolBtn').addEventListener('click', async () => {
         loadDashboard();
     } catch (e) { err.textContent = e.message || 'ההוספה נכשלה'; }
 });
-async function deletePrize(id) { if (!confirm('למחוק את המתנה?')) return; await api(`/api/campaign/prizes/${id}`, { method: 'DELETE' }); loadDashboard(); }
-async function togglePrizeActive(id) {
-    const pr = lastData.prizes.find((p) => p.id === id);
-    if (!pr) return;
-    try {
-        await api(`/api/campaign/prizes/${id}`, { method: 'PUT', body: {
-            name: pr.name, value_nis: pr.value_nis, points_cost: pr.points_cost, active: !pr.active,
-        } });
-        loadDashboard();
-    } catch (e) { alert(e.message); }
-}
 async function deleteHub(id) { if (!confirm('למחוק את המוקד?')) return; await api(`/api/campaign/hubs/${id}`, { method: 'DELETE' }); loadDashboard(); }
-
-document.getElementById('addPrizeBtn').addEventListener('click', async () => {
-    try {
-        await api('/api/campaign/prizes', { method: 'POST', body: {
-            code: document.getElementById('prizeCode').value,
-            name: document.getElementById('prizeName').value,
-            value_nis: document.getElementById('prizeValue').value,
-            points_cost: document.getElementById('prizePoints').value,
-        } });
-        document.getElementById('prizeCode').value = '';
-        document.getElementById('prizeName').value = '';
-        document.getElementById('prizeValue').value = '';
-        document.getElementById('prizePoints').value = '';
-        loadDashboard();
-    } catch (e) { alert(e.message); }
-});
-
-document.getElementById('addHubBtn').addEventListener('click', async () => {
-    try {
-        const r = await api('/api/campaign/hubs', { method: 'POST', body: {
-            name: document.getElementById('hubName').value,
-            kits_total: document.getElementById('hubTotal').value,
-            area_path: document.getElementById('hubAreaPath').value,
-            pickup_info: document.getElementById('hubPickupInfo').value,
-        } });
-        document.getElementById('hubName').value = '';
-        document.getElementById('hubTotal').value = '';
-        document.getElementById('hubAreaPath').value = '';
-        document.getElementById('hubPickupInfo').value = '';
-        alert(`המוקד נוסף — קוד PIN: ${r.pin}`);
-        loadDashboard();
-    } catch (e) { alert(e.message); }
-});
-
-function readFileAsBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-}
-
-async function handleImport(inputId, endpoint, resultId) {
-    const input = document.getElementById(inputId);
-    const resultBox = document.getElementById(resultId);
-    input.addEventListener('change', async () => {
-        const file = input.files[0];
-        if (!file) return;
-        resultBox.textContent = 'מייבאת...';
-        try {
-            const data = await readFileAsBase64(file);
-            const r = await api(endpoint, { method: 'POST', body: { data } });
-            const updatedPart = r.updated !== undefined ? `, עודכנו ${r.updated}` : '';
-            let msg = `נוספו ${r.added}${updatedPart}, דולגו ${r.skipped} (מתוך ${r.total} שורות)`;
-            if (r.skippedReasons && r.skippedReasons.length) msg += ' — ' + r.skippedReasons.join('; ');
-            resultBox.textContent = msg;
-            loadDashboard();
-        } catch (e) { resultBox.textContent = e.message || 'הייבוא נכשל'; }
-        input.value = '';
-    });
-}
-handleImport('importVolunteersFile', '/api/campaign/import/volunteers', 'importVolunteersResult');
-handleImport('importPrizesFile', '/api/campaign/import/prizes', 'importPrizesResult');
-handleImport('importRecruitmentFile', '/api/campaign/import/recruitment', 'importRecruitmentResult');
-
-document.getElementById('saveBrandingBtn').addEventListener('click', async () => {
-    const payload = {
-        campaign_brand_primary: document.getElementById('brandPrimary').value,
-        campaign_brand_accent: document.getElementById('brandAccent').value,
-        campaign_brand_dark: document.getElementById('brandDark').value,
-    };
-    const file = document.getElementById('logoFile').files[0];
-    if (file) {
-        payload.campaign_brand_logo = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    }
-    await api('/api/campaign/settings', { method: 'PUT', body: payload });
-    alert('המיתוג נשמר');
-    loadDashboard();
-});
-
-document.getElementById('saveCalcBtn').addEventListener('click', async () => {
-    await api('/api/campaign/settings', { method: 'PUT', body: {
-        campaign_points_outreach: document.getElementById('setPointsOutreach').value,
-        campaign_points_errand: document.getElementById('setPointsErrand').value,
-        campaign_goal_bonus_percent: document.getElementById('setGoalBonus').value,
-        campaign_product_conversion_percent: document.getElementById('setProductConversion').value,
-    } });
-    alert('ההגדרות נשמרו, בתוקף מהשיחה הבאה בטלפון');
-    loadDashboard();
-});
 
 if (USER) startApp(); else initLogin();

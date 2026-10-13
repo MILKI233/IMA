@@ -32,8 +32,6 @@
     <button data-tab="dashboard" class="active">לוח בקרה חי</button>
     <button data-tab="pending">אישורים ממתינים <span id="pendingCount"></span></button>
     <button data-tab="hubs">מוקדי הפצה</button>
-    <button data-tab="admin">ניהול</button>
-    <button data-tab="branding">מיתוג והגדרות</button>
     <button data-tab="activity">יומן פעולות</button>
 </nav>
 
@@ -87,94 +85,6 @@
             <table id="hubLogsTable"><thead><tr>
                 <th>מוקד</th><th>סוג</th><th>פרטים</th><th>תאריך</th>
             </tr></thead><tbody></tbody></table>
-        </div>
-    </section>
-
-    <section id="admin" class="c-section">
-        <div class="card">
-            <h2>מתנדבות שעדיין לא זוהו בשם</h2>
-            <table id="unidentifiedTable"><thead><tr><th>טלפון</th><th>קביעת שם</th></tr></thead><tbody></tbody></table>
-            <div class="empty" id="unidentifiedEmpty" style="display:none">כל המתנדבות מזוהות בשם</div>
-            <div class="row" style="margin-top:14px">
-                <label class="btn secondary" style="cursor:pointer">
-                    📥 ייבוא רשימת מתנדבות מאקסל
-                    <input type="file" id="importVolunteersFile" accept=".xlsx,.xls,.csv" class="hidden">
-                </label>
-                <span class="hint">עמודות: טלפון, שם. ניתן גם כתבנית בלי להקפיד על שם עמודה מדויק.</span>
-            </div>
-            <div id="importVolunteersResult" class="hint"></div>
-        </div>
-
-        <div class="card">
-            <h2>ייבוא דיווחי גיוס מוצרים (מרכזת הגיוס)</h2>
-            <p class="hint">עמודות: טלפון (של השומרת), שווי, ואופציונלית נקודות מפורש או שם עסק/הערה. בלי עמודת נקודות — חייב להיות מוגדר "אחוז המרה" בהגדרות הקמפיין.</p>
-            <div class="row">
-                <label class="btn secondary" style="cursor:pointer">
-                    📥 ייבוא דיווחי גיוס מאקסל
-                    <input type="file" id="importRecruitmentFile" accept=".xlsx,.xls,.csv" class="hidden">
-                </label>
-            </div>
-            <div id="importRecruitmentResult" class="hint"></div>
-        </div>
-
-        <div class="card">
-            <h2>קטלוג מתנות בנקודות</h2>
-            <div class="row">
-                <input id="prizeCode" placeholder="קוד מוצר" style="width:100px">
-                <input id="prizeName" placeholder="שם המתנה" style="width:180px">
-                <input id="prizeValue" placeholder="שווי בש״ח" style="width:100px">
-                <input id="prizePoints" placeholder="עלות בנקודות" style="width:110px">
-                <button class="btn" id="addPrizeBtn">הוספת מתנה</button>
-            </div>
-            <table id="prizesTable"><thead><tr>
-                <th>קוד</th><th>שם</th><th>שווי</th><th>עלות בנקודות</th><th>פעיל</th><th></th>
-            </tr></thead><tbody></tbody></table>
-            <div class="row" style="margin-top:10px">
-                <label class="btn secondary" style="cursor:pointer">
-                    📥 ייבוא קטלוג מתנות מאקסל
-                    <input type="file" id="importPrizesFile" accept=".xlsx,.xls,.csv" class="hidden">
-                </label>
-                <span class="hint">עמודות: קוד, שם, שווי, נקודות. מתנות מיובאות נכנסות "לא פעיל" לבדיקה — הפעלה בלחיצה בטבלה.</span>
-            </div>
-            <div id="importPrizesResult" class="hint"></div>
-        </div>
-
-        <div class="card">
-            <h2>מוקדי הפצה — הוספה</h2>
-            <p class="hint">"אזור בשלוחת ימות" הוא מה שהמתנדבת שומעת בטלפון בשלוחה 4. בלי בחירת אזור, המוקד נגיש רק לאחראית עם קוד PIN.</p>
-            <div class="row">
-                <input id="hubName" placeholder="שם המוקד" style="width:160px">
-                <input id="hubTotal" placeholder="כמות ערכות" style="width:100px">
-                <select id="hubAreaPath" style="width:200px"><option value="">— ללא אזור בשלוחה —</option></select>
-            </div>
-            <div class="row">
-                <input id="hubPickupInfo" placeholder="פרטי מסירה שיוקראו בטלפון" style="width:380px">
-                <button class="btn" id="addHubBtn">הוספת מוקד</button>
-            </div>
-        </div>
-    </section>
-
-    <section id="branding" class="c-section">
-        <div class="card">
-            <h2>לוגו וצבעי המותג</h2>
-            <div class="row">
-                <div class="settingGroup"><label class="settingLabel">לוגו (קובץ תמונה)</label><input type="file" id="logoFile" accept="image/*"></div>
-                <div class="settingGroup"><label class="settingLabel">צבע עיקרי</label><input type="color" id="brandPrimary"></div>
-                <div class="settingGroup"><label class="settingLabel">צבע הדגשה</label><input type="color" id="brandAccent"></div>
-                <div class="settingGroup"><label class="settingLabel">צבע כהה</label><input type="color" id="brandDark"></div>
-            </div>
-            <button class="btn" id="saveBrandingBtn">שמירת מיתוג</button>
-        </div>
-        <div class="card">
-            <h2>נקודות וחישובים</h2>
-            <p class="hint">שינוי כאן חל מיידית גם בטלפון, בלי תכנות.</p>
-            <div class="row">
-                <div class="settingGroup"><label class="settingLabel">נקודות לפנייה לעסק (מקש 1)</label><input type="number" id="setPointsOutreach" style="width:90px"></div>
-                <div class="settingGroup"><label class="settingLabel">נקודות לשליחות (מקש 2)</label><input type="number" id="setPointsErrand" style="width:90px"></div>
-                <div class="settingGroup"><label class="settingLabel">אחוז בונוס יעד שבועי</label><input type="number" id="setGoalBonus" style="width:90px"></div>
-                <div class="settingGroup"><label class="settingLabel">אחוז המרה לגיוס מוצר (הצעה בלבד)</label><input type="number" id="setProductConversion" placeholder="ריק = אין הצעה" style="width:130px"></div>
-            </div>
-            <button class="btn" id="saveCalcBtn">שמירת הגדרות נקודות</button>
         </div>
     </section>
 

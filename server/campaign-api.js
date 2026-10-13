@@ -19,7 +19,7 @@ function parseSpreadsheet(base64) {
     return utils.sheet_to_json(sheet, { defval: '' });
 }
 
-export function campaignApiRouter({ mustLogin, mustManager, events }) {
+export function campaignApiRouter({ mustLogin, mustManager, requireFeature, events }) {
     const router = express.Router();
 
     router.get('/dashboard', mustLogin, (req, res) => {
@@ -96,7 +96,7 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         res.json(campaignGeoLeaves());
     });
 
-    router.put('/settings', mustLogin, mustManager, (req, res) => {
+    router.put('/settings', mustLogin, requireFeature('campaign_settings'), (req, res) => {
         setCampaignSettings(req.body || {});
         // לא לרשום את הלוגו (data URL ענק) ליומן הפעולות — רק שהוא השתנה
         const logged = { ...(req.body || {}) };
@@ -159,7 +159,7 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
     });
 
     // ייבוא רשימת מתנדבות מאקסל — עמודות טלפון + שם (לא תלוי בניסוח מדויק של הכותרת)
-    router.post('/import/volunteers', mustLogin, mustManager, (req, res) => {
+    router.post('/import/volunteers', mustLogin, requireFeature('campaign_import'), (req, res) => {
         let rows;
         try { rows = parseSpreadsheet(req.body?.data || ''); }
         catch { return res.status(400).json({ error: 'לא ניתן לקרוא את הקובץ — יש להעלות אקסל (xlsx/xls/csv) תקין' }); }
@@ -189,7 +189,7 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
 
     // ייבוא דיווחי גיוס מוצרים מרכזת הגיוס — עמודות טלפון (של השומרת), שווי/שם עסק, ואופציונלית נקודות מפורש.
     // כל שורה הופכת מיידית לנקודות מאושרות (לא ממתינות) — האקסל הוא כבר "המקור האמין" לפי תוכנית העבודה.
-    router.post('/import/recruitment', mustLogin, mustManager, (req, res) => {
+    router.post('/import/recruitment', mustLogin, requireFeature('campaign_import'), (req, res) => {
         let rows;
         try { rows = parseSpreadsheet(req.body?.data || ''); }
         catch { return res.status(400).json({ error: 'לא ניתן לקרוא את הקובץ — יש להעלות אקסל (xlsx/xls/csv) תקין' }); }
@@ -222,7 +222,7 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
     });
 
     // ייבוא קטלוג מתנות מאקסל — עמודות קוד, שם, שווי, נקודות. נכנסות לא-פעיל כברירת מחדל לבדיקה
-    router.post('/import/prizes', mustLogin, mustManager, (req, res) => {
+    router.post('/import/prizes', mustLogin, requireFeature('campaign_import'), (req, res) => {
         let rows;
         try { rows = parseSpreadsheet(req.body?.data || ''); }
         catch { return res.status(400).json({ error: 'לא ניתן לקרוא את הקובץ — יש להעלות אקסל (xlsx/xls/csv) תקין' }); }
@@ -250,7 +250,7 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         res.json({ added, updated, skipped, total: rows.length });
     });
 
-    router.post('/prizes', mustLogin, mustManager, (req, res) => {
+    router.post('/prizes', mustLogin, requireFeature('campaign_prizes'), (req, res) => {
         const { code, name, value_nis, points_cost } = req.body;
         const c = parseInt(code, 10);
         if (!Number.isFinite(c) || !name || !name.trim()) return res.status(400).json({ error: 'יש להזין קוד ושם תקינים' });
@@ -267,7 +267,7 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         res.json({ ok: true });
     });
 
-    router.put('/prizes/:id', mustLogin, mustManager, (req, res) => {
+    router.put('/prizes/:id', mustLogin, requireFeature('campaign_prizes'), (req, res) => {
         const { name, value_nis, points_cost, active } = req.body;
         const before = db.prepare('SELECT * FROM campaign_prizes WHERE id = ?').get(req.params.id);
         db.prepare('UPDATE campaign_prizes SET name = ?, value_nis = ?, points_cost = ?, active = ? WHERE id = ?')
@@ -278,7 +278,7 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         res.json({ ok: true });
     });
 
-    router.delete('/prizes/:id', mustLogin, mustManager, (req, res) => {
+    router.delete('/prizes/:id', mustLogin, requireFeature('campaign_prizes'), (req, res) => {
         const before = db.prepare('SELECT * FROM campaign_prizes WHERE id = ?').get(req.params.id);
         db.prepare('DELETE FROM campaign_prizes WHERE id = ?').run(req.params.id);
         audit(req.user.name, 'campaign.prize.delete', 'campaign_prizes', req.params.id, before, null);
@@ -287,7 +287,7 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
     });
 
     // קוד המוקד (PIN) מתמספר אוטומטית ברצף — כדי שלא יהיו כפילויות או צורך להמציא קוד ידנית
-    router.post('/hubs', mustLogin, mustManager, (req, res) => {
+    router.post('/hubs', mustLogin, requireFeature('campaign_hubs'), (req, res) => {
         const { name, kits_total, area_path, pickup_info } = req.body;
         if (!name || !name.trim()) return res.status(400).json({ error: 'יש להזין שם מוקד' });
         const total = parseInt(kits_total, 10) || 0;

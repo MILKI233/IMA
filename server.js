@@ -496,14 +496,49 @@ app.post('/api/messages', mustLogin, requireFeature('messages'), (req, res) => {
   const r = db.prepare('INSERT INTO messages(from_user, body) VALUES (?,?)').run(req.user.name, body);
   res.json({ id: r.lastInsertRowid });
 });
-// היסטוריה אישית — כל מה שהמשתמשת המחוברת שלחה, קיבלה אישית, או הכרזות כלליות שראתה. כמו תיבת מייל.
+// היסטוריה אישית — כל מה שהמשתמשת המחוברת שלחה, קיבלה אישית, או הכרזות כלליות שראתה. כמו תיבת מייל (בלי טיוטות).
 app.get('/api/messages/mine', mustLogin, requireFeature('messages'), (req, res) => {
   const rows = db.prepare(`
     SELECT * FROM messages
-    WHERE from_user = ? OR to_user = ? OR (to_user IS NULL AND kind = 'announcement')
+    WHERE status = 'sent' AND (from_user = ? OR to_user = ? OR (to_user IS NULL AND kind = 'announcement'))
     ORDER BY id DESC LIMIT 150
   `).all(req.user.name, req.user.name);
   res.json(rows);
+});
+
+// טיוטות — הודעות שנשמרו ועדיין לא נשלחו. פרטיות לכותבת בלבד.
+app.get('/api/messages/drafts', mustLogin, requireFeature('messages'), (req, res) => {
+  const rows = db.prepare(`SELECT * FROM messages WHERE from_user = ? AND status = 'draft' ORDER BY id DESC`).all(req.user.name);
+  res.json(rows);
+});
+app.post('/api/messages/draft', mustLogin, requireFeature('messages'), (req, res) => {
+  const text = (req.body?.text || '').trim();
+  const toUser = (req.body?.to_user || '').trim() || null;
+  if (!text) return res.status(400).json({ error: 'אין תוכן לטיוטה' });
+  const r = db.prepare(`INSERT INTO messages(from_user, body, kind, to_user, status) VALUES (?, ?, 'announcement', ?, 'draft')`)
+    .run(req.user.name, text, toUser);
+  res.json({ id: r.lastInsertRowid });
+});
+app.put('/api/messages/:id/draft', mustLogin, requireFeature('messages'), (req, res) => {
+  const text = (req.body?.text || '').trim();
+  const toUser = (req.body?.to_user || '').trim() || null;
+  if (!text) return res.status(400).json({ error: 'אין תוכן לטיוטה' });
+  const d = db.prepare(`SELECT * FROM messages WHERE id = ? AND from_user = ? AND status = 'draft'`).get(req.params.id, req.user.name);
+  if (!d) return res.status(404).json({ error: 'הטיוטה לא נמצאה' });
+  db.prepare('UPDATE messages SET body = ?, to_user = ? WHERE id = ?').run(text, toUser, d.id);
+  res.json({ ok: true });
+});
+app.delete('/api/messages/:id/draft', mustLogin, requireFeature('messages'), (req, res) => {
+  db.prepare(`DELETE FROM messages WHERE id = ? AND from_user = ? AND status = 'draft'`).run(req.params.id, req.user.name);
+  res.json({ ok: true });
+});
+// שליחת טיוטה — הופכת אותה להודעה שנשלחה בפועל (זמן השליחה מתעדכן לעכשיו)
+app.post('/api/messages/:id/send', mustLogin, requireFeature('messages'), (req, res) => {
+  const d = db.prepare(`SELECT * FROM messages WHERE id = ? AND from_user = ? AND status = 'draft'`).get(req.params.id, req.user.name);
+  if (!d) return res.status(404).json({ error: 'הטיוטה לא נמצאה' });
+  db.prepare(`UPDATE messages SET status = 'sent', created_at = datetime('now','localtime') WHERE id = ?`).run(d.id);
+  audit(req.user.name, 'message.broadcast', 'messages', d.id, null, { to: d.to_user || 'הכול', body: d.body });
+  res.json({ ok: true });
 });
 app.patch('/api/messages/:id/handle', mustLogin, mustManager, (req, res) => {
   db.prepare(`UPDATE messages SET handled_by=?, handled_at=datetime('now','localtime') WHERE id=?`)
@@ -546,7 +581,7 @@ app.post('/api/messages/broadcast', mustLogin, requireFeature('messages'), (req,
 app.get('/api/messages/banner', mustLogin, (req, res) => {
   const rows = db.prepare(`
     SELECT m.* FROM messages m
-    WHERE m.kind = 'announcement' AND m.from_user != ?
+    WHERE m.kind = 'announcement' AND m.status = 'sent' AND m.from_user != ?
       AND (m.to_user = ? OR m.to_user IS NULL)
       AND m.id NOT IN (SELECT message_id FROM message_dismissals WHERE user_name = ?)
     ORDER BY m.id DESC LIMIT 5
@@ -693,7 +728,7 @@ app.get('/api/reports/summary', mustLogin, mustManager, (req, res) => {
 app.use('/api/inv', requireFeature('inventory'), inventoryRouter({ mustLogin, mustManager, events }));
 
 // ---------- קמפיין המכירה הסינית (אמא במשמרת) ----------
-app.use('/api/campaign', requireFeature('campaign'), campaignApiRouter({ mustLogin, mustManager, events }));
+app.use('/api/campaign', requireFeature('campaign'), campaignApiRouter({ mustLogin, mustManager, requireFeature, events }));
 app.use('/yemot-campaign', createCampaignYemotRouter({ events }));
 
 // ---------- לוח מנהלת ----------
