@@ -28,6 +28,19 @@
 .announce-item .an-reply-row.hidden { display: none; }
 .announce-item .an-reply-row .in { flex: 1; }
 
+/* ---- שליחת אימוג'י מהיר ---- */
+.emoji-row { gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.emoji-btn {
+  border: 1px solid var(--line); background: #fff; cursor: pointer;
+  font-size: 1.2rem; line-height: 1; padding: 6px 10px; border-radius: 10px;
+}
+.emoji-btn:hover { background: var(--blue-100); border-color: var(--blue-500); }
+
+/* ---- תגית כיוון בהיסטוריה אישית (נשלח/התקבל) ---- */
+.badge-dir { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; margin-inline-end: 6px; }
+.badge-dir.out { background: var(--blue-100); color: var(--blue-500); }
+.badge-dir.in { background: #e2f5ee; color: #12805c; }
+
 /* ---- פס התקדמות ---- */
 .progress-wrap { margin-bottom: 18px; }
 .progress-label {

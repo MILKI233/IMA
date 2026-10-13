@@ -496,6 +496,15 @@ app.post('/api/messages', mustLogin, requireFeature('messages'), (req, res) => {
   const r = db.prepare('INSERT INTO messages(from_user, body) VALUES (?,?)').run(req.user.name, body);
   res.json({ id: r.lastInsertRowid });
 });
+// היסטוריה אישית — כל מה שהמשתמשת המחוברת שלחה, קיבלה אישית, או הכרזות כלליות שראתה. כמו תיבת מייל.
+app.get('/api/messages/mine', mustLogin, requireFeature('messages'), (req, res) => {
+  const rows = db.prepare(`
+    SELECT * FROM messages
+    WHERE from_user = ? OR to_user = ? OR (to_user IS NULL AND kind = 'announcement')
+    ORDER BY id DESC LIMIT 150
+  `).all(req.user.name, req.user.name);
+  res.json(rows);
+});
 app.patch('/api/messages/:id/handle', mustLogin, mustManager, (req, res) => {
   db.prepare(`UPDATE messages SET handled_by=?, handled_at=datetime('now','localtime') WHERE id=?`)
     .run(req.user.name, req.params.id);
@@ -522,8 +531,8 @@ app.post('/api/messages/:id/reply', mustLogin, (req, res) => {
   res.json({ id: r.lastInsertRowid });
 });
 
-// הכרזה כללית ממנהלת — לכולם (to_user ריק) או למשתמשת ספציפית
-app.post('/api/messages/broadcast', mustLogin, mustManager, (req, res) => {
+// הכרזה כללית — לכולם (to_user ריק) או למשתמשת ספציפית. פתוח לכל מי שיש לה גישה למערכת, לא רק מנהלת
+app.post('/api/messages/broadcast', mustLogin, requireFeature('messages'), (req, res) => {
   const text = (req.body?.text || '').trim();
   const toUser = (req.body?.to_user || '').trim() || null;
   if (!text) return res.status(400).json({ error: 'אין תוכן להודעה' });
@@ -550,8 +559,9 @@ app.post('/api/messages/:id/dismiss', mustLogin, (req, res) => {
   res.json({ ok: true });
 });
 
-// רשימת שמות הצוות — לשיוך משימות (מנהלת בלבד)
-app.get('/api/users/names', mustLogin, mustManager, (req, res) => {
+// רשימת שמות הצוות — לשיוך משימות ולבחירת נמענת להודעה. פתוח לכל מחוברת (לא רק מנהלת)
+// כדי שכל מי שיש לה גישה למערכת תוכל לשלוח הודעה למישהי ספציפית
+app.get('/api/users/names', mustLogin, (req, res) => {
   res.json(db.prepare(`SELECT name FROM users WHERE active = 1 AND role != 'מתנדבת' ORDER BY name`).all().map((u) => u.name));
 });
 

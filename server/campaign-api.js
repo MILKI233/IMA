@@ -74,6 +74,24 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         res.json(rows);
     });
 
+    // הוספת מתנדבת ידנית — ממסך הדשבורד הרגיל, לא רק דרך ניהול/אקסל
+    router.post('/volunteers', mustLogin, (req, res) => {
+        const phone = String(req.body?.phone ?? '').replace(/\D/g, '');
+        const name = String(req.body?.name ?? '').trim();
+        if (!phone) return res.status(400).json({ error: 'יש להזין מספר טלפון' });
+        let id;
+        try {
+            const r = db.prepare("INSERT INTO campaign_volunteers (phone, name, identified, created_at) VALUES (?, ?, ?, datetime('now','localtime'))")
+                .run(phone, name || null, name ? 1 : 0);
+            id = r.lastInsertRowid;
+        } catch {
+            return res.status(400).json({ error: 'מתנדבת עם טלפון זה כבר קיימת' });
+        }
+        audit(req.user.name, 'campaign.volunteer.create', 'campaign_volunteers', id, null, { phone, name: name || null });
+        events?.emit('campaign.update');
+        res.json({ ok: true, id });
+    });
+
     router.get('/geo-leaves', mustLogin, (req, res) => {
         res.json(campaignGeoLeaves());
     });
@@ -268,21 +286,18 @@ export function campaignApiRouter({ mustLogin, mustManager, events }) {
         res.json({ ok: true });
     });
 
+    // קוד המוקד (PIN) מתמספר אוטומטית ברצף — כדי שלא יהיו כפילויות או צורך להמציא קוד ידנית
     router.post('/hubs', mustLogin, mustManager, (req, res) => {
-        const { name, pin, kits_total, area_path, pickup_info } = req.body;
-        if (!name || !name.trim() || !pin || !String(pin).trim()) return res.status(400).json({ error: 'יש להזין שם וקוד מוקד' });
+        const { name, kits_total, area_path, pickup_info } = req.body;
+        if (!name || !name.trim()) return res.status(400).json({ error: 'יש להזין שם מוקד' });
         const total = parseInt(kits_total, 10) || 0;
-        let id;
-        try {
-            const r = db.prepare("INSERT INTO campaign_hubs (name, pin, kits_total, kits_available, area_path, pickup_info, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))")
-                .run(name.trim(), String(pin).trim(), total, total, area_path || null, pickup_info || null);
-            id = r.lastInsertRowid;
-        } catch (e) {
-            return res.status(400).json({ error: 'קוד מוקד זה כבר קיים' });
-        }
-        audit(req.user.name, 'campaign.hub.create', 'campaign_hubs', id, null, { name: name.trim(), kits_total: total });
+        const maxPin = db.prepare("SELECT MAX(CAST(pin AS INTEGER)) AS m FROM campaign_hubs").get().m || 0;
+        const nextPin = String(maxPin + 1);
+        const r = db.prepare("INSERT INTO campaign_hubs (name, pin, kits_total, kits_available, area_path, pickup_info, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))")
+            .run(name.trim(), nextPin, total, total, area_path || null, pickup_info || null);
+        audit(req.user.name, 'campaign.hub.create', 'campaign_hubs', r.lastInsertRowid, null, { name: name.trim(), kits_total: total, pin: nextPin });
         events?.emit('campaign.update');
-        res.json({ ok: true });
+        res.json({ ok: true, pin: nextPin });
     });
 
     router.put('/hubs/:id', mustLogin, mustManager, (req, res) => {

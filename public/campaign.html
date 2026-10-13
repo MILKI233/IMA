@@ -50,6 +50,12 @@
                 <th>שם</th><th>טלפון</th><th>נקודות</th><th>יעד שבועי</th><th></th>
             </tr></thead><tbody></tbody></table>
             <div class="empty" id="volunteersEmpty" style="display:none">אין מתנדבות עדיין</div>
+            <div class="row" style="margin-top:14px">
+                <input id="newVolPhone" placeholder="טלפון" style="width:140px">
+                <input id="newVolName" placeholder="שם (לא חובה)" style="width:160px">
+                <button class="btn" id="addVolBtn">➕ הוספת מתנדבת</button>
+            </div>
+            <div id="newVolErr" class="hint"></div>
         </div>
         <div class="card">
             <h2>פעילות אחרונה</h2>
@@ -138,7 +144,6 @@
             <p class="hint">"אזור בשלוחת ימות" הוא מה שהמתנדבת שומעת בטלפון בשלוחה 4. בלי בחירת אזור, המוקד נגיש רק לאחראית עם קוד PIN.</p>
             <div class="row">
                 <input id="hubName" placeholder="שם המוקד" style="width:160px">
-                <input id="hubPin" placeholder="קוד מוקד (ייחודי)" style="width:110px">
                 <input id="hubTotal" placeholder="כמות ערכות" style="width:100px">
                 <select id="hubAreaPath" style="width:200px"><option value="">— ללא אזור בשלוחה —</option></select>
             </div>

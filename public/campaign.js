@@ -386,6 +386,19 @@ async function setName(id) {
     try { await api(`/api/campaign/volunteers/${id}`, { method: 'PUT', body: { name } }); loadDashboard(); }
     catch (e) { alert(e.message); }
 }
+document.getElementById('addVolBtn').addEventListener('click', async () => {
+    const phone = document.getElementById('newVolPhone').value.trim();
+    const name = document.getElementById('newVolName').value.trim();
+    const err = document.getElementById('newVolErr');
+    err.textContent = '';
+    if (!phone) { err.textContent = 'יש להזין מספר טלפון'; return; }
+    try {
+        await api('/api/campaign/volunteers', { method: 'POST', body: { phone, name } });
+        document.getElementById('newVolPhone').value = '';
+        document.getElementById('newVolName').value = '';
+        loadDashboard();
+    } catch (e) { err.textContent = e.message || 'ההוספה נכשלה'; }
+});
 async function deletePrize(id) { if (!confirm('למחוק את המתנה?')) return; await api(`/api/campaign/prizes/${id}`, { method: 'DELETE' }); loadDashboard(); }
 async function togglePrizeActive(id) {
     const pr = lastData.prizes.find((p) => p.id === id);
@@ -417,18 +430,17 @@ document.getElementById('addPrizeBtn').addEventListener('click', async () => {
 
 document.getElementById('addHubBtn').addEventListener('click', async () => {
     try {
-        await api('/api/campaign/hubs', { method: 'POST', body: {
+        const r = await api('/api/campaign/hubs', { method: 'POST', body: {
             name: document.getElementById('hubName').value,
-            pin: document.getElementById('hubPin').value,
             kits_total: document.getElementById('hubTotal').value,
             area_path: document.getElementById('hubAreaPath').value,
             pickup_info: document.getElementById('hubPickupInfo').value,
         } });
         document.getElementById('hubName').value = '';
-        document.getElementById('hubPin').value = '';
         document.getElementById('hubTotal').value = '';
         document.getElementById('hubAreaPath').value = '';
         document.getElementById('hubPickupInfo').value = '';
+        alert(`המוקד נוסף — קוד PIN: ${r.pin}`);
         loadDashboard();
     } catch (e) { alert(e.message); }
 });

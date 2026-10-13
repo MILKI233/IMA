@@ -1054,7 +1054,7 @@ function newTaskForm(defaultDue) {
 // כמו fillNamesSelect, אבל על אלמנט שעוד לא צורף למסמך
 async function fillNamesSelect2(root, sel) {
   const box = root.querySelector(sel);
-  if (!box || !isManagerRole(USER.role)) return;
+  if (!box) return;
   try {
     (await api('/api/users/names')).forEach((n) => box.append(el('option', '', esc(n))));
   } catch { /* לא קריטי */ }
@@ -1382,18 +1382,33 @@ function handoverItem(h, { history = false, compact = false } = {}) {
 }
 
 /* ===================== הודעות ===================== */
+const QUICK_EMOJI = ['👍', '❤️', '😊', '🙏', '✅', '👏'];
+
+function emojiRow(onPick) {
+  const row = el('div', 'row emoji-row');
+  QUICK_EMOJI.forEach((em) => {
+    const b = el('button', 'emoji-btn', em);
+    b.type = 'button';
+    b.addEventListener('click', () => onPick(em));
+    row.append(b);
+  });
+  return row;
+}
+
 async function renderMessages(main) {
   const manager = isManagerRole(USER.role);
-  // עובדות/אחמ"שיות רואות רק מסך כתיבה — ההיסטוריה שמורה למנהלת
-  const items = manager ? await api('/api/messages') : [];
+  const [reports, mine] = await Promise.all([
+    manager ? api('/api/messages') : Promise.resolve([]),
+    api('/api/messages/mine').catch(() => []),
+  ]);
   main.innerHTML = `
     <div class="card">
       <div class="section-title" style="margin-top:0">✉️ הודעה חדשה להנהלה</div>
       <textarea id="msg-body" class="in" placeholder="כתבי כאן במקום מחברת ההודעות…" style="min-height:120px"></textarea>
+      <div id="msg-emoji"></div>
       <div class="form-actions"><button class="btn-primary" id="msg-btn">שליחת ההודעה</button></div>
       <div id="msg-sent" class="ok-line"></div>
     </div>
-    ${manager ? `
     <div class="card">
       <div class="section-title" style="margin-top:0">📣 שליחת הודעה כללית</div>
       <div class="row">
@@ -1401,33 +1416,57 @@ async function renderMessages(main) {
         <input id="bc-body" class="in grow" placeholder="תוכן ההודעה — תוצג כבאנר בראש האתר">
         <button class="btn-primary" id="bc-btn">שליחה</button>
       </div>
+      <div id="bc-emoji"></div>
       <div id="bc-sent" class="ok-line"></div>
     </div>
-    <div class="section-title">הודעות אחרונות</div><div id="msg-list"></div>` : ''}`;
+    <div class="section-title">✉️ ההיסטוריה שלי</div><div id="mine-list"></div>
+    ${manager ? '<div class="section-title">הודעות אחרונות (ניהול)</div><div id="msg-list"></div>' : ''}`;
+
+  $('#msg-emoji').append(emojiRow(async (em) => {
+    await api('/api/messages', { method: 'POST', body: { body: em } });
+    toast('נשלח', 'ok');
+    render();
+  }));
   $('#msg-btn').addEventListener('click', async () => {
     const body = $('#msg-body').value.trim();
     if (!body) return;
     await api('/api/messages', { method: 'POST', body: { body } });
     toast('ההודעה נשלחה', 'ok');
-    if (manager) { render(); return; }
-    $('#msg-body').value = '';
-    $('#msg-sent').textContent = '✓ ההודעה נשלחה להנהלה';
+    render();
   });
-  if (!manager) return;
+
   fillNamesSelect2(document, '#bc-to');
-  $('#bc-btn').addEventListener('click', async () => {
-    const text = $('#bc-body').value.trim();
-    if (!text) return;
+  const sendBroadcast = async (text) => {
     try {
       await api('/api/messages/broadcast', { method: 'POST', body: { text, to_user: $('#bc-to').value || null } });
-      $('#bc-body').value = '';
-      $('#bc-sent').textContent = '✓ ההודעה נשלחה';
       toast('ההודעה נשלחה', 'ok');
+      render();
     } catch (e) { toast(e.message || 'השליחה נכשלה', 'err'); }
+  };
+  $('#bc-emoji').append(emojiRow((em) => sendBroadcast(em)));
+  $('#bc-btn').addEventListener('click', () => {
+    const text = $('#bc-body').value.trim();
+    if (text) sendBroadcast(text);
   });
+
+  // ---- ההיסטוריה שלי: כל מה ששלחתי, קיבלתי אישית, או הכרזה כללית שראיתי — כמו תיבת מייל ----
+  const mineList = $('#mine-list');
+  if (!mine.length) mineList.append(el('div', 'empty-state', 'אין עדיין הודעות'));
+  mine.forEach((msg) => {
+    const sentByMe = msg.from_user === USER.name;
+    const item = el('div', 'list-item');
+    const dirBadge = sentByMe ? '<span class="badge-dir out">נשלח</span>' : '<span class="badge-dir in">התקבל</span>';
+    const whoLine = sentByMe
+      ? `אל ${esc(msg.to_user || 'כולם')}`
+      : `מאת ${esc(msg.from_user)}${msg.to_user ? '' : ' (לכולם)'}`;
+    item.innerHTML = `<div class="meta">${dirBadge} ${whoLine} · ${esc((msg.created_at || '').slice(0, 16))}</div>${esc(msg.body)}`;
+    mineList.append(item);
+  });
+
+  if (!manager) return;
   const list = $('#msg-list');
-  if (!items.length) list.append(el('div', 'empty-state', 'אין הודעות'));
-  items.forEach((msg) => {
+  if (!reports.length) list.append(el('div', 'empty-state', 'אין הודעות'));
+  reports.forEach((msg) => {
     const item = el('div', 'list-item' + (msg.handled_at ? ' handled' : ''));
     item.innerHTML = `<div class="meta"><b style="color:var(--navy-800);font-size:1.02em">✍️ ${esc(msg.from_user)}</b> · ${esc((msg.created_at || '').slice(0, 16).replace('T', ' '))}${msg.handled_at ? ` · טופל ע"י ${esc(msg.handled_by)}` : ''}</div>${esc(msg.body)}`;
     const replyRow = el('div', 'row', '');
