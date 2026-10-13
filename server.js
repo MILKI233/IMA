@@ -102,6 +102,39 @@ app.post('/api/logout', mustLogin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- שעות נוכחות ----------
+// סיכום חודשי: למנהלת — כל הצוות; לכל אחת אחרת — רק הנתונים שלה
+app.get('/api/attendance/summary', mustLogin, requireFeature('attendance'), (req, res) => {
+  const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : isoDate(new Date()).slice(0, 7);
+  const isManager = isManagerOrAbove(req.user.role);
+  const rows = db.prepare(`
+    SELECT u.name, u.role,
+           COALESCE(SUM((julianday(COALESCE(a.check_out, datetime('now','localtime'))) - julianday(a.check_in)) * 24), 0) AS hours,
+           COUNT(a.id) AS sessions,
+           MAX(a.id IS NOT NULL AND a.check_out IS NULL) AS onShift,
+           MAX(CASE WHEN a.id IS NOT NULL AND a.check_out IS NULL THEN a.check_in END) AS liveSince
+    FROM users u LEFT JOIN attendance a ON a.user_id = u.id AND strftime('%Y-%m', a.check_in) = ?
+    WHERE u.active = 1 ${isManager ? '' : 'AND u.id = ?'}
+    GROUP BY u.id ORDER BY hours DESC
+  `).all(...(isManager ? [month] : [month, req.user.id]));
+  res.json({ month, rows });
+});
+
+// פירוט כניסות/יציאות — למנהלת לכל אחת, לכל אחת אחרת רק לעצמה
+app.get('/api/attendance/detail', mustLogin, requireFeature('attendance'), (req, res) => {
+  const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : isoDate(new Date()).slice(0, 7);
+  const isManager = isManagerOrAbove(req.user.role);
+  const targetName = (isManager && req.query.user) ? req.query.user : req.user.name;
+  const rows = db.prepare(`
+    SELECT a.check_in, a.check_out,
+           (julianday(COALESCE(a.check_out, datetime('now','localtime'))) - julianday(a.check_in)) * 24 AS hours
+    FROM attendance a JOIN users u ON u.id = a.user_id
+    WHERE u.name = ? AND strftime('%Y-%m', a.check_in) = ?
+    ORDER BY a.check_in DESC
+  `).all(targetName, month);
+  res.json({ month, name: targetName, rows });
+});
+
 // ---------- הקשר עברי ----------
 app.get('/api/context', (req, res) => {
   const info = hebInfo(new Date());

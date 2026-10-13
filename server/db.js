@@ -363,6 +363,7 @@ export const FEATURES = [
   { key: 'problems', label: 'לוח בעיות' },
   { key: 'handover', label: 'העברת משמרת' },
   { key: 'messages', label: 'הודעות' },
+  { key: 'attendance', label: 'שעות נוכחות' },
   { key: 'inventory', label: 'מלאי והשכרה (CRM)' },
   { key: 'campaign', label: 'קמפיין המכירה הסינית' },
   { key: 'campaign_prizes', label: 'קמפיין · ניהול קטלוג מתנות' },
@@ -406,8 +407,8 @@ const MANAGER_DEFAULTS = FEATURE_KEYS.filter((k) => k !== 'admin');
 const PERM_DEFAULTS = {
   [TOP_ROLE]: FEATURE_KEYS,
   'מנהלת': MANAGER_DEFAULTS,
-  'אחמ"שית': ['today', 'week', 'periodic', 'calendar', 'problems', 'handover', 'messages', 'inventory', 'campaign', 'ai'],
-  'מתנדבת': ['today', 'messages'],
+  'אחמ"שית': ['today', 'week', 'periodic', 'calendar', 'problems', 'handover', 'messages', 'attendance', 'inventory', 'campaign', 'ai'],
+  'מתנדבת': ['today', 'messages', 'attendance'],
 };
 
 if (db.prepare('SELECT COUNT(*) c FROM role_permissions').get().c === 0) {

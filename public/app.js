@@ -41,6 +41,8 @@ let OPEN_CAT = null;
 let COUNTERS = { problems: 0, messages: 0, handover: 0 };
 const COUNTER_TABS = { problems: 'problems', handover: 'handover', messages: 'messages' };
 let ANNOUNCE_TIMER = null;
+let ATTENDANCE_LIVE_TIMER = null;
+let ATTENDANCE_MONTH = null;
 // תצוגת מסך העברת המשמרת: הערות פעילות בלבד או גם היסטוריה
 let HO_SHOW_HISTORY = false;
 // הערות פעילות מימים קודמים — מכווצות כברירת מחדל, כדי שמה שנכתב היום יבלוט
@@ -84,13 +86,14 @@ const NAV = {
   problems:  { icon: '⚠', label: 'לוח בעיות', title: 'לוח בעיות' },
   handover:  { icon: '⇄', label: 'משמרת', title: 'העברת משמרת' },
   messages:  { icon: '✉', label: 'הודעות', title: 'הודעות' },
+  attendance: { icon: '⏱', label: 'שעות נוכחות', title: 'שעות נוכחות' },
   inventory: { icon: '◨', label: 'מלאי והשכרה', title: '', link: '/inventory.html' },
   campaign:  { icon: '🎗', label: 'קמפיין מכירה סינית', title: '', link: '/campaign.html' },
   ai:        { icon: '✦', label: 'עוזרת AI', title: 'עוזרת AI' },
   integrations: { icon: '⇆', label: 'חיבורים', title: 'חיבורים: מייל · ימות המשיח · AI · גיבוי' },
   admin:     { icon: '⚙', label: 'ניהול והרשאות', title: 'ניהול והרשאות' },
 };
-const NAV_ORDER = ['dashboard', 'today', 'week', 'periodic', 'calendar', 'problems', 'handover', 'messages', 'inventory', 'campaign', 'ai', 'integrations', 'admin'];
+const NAV_ORDER = ['dashboard', 'today', 'week', 'periodic', 'calendar', 'problems', 'handover', 'messages', 'attendance', 'inventory', 'campaign', 'ai', 'integrations', 'admin'];
 // פריטים שאינם לשימוש יומיומי — נאספים לקבוצה מתקפלת אחת בתחתית התפריט
 const ADMIN_NAV = ['integrations', 'admin'];
 const NAV_GROUP = { icon: '⚙️', label: 'ניהול' };
@@ -352,6 +355,7 @@ function logout() {
   localStorage.removeItem(NAV_GROUP_LS);
   USER = null; TAB = null;
   if (ANNOUNCE_TIMER) { clearInterval(ANNOUNCE_TIMER); ANNOUNCE_TIMER = null; }
+  if (ATTENDANCE_LIVE_TIMER) { clearInterval(ATTENDANCE_LIVE_TIMER); ATTENDANCE_LIVE_TIMER = null; }
   const box = $('#announce-banner'); if (box) box.innerHTML = '';
   COUNTERS = { problems: 0, messages: 0, handover: 0 };
   HO_SHOW_HISTORY = false;
@@ -374,6 +378,7 @@ async function render() {
     else if (TAB === 'problems') await renderProblems(main);
     else if (TAB === 'handover') await renderHandover(main);
     else if (TAB === 'messages') await renderMessages(main);
+    else if (TAB === 'attendance') await renderAttendance(main);
     else if (TAB === 'ai') await renderAI(main);
     else if (TAB === 'integrations') await renderIntegrations(main);
     else if (TAB === 'admin') await renderAdmin(main);
@@ -1562,6 +1567,108 @@ async function renderMessages(main) {
     }
     list.append(item);
   });
+}
+
+/* ===================== שעות נוכחות ===================== */
+function fmtHours(h) {
+  const totalMin = Math.round(h * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return `${hh}:${String(mm).padStart(2, '0')}`;
+}
+
+function liveElapsedLabel(sinceIso) {
+  const since = new Date(sinceIso.replace(' ', 'T'));
+  const diffSec = Math.max(0, Math.floor((Date.now() - since.getTime()) / 1000));
+  const h = Math.floor(diffSec / 3600);
+  const m = Math.floor((diffSec % 3600) / 60);
+  const s = diffSec % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function timerCard(row) {
+  const card = el('div', 'timer-card' + (row.onShift ? ' live' : ''));
+  card.innerHTML = `
+    <div class="tc-name">${esc(row.name)}${row.role ? ` <span class="tc-role">· ${esc(row.role)}</span>` : ''}</div>
+    <div class="tc-ring"><div class="tc-hours">${fmtHours(row.hours)}</div><div class="tc-label">שעות החודש</div></div>
+    <div class="tc-sessions">${row.sessions} כניסות החודש</div>
+    ${row.onShift ? `<div class="tc-live"><span class="tc-dot"></span>מחוברת כרגע · <span class="tc-live-clock" data-since="${esc(row.liveSince)}">00:00:00</span></div>` : ''}`;
+  return card;
+}
+
+function tickLiveClocks() {
+  document.querySelectorAll('.tc-live-clock').forEach((el2) => {
+    el2.textContent = liveElapsedLabel(el2.dataset.since);
+  });
+}
+
+async function renderAttendance(main) {
+  if (ATTENDANCE_LIVE_TIMER) { clearInterval(ATTENDANCE_LIVE_TIMER); ATTENDANCE_LIVE_TIMER = null; }
+  const manager = isManagerRole(USER.role);
+  if (!ATTENDANCE_MONTH) ATTENDANCE_MONTH = (CTX.today || new Date().toISOString().slice(0, 10)).slice(0, 7);
+
+  const data = await api(`/api/attendance/summary?month=${ATTENDANCE_MONTH}`);
+  const [y, mo] = ATTENDANCE_MONTH.split('-').map(Number);
+
+  main.innerHTML = '';
+  const nav = el('div', 'cal-nav');
+  const prev = el('button', 'btn-secondary btn-sm', 'החודש הקודם ‹');
+  const next = el('button', 'btn-secondary btn-sm', '› החודש הבא');
+  const title = el('div', 'cal-title', `<strong>${GREG_MONTHS[mo - 1]} ${y}</strong>`);
+  prev.addEventListener('click', () => {
+    let nm = mo - 1, ny = y; if (nm < 1) { nm = 12; ny--; }
+    ATTENDANCE_MONTH = `${ny}-${String(nm).padStart(2, '0')}`;
+    render();
+  });
+  next.addEventListener('click', () => {
+    let nm = mo + 1, ny = y; if (nm > 12) { nm = 1; ny++; }
+    ATTENDANCE_MONTH = `${ny}-${String(nm).padStart(2, '0')}`;
+    render();
+  });
+  nav.append(next, title, prev);
+  main.append(nav);
+
+  const grid = el('div', 'timer-grid');
+  data.rows.forEach((row) => {
+    const card = timerCard(row);
+    if (manager) {
+      card.style.cursor = 'pointer';
+      card.title = 'לחיצה לפירוט כניסות ויציאות';
+      card.addEventListener('click', async () => {
+        document.querySelectorAll('.attendance-detail-box').forEach((b) => b.remove());
+        const detail = await api(`/api/attendance/detail?month=${ATTENDANCE_MONTH}&user=${encodeURIComponent(row.name)}`);
+        const box = el('div', 'card attendance-detail-box');
+        box.append(el('div', 'section-title', `📋 פירוט כניסות ויציאות — ${esc(row.name)}`), attendanceDetailTable(detail.rows));
+        main.append(box);
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+    grid.append(card);
+  });
+  if (!data.rows.length) grid.append(el('div', 'empty-state', 'אין עדיין נתוני נוכחות לחודש הזה'));
+  main.append(grid);
+
+  if (!manager && data.rows.length) {
+    main.append(el('div', 'section-title', '📋 פירוט כניסות ויציאות'));
+    const detail = await api(`/api/attendance/detail?month=${ATTENDANCE_MONTH}`);
+    main.append(attendanceDetailTable(detail.rows));
+  }
+
+  if (document.querySelectorAll('.tc-live-clock').length) {
+    tickLiveClocks();
+    ATTENDANCE_LIVE_TIMER = setInterval(tickLiveClocks, 1000);
+  }
+}
+
+function attendanceDetailTable(rows) {
+  const t = el('table', 'data');
+  t.innerHTML = '<tr><th>כניסה</th><th>יציאה</th><th>משך</th></tr>' +
+    (rows.length ? rows.map((r) => `<tr>
+      <td>${esc((r.check_in || '').slice(0, 16))}</td>
+      <td>${r.check_out ? esc(r.check_out.slice(0, 16)) : '<span class="badge-live">מחוברת כעת</span>'}</td>
+      <td>${fmtHours(r.hours)}</td>
+    </tr>`).join('') : '<tr><td colspan="3" class="muted">אין נתונים</td></tr>');
+  return t;
 }
 
 /* ===================== ניהול ===================== */
