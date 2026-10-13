@@ -45,6 +45,7 @@
 .msg-tab.active { color: var(--navy-800); border-bottom-color: var(--blue-500); }
 .msg-folder.hidden { display: none; }
 .draft-item textarea { width: 100%; }
+.unread-msg { background: var(--blue-100); border-inline-start: 4px solid var(--blue-500); font-weight: 600; }
 
 /* ---- פס התקדמות ---- */
 .progress-wrap { margin-bottom: 18px; }

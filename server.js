@@ -497,13 +497,28 @@ app.post('/api/messages', mustLogin, requireFeature('messages'), (req, res) => {
   res.json({ id: r.lastInsertRowid });
 });
 // היסטוריה אישית — כל מה שהמשתמשת המחוברת שלחה, קיבלה אישית, או הכרזות כלליות שראתה. כמו תיבת מייל (בלי טיוטות).
+// כל שורה מסומנת read=true/false (האם נראתה — מופעל גם ע"י פתיחת הנכנס וגם ע"י סגירת באנר)
 app.get('/api/messages/mine', mustLogin, requireFeature('messages'), (req, res) => {
   const rows = db.prepare(`
-    SELECT * FROM messages
-    WHERE status = 'sent' AND (from_user = ? OR to_user = ? OR (to_user IS NULL AND kind = 'announcement'))
-    ORDER BY id DESC LIMIT 150
-  `).all(req.user.name, req.user.name);
+    SELECT m.*, (m.from_user = ? OR EXISTS(
+      SELECT 1 FROM message_dismissals d WHERE d.message_id = m.id AND d.user_name = ?
+    )) AS read
+    FROM messages m
+    WHERE m.status = 'sent' AND (m.from_user = ? OR m.to_user = ? OR (m.to_user IS NULL AND m.kind = 'announcement'))
+    ORDER BY m.id DESC LIMIT 150
+  `).all(req.user.name, req.user.name, req.user.name, req.user.name);
   res.json(rows);
+});
+
+// מסמנת את כל ההודעות הנכנסות הנראות כרגע כ"נקראו" — נקראת כשפותחים את תיבת ה"נכנס"
+app.post('/api/messages/mark-read', mustLogin, requireFeature('messages'), (req, res) => {
+  db.prepare(`
+    INSERT OR IGNORE INTO message_dismissals (message_id, user_name)
+    SELECT m.id, ? FROM messages m
+    WHERE m.status = 'sent' AND m.from_user != ?
+      AND (m.to_user = ? OR (m.to_user IS NULL AND m.kind = 'announcement'))
+  `).run(req.user.name, req.user.name, req.user.name);
+  res.json({ ok: true });
 });
 
 // טיוטות — הודעות שנשמרו ועדיין לא נשלחו. פרטיות לכותבת בלבד.
@@ -606,11 +621,22 @@ app.get('/api/counters', mustLogin, (req, res) => {
   const role = req.user.role;
   const problems = hasFeature(role, 'problems')
     ? db.prepare(`SELECT COUNT(*) c FROM problems WHERE status = 'פתוח'`).get().c : 0;
-  // היסטוריית ההודעות גלויה למנהלת ומעלה בלבד — ולכן גם המונה
-  const messages = (hasFeature(role, 'messages') && isManagerOrAbove(role))
-    ? db.prepare(`SELECT COUNT(*) c FROM messages WHERE handled_at IS NULL AND kind = 'report'`).get().c : 0;
   const handover = hasFeature(role, 'handover')
     ? db.prepare(`SELECT COUNT(*) c FROM handovers WHERE ${HANDOVER_UNACKED_BY_ME_SQL}`).get(req.user.name).c : 0;
+  let messages = 0;
+  if (hasFeature(role, 'messages')) {
+    // היסטוריית הדיווחים גלויה למנהלת ומעלה בלבד — ולכן המונה הזה רק לה
+    if (isManagerOrAbove(role)) {
+      messages += db.prepare(`SELECT COUNT(*) c FROM messages WHERE handled_at IS NULL AND kind = 'report'`).get().c;
+    }
+    // הודעות שהתקבלו ועדיין לא נראו — לכל משתמשת, כולל מתנדבת/עובדת
+    messages += db.prepare(`
+      SELECT COUNT(*) c FROM messages m
+      WHERE m.status = 'sent' AND m.from_user != ?
+        AND (m.to_user = ? OR (m.to_user IS NULL AND m.kind = 'announcement'))
+        AND m.id NOT IN (SELECT message_id FROM message_dismissals WHERE user_name = ?)
+    `).get(req.user.name, req.user.name, req.user.name).c;
+  }
   res.json({ problems, messages, handover });
 });
 

@@ -1402,6 +1402,8 @@ async function renderMessages(main) {
     api('/api/messages/mine').catch(() => []),
     api('/api/messages/drafts').catch(() => []),
   ]);
+  // מסמנים כנקראו אחרי שהבאנו את הרשימה (כדי שעדיין נראה מי היה חדש בתצוגה הזו), ומרעננים את מונה התפריט
+  api('/api/messages/mark-read', { method: 'POST' }).then(refreshCounters).catch(() => {});
   main.innerHTML = `
     <div class="card">
       <div class="section-title" style="margin-top:0">✉️ הודעה חדשה להנהלה</div>
@@ -1481,12 +1483,15 @@ async function renderMessages(main) {
 
   const received = mine.filter((m) => m.from_user !== USER.name);
   const sent = mine.filter((m) => m.from_user === USER.name);
+  const unreadCount = received.filter((m) => !m.read).length;
+  const inboxTabBtn = document.querySelector('.msg-tab[data-tab="inbox"]');
+  if (inboxTabBtn && unreadCount) inboxTabBtn.textContent = `📥 נכנס (${unreadCount})`;
 
   const inboxBox = $('#msg-folder-inbox');
   if (!received.length) inboxBox.append(el('div', 'empty-state', 'אין הודעות נכנסות'));
   received.forEach((msg) => {
-    const item = el('div', 'list-item');
-    const whoLine = `מאת ${esc(msg.from_user)}${msg.to_user ? '' : ' (לכולם)'}`;
+    const item = el('div', 'list-item' + (msg.read ? '' : ' unread-msg'));
+    const whoLine = `${msg.read ? '' : '🔵 '}מאת ${esc(msg.from_user)}${msg.to_user ? '' : ' (לכולם)'}`;
     item.innerHTML = `<div class="meta">${whoLine} · ${esc((msg.created_at || '').slice(0, 16))}</div>${esc(msg.body)}`;
     inboxBox.append(item);
   });
