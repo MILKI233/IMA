@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ama-mishmeret-tasks
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: "3900"
+      - key: GEMACH_DATA_DIR
+        value: /data
+    disk:
+      name: ama_data
+      mountPath: /data
+      sizeGB: 1
+    healthCheckPath: /api/integration/health

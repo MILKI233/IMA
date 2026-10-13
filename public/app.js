@@ -1426,6 +1426,24 @@ async function renderAdmin(main) {
     } catch (e) { $('#nu-err').textContent = e.message; }
   });
 
+  // קישור ישיר לניהול הקמפיין (מתנות/מוקדים/מיתוג) — כדי שלא יהיה צריך לחפש
+  if ((USER.features || []).includes('campaign')) {
+    const campaignLink = el('div', 'card');
+    campaignLink.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap';
+    campaignLink.innerHTML = `
+      <div>
+        <div class="section-title" style="margin:0">🎗 קמפיין המכירה הסינית</div>
+        <div class="sub muted">מתנות, מוקדי הפצה, מיתוג ונקודות — מסך נפרד</div>
+      </div>
+      <a href="/campaign.html" class="btn-primary">לניהול הקמפיין ←</a>`;
+    main.append(campaignLink);
+  }
+
+  // מטריצת ההרשאות (כולל גישה לקמפיין) — ממש ליד יצירת המשתמשת, לא בסוף העמוד הארוך
+  if ((USER.features || []).includes('admin') || isManagerRole(USER.role)) {
+    await renderPermissions(main);
+  }
+
   main.append(el('div', 'section-title', '🔁 תבניות משימות'));
   const SCOPES = SCOPE_ORDER;
   // שמות הצוות לבורר "אחראית" — נשלפים פעם אחת ומשמשים גם בטבלה וגם בטופס
@@ -1697,9 +1715,6 @@ async function renderAdmin(main) {
       toast('התבנית נוספה', 'ok'); render();
     } catch (e) { toast(e.message || 'לא ניתן להוסיף את התבנית', 'err'); }
   });
-
-  // עורך הרשאות גם כאן
-  await renderPermissions(main);
 
   main.append(el('div', 'section-title', '🕐 יומן פעולות אחרון (Audit)'));
   const aT = el('table', 'data');
