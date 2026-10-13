@@ -8,7 +8,7 @@ import { hebInfo, isoDate, dayInfo, hebMonthTitle } from './server/hebrew.js';
 import { ensureInstances, tasksForScope, FREQS, visibilityClause } from './server/tasks.js';
 import { inventoryRouter } from './server/inventory.js';
 import { vText, vEnum, vDate, vAmount, firstError } from './server/validate.js';
-import { integrationsRouter, scheduleAutoBackup, scheduleDailyReport } from './server/integrations.js';
+import { integrationsRouter, scheduleAutoBackup, scheduleDailyReport, sendUrgentAlert } from './server/integrations.js';
 import { createYemotRouter } from './server/yemot.js';
 import { createCampaignYemotRouter } from './server/campaign-yemot.js';
 import { campaignApiRouter } from './server/campaign-api.js';
@@ -229,6 +229,81 @@ app.post('/api/tasks/:id/priority', mustLogin, (req, res) => {
   if (!inst) return res.status(404).json({ error: 'משימה לא נמצאה' });
   db.prepare('UPDATE task_instances SET priority = ? WHERE id = ?').run(priority, inst.id);
   audit(req.user.name, 'task.priority', 'task_instance', inst.id, { priority: inst.priority }, { priority });
+  res.json({ ok: true });
+});
+
+// תנאי נראות קל למשימה (ללא בדיקת תאריך עתידי) — משמש להתכתבות וקבצים, לא רק לשינוי מצב
+function taskVisibleTo(inst, user) {
+  if (isManagerOrAbove(user.role)) return true;
+  return (inst.scope || DEFAULT_SCOPE) !== 'מנהלת' && (!inst.assignee || inst.assignee === user.name);
+}
+function taskTitleOf(instId) {
+  const row = db.prepare(`
+    SELECT COALESCE(i.title, t.title) AS title FROM task_instances i
+    LEFT JOIN task_templates t ON t.id = i.template_id WHERE i.id = ?`).get(instId);
+  return row ? row.title : 'משימה';
+}
+
+// ---------- התכתבות על משימה ----------
+app.get('/api/tasks/:id/comments', mustLogin, (req, res) => {
+  const inst = db.prepare('SELECT id, scope, assignee FROM task_instances WHERE id = ?').get(req.params.id);
+  if (!inst) return res.status(404).json({ error: 'משימה לא נמצאה' });
+  if (!taskVisibleTo(inst, req.user)) return res.status(403).json({ error: 'אין לך גישה למשימה זו' });
+  res.json(db.prepare('SELECT * FROM task_comments WHERE task_id = ? ORDER BY id').all(inst.id));
+});
+app.post('/api/tasks/:id/comments', mustLogin, async (req, res) => {
+  const inst = db.prepare('SELECT id, scope, assignee FROM task_instances WHERE id = ?').get(req.params.id);
+  if (!inst) return res.status(404).json({ error: 'משימה לא נמצאה' });
+  if (!taskVisibleTo(inst, req.user)) return res.status(403).json({ error: 'אין לך גישה למשימה זו' });
+  const body = (req.body?.body || '').trim();
+  const urgent = !!req.body?.urgent;
+  if (!body) return res.status(400).json({ error: 'אין תוכן להודעה' });
+  const r = db.prepare('INSERT INTO task_comments (task_id, from_user, body, urgent) VALUES (?, ?, ?, ?)')
+    .run(inst.id, req.user.name, body, urgent ? 1 : 0);
+  audit(req.user.name, 'task.comment', 'task_instance', inst.id, null, { body, urgent });
+  if (urgent) {
+    const title = taskTitleOf(inst.id);
+    const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    sendUrgentAlert(`שאלה על משימה: ${title}`,
+      `<p><b>${escHtml(req.user.name)}</b> כתבה בדחיפות על המשימה "${escHtml(title)}":</p><p>${escHtml(body)}</p>`)
+      .catch((e) => console.error('שליחת התרעה דחופה נכשלה:', e.message));
+  }
+  res.json({ id: r.lastInsertRowid });
+});
+
+// ---------- קבצים מצורפים למשימה ----------
+app.get('/api/tasks/:id/attachments', mustLogin, (req, res) => {
+  const inst = db.prepare('SELECT id, scope, assignee FROM task_instances WHERE id = ?').get(req.params.id);
+  if (!inst) return res.status(404).json({ error: 'משימה לא נמצאה' });
+  if (!taskVisibleTo(inst, req.user)) return res.status(403).json({ error: 'אין לך גישה למשימה זו' });
+  res.json(db.prepare('SELECT id, uploaded_by, filename, created_at FROM task_attachments WHERE task_id = ? ORDER BY id').all(inst.id));
+});
+app.post('/api/tasks/:id/attachments', mustLogin, (req, res) => {
+  const inst = db.prepare('SELECT id, scope, assignee FROM task_instances WHERE id = ?').get(req.params.id);
+  if (!inst) return res.status(404).json({ error: 'משימה לא נמצאה' });
+  if (!taskVisibleTo(inst, req.user)) return res.status(403).json({ error: 'אין לך גישה למשימה זו' });
+  const { filename, data } = req.body || {};
+  if (!filename || !data) return res.status(400).json({ error: 'חסר קובץ' });
+  if (data.length > 7_000_000) return res.status(400).json({ error: 'הקובץ גדול מדי (מקסימום כ-5MB)' });
+  const r = db.prepare('INSERT INTO task_attachments (task_id, uploaded_by, filename, data) VALUES (?, ?, ?, ?)')
+    .run(inst.id, req.user.name, filename, data);
+  audit(req.user.name, 'task.attachment.add', 'task_instance', inst.id, null, { filename });
+  res.json({ id: r.lastInsertRowid });
+});
+app.get('/api/tasks/attachments/:attId/download', mustLogin, (req, res) => {
+  const att = db.prepare('SELECT * FROM task_attachments WHERE id = ?').get(req.params.attId);
+  if (!att) return res.status(404).json({ error: 'הקובץ לא נמצא' });
+  const inst = db.prepare('SELECT id, scope, assignee FROM task_instances WHERE id = ?').get(att.task_id);
+  if (!inst || !taskVisibleTo(inst, req.user)) return res.status(403).json({ error: 'אין לך גישה לקובץ זה' });
+  res.json({ filename: att.filename, data: att.data });
+});
+app.delete('/api/tasks/attachments/:attId', mustLogin, (req, res) => {
+  const att = db.prepare('SELECT * FROM task_attachments WHERE id = ?').get(req.params.attId);
+  if (!att) return res.status(404).json({ error: 'הקובץ לא נמצא' });
+  if (!isManagerOrAbove(req.user.role) && att.uploaded_by !== req.user.name)
+    return res.status(403).json({ error: 'אפשר למחוק רק קובץ שהעלית בעצמך' });
+  db.prepare('DELETE FROM task_attachments WHERE id = ?').run(att.id);
+  audit(req.user.name, 'task.attachment.delete', 'task_instance', att.task_id, { filename: att.filename }, null);
   res.json({ ok: true });
 });
 

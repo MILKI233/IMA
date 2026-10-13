@@ -45,6 +45,19 @@
 .msg-tab.active { color: var(--navy-800); border-bottom-color: var(--blue-500); }
 .msg-folder.hidden { display: none; }
 .draft-item textarea { width: 100%; }
+
+/* ---- התכתבות וקבצים על משימה ---- */
+.task-thread-btn {
+  border: none; background: transparent; cursor: pointer; font-size: 1rem;
+  padding: 2px 6px; border-radius: 6px; opacity: .6; align-self: center;
+}
+.task-thread-btn:hover { opacity: 1; background: var(--blue-100); }
+.tt-comment { padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+.tt-comment:last-child { border-bottom: none; }
+.tt-comment.urgent { background: var(--danger-bg); border-radius: 10px; padding: 10px 12px; }
+.tt-comment .meta { font-size: .8rem; color: var(--muted); margin-bottom: 3px; }
+.tt-attachment { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-2); font-size: .9rem; }
+.tt-attachment:last-child { border-bottom: none; }
 .unread-msg { background: var(--blue-100); border-inline-start: 4px solid var(--blue-500); font-weight: 600; }
 
 /* ---- שעות נוכחות: כרטיסי "טיימר חמוד" ---- */

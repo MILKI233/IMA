@@ -167,9 +167,16 @@ async function api(path, opts = {}) {
 }
 
 /* ===================== כניסה ===================== */
+// תאריך לועזי בפורמט DD.MM.YYYY מתוך CTX.today (YYYY-MM-DD)
+function gregDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+
 async function boot() {
   try { CTX = await api('/api/context'); } catch { /* לא קריטי */ }
-  $('#login-hebdate').textContent = CTX ? `${CTX.hdate} · פרשת ${CTX.parsha}` : '';
+  $('#login-hebdate').textContent = CTX ? `${gregDate(CTX.today)} · ${CTX.hdate} · פרשת ${CTX.parsha}` : '';
   if (USER) startApp(); else showLogin();
 }
 
@@ -207,7 +214,7 @@ async function startApp() {
   $('#user-name').textContent = USER.name;
   $('#user-role').textContent = USER.role;
   $('#su-avatar').textContent = (USER.name || '?').trim().charAt(0);
-  $('#heb-context').textContent = `${CTX.hdate} · פרשת ${CTX.parsha}`;
+  $('#heb-context').textContent = `${gregDate(CTX.today)} · ${CTX.hdate} · פרשת ${CTX.parsha}`;
 
   buildNav();
   mountZoomControl();
@@ -678,9 +685,13 @@ function taskRow(t, refresh, { showBadges = true } = {}) {
     : t.status === 'done' ? 'ביטול הסימון' : 'סימון שהמשימה בוצעה';
   check.setAttribute('aria-pressed', t.status === 'done' ? 'true' : 'false');
   if (!future) check.addEventListener('click', (e) => { e.stopPropagation(); toggleTask(t, refresh); });
+  const threadBtn = el('button', 'task-thread-btn', '💬');
+  threadBtn.title = 'התכתבות וקבצים למשימה';
+  threadBtn.addEventListener('click', (e) => { e.stopPropagation(); taskThreadModal(t); });
   row.append(
     check,
     el('div', 'task-title', esc(t.title) + scopeBadge + assigneeBadge + badges + descLine + meta),
+    threadBtn,
     pinButton(t, refresh),
     priorityDot(t, refresh)
   );
@@ -699,6 +710,107 @@ function taskRow(t, refresh, { showBadges = true } = {}) {
   if (future) row.title = futureReason(t);
   // אין יותר לחיצה על כל השורה — היא הייתה הופכת כל החטאה של כפתור לסימון "בוצע"
   return row;
+}
+
+// הופך URL-ים בטקסט לקישורים לחיצים, אחרי שהטקסט כבר ברח מ-HTML
+function linkify(escapedText) {
+  return escapedText.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+/* ---- התכתבות וקבצים למשימה ---- */
+function taskThreadModal(t) {
+  const back = el('div', 'modal-back');
+  const m = el('div', 'modal');
+  m.innerHTML = `
+    <div class="modal-head"><h3>💬 ${esc(t.title)}</h3></div>
+    <div id="tt-comments"></div>
+    <div class="row" style="margin-top:10px">
+      <textarea id="tt-new-body" class="in grow" placeholder="שאלה/הערה על המשימה…" style="min-height:70px"></textarea>
+    </div>
+    <div class="row">
+      <label class="sb-check"><input type="checkbox" id="tt-urgent"> דחוף — שלחי גם למייל של המנהלת</label>
+      <button class="btn-primary" id="tt-send">שליחה</button>
+    </div>
+    <div class="section-title">📎 קבצים מצורפים</div>
+    <div id="tt-attachments"></div>
+    <div class="row">
+      <label class="btn-secondary" style="cursor:pointer">📥 צירוף קובץ<input type="file" id="tt-file" class="hidden"></label>
+    </div>
+    <div class="form-actions"><button class="btn-ghost" id="tt-close">סגירה</button></div>
+    <div id="tt-err" class="err-line"></div>`;
+  back.append(m);
+  document.body.append(back);
+  back.addEventListener('click', (e) => { if (e.target === back) back.remove(); });
+  m.querySelector('#tt-close').addEventListener('click', () => back.remove());
+
+  const loadComments = async () => {
+    const rows = await api(`/api/tasks/${t.id}/comments`);
+    const box = m.querySelector('#tt-comments');
+    if (!rows.length) { box.innerHTML = '<div class="empty-state">אין עדיין התכתבות על המשימה</div>'; return; }
+    box.innerHTML = rows.map((c) => `
+      <div class="tt-comment${c.urgent ? ' urgent' : ''}">
+        <div class="meta"><b>${esc(c.from_user)}</b>${c.urgent ? ' <span class="badge overdue">דחוף</span>' : ''} · ${esc((c.created_at || '').slice(0, 16))}</div>
+        <div>${linkify(esc(c.body))}</div>
+      </div>`).join('');
+  };
+  const loadAttachments = async () => {
+    const rows = await api(`/api/tasks/${t.id}/attachments`);
+    const box = m.querySelector('#tt-attachments');
+    if (!rows.length) { box.innerHTML = '<div class="empty-state">אין קבצים מצורפים</div>'; return; }
+    box.innerHTML = '';
+    rows.forEach((a) => {
+      const item = el('div', 'tt-attachment');
+      item.innerHTML = `<span>📄 ${esc(a.filename)}</span><span class="sub muted"> · ${esc(a.uploaded_by)} · ${esc((a.created_at || '').slice(0, 16))}</span>`;
+      const dl = el('button', 'btn-secondary btn-sm', 'הורדה');
+      dl.addEventListener('click', async () => {
+        const full = await api(`/api/tasks/attachments/${a.id}/download`);
+        const link = document.createElement('a');
+        link.href = full.data; link.download = full.filename;
+        document.body.append(link); link.click(); link.remove();
+      });
+      const delBtn = el('button', 'btn-secondary btn-sm', 'מחיקה');
+      delBtn.addEventListener('click', async () => {
+        if (!confirm('למחוק את הקובץ?')) return;
+        await api(`/api/tasks/attachments/${a.id}`, { method: 'DELETE' });
+        loadAttachments();
+      });
+      item.append(dl, delBtn);
+      box.append(item);
+    });
+  };
+
+  m.querySelector('#tt-send').addEventListener('click', async () => {
+    const body = m.querySelector('#tt-new-body').value.trim();
+    if (!body) return;
+    try {
+      await api(`/api/tasks/${t.id}/comments`, { method: 'POST', body: { body, urgent: m.querySelector('#tt-urgent').checked } });
+      m.querySelector('#tt-new-body').value = '';
+      m.querySelector('#tt-urgent').checked = false;
+      loadComments();
+    } catch (e) { m.querySelector('#tt-err').textContent = e.message || 'השליחה נכשלה'; }
+  });
+  m.querySelector('#tt-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const data = await fileToDataUrl(file);
+      await api(`/api/tasks/${t.id}/attachments`, { method: 'POST', body: { filename: file.name, data } });
+      loadAttachments();
+    } catch (err) { m.querySelector('#tt-err').textContent = err.message || 'העלאת הקובץ נכשלה'; }
+    e.target.value = '';
+  });
+
+  loadComments();
+  loadAttachments();
 }
 
 /* ---- תצוגת טבלה: שורות קצרות ורחבות, שורה אחת למשימה ---- */

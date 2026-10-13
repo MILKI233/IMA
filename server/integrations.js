@@ -89,6 +89,17 @@ export async function sendDailyReport(toOverride) {
   return { to };
 }
 
+// התרעה דחופה — לדוגמה תגובה על משימה שסומנה "דחוף" — נשלחת ישירות לכתובת המייל שהוגדרה לדוחות
+export async function sendUrgentAlert(subject, text) {
+  const to = getSetting('report_email');
+  if (!to) return; // אין כתובת מוגדרת — לא קריטי, הפנייה עדיין מופיעה באתר
+  await mailer().sendMail({
+    from: getSetting('gmail_user'), to,
+    subject: `דחוף — ${subject}`,
+    html: `<div dir="rtl" style="font-family:Arial,sans-serif">${text}</div>`,
+  });
+}
+
 // שליחה אוטומטית פעם ביום בשעה שהוגדרה (ברירת מחדל 20:00) — רץ כל עוד השרת פעיל (מתאים לפריסה בענן 24/7)
 let dailyReportTimer = null;
 let lastSentDate = null;

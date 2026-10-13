@@ -94,6 +94,24 @@ CREATE TABLE IF NOT EXISTS message_dismissals (
   user_name TEXT NOT NULL,
   PRIMARY KEY (message_id, user_name)
 );
+-- התכתבות על משימה ספציפית מול המנהלת — שאלות/הבהרות, כולל אפשרות לסמן כדחוף (שולח מייל ישירות)
+CREATE TABLE IF NOT EXISTS task_comments (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES task_instances(id),
+  from_user TEXT NOT NULL,
+  body TEXT NOT NULL,
+  urgent INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+-- קבצים מצורפים למשימה (תמונות, מסמכים) — שמורים כ-base64, כמו הלוגו של הקמפיין
+CREATE TABLE IF NOT EXISTS task_attachments (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES task_instances(id),
+  uploaded_by TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  data TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,
   user_name TEXT,
