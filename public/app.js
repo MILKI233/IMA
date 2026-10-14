@@ -685,7 +685,8 @@ function taskRow(t, refresh, { showBadges = true } = {}) {
     : t.status === 'done' ? 'ביטול הסימון' : 'סימון שהמשימה בוצעה';
   check.setAttribute('aria-pressed', t.status === 'done' ? 'true' : 'false');
   if (!future) check.addEventListener('click', (e) => { e.stopPropagation(); toggleTask(t, refresh); });
-  const threadBtn = el('button', 'task-thread-btn', '💬');
+  const threadBtn = el('button', 'task-thread-btn' + (t.commentCount ? ' has-comments' : ''),
+    t.commentCount ? `💬 ${t.commentCount}` : '💬');
   threadBtn.title = 'התכתבות וקבצים למשימה';
   threadBtn.addEventListener('click', (e) => { e.stopPropagation(); taskThreadModal(t); });
   row.append(
@@ -1121,6 +1122,55 @@ async function renderTasks(main, scope) {
   main.append(newTaskForm());
 }
 
+/* ---- פגישות/תורים אישיים בלוח השנה — פרטיים לגמרי, רק מי שיצרה אותם רואה ---- */
+function personalEventRow(ev) {
+  const row = el('div', 'task-row');
+  row.style.borderInlineStart = '4px solid var(--blue-500)';
+  const del = el('button', 'btn-secondary btn-sm', '🗑');
+  del.title = 'מחיקת הפגישה';
+  del.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!confirm('למחוק את הפגישה?')) return;
+    try { await api(`/api/personal-events/${ev.id}`, { method: 'DELETE' }); toast('הפגישה נמחקה', 'ok'); render(); }
+    catch (err) { toast(err.message || 'המחיקה נכשלה', 'err'); }
+  });
+  row.append(
+    el('div', 'task-check', '🕑'),
+    el('div', 'task-title', `${ev.time ? `<b>${esc(ev.time)}</b> — ` : ''}${esc(ev.title)}${ev.notes ? `<div class="task-meta">${esc(ev.notes)}</div>` : ''}`),
+    del
+  );
+  return row;
+}
+
+function personalEventForm(defaultDue) {
+  const form = el('div', 'card new-task-card');
+  const due = esc(defaultDue || CTX.today || '');
+  form.innerHTML = `
+    <div class="section-title" style="margin-top:0">🕑 הוספת פגישה/תור אישי</div>
+    <div class="row">
+      <input id="pe-title" class="in grow" placeholder="עם מי / מה הפגישה?">
+      <input id="pe-time" class="in" type="time" style="max-width:120px">
+      <input id="pe-date" class="in" type="date" style="max-width:170px" value="${due}">
+    </div>
+    <div class="row">
+      <input id="pe-notes" class="in grow" placeholder="הערות (לא חובה)">
+      <button class="btn-secondary" id="pe-btn">הוספה</button>
+    </div>`;
+  const q = (s) => form.querySelector(s);
+  q('#pe-btn').addEventListener('click', async () => {
+    const title = q('#pe-title').value.trim();
+    if (!title) return;
+    try {
+      await api('/api/personal-events', { method: 'POST', body: {
+        title, date: q('#pe-date').value || due, time: q('#pe-time').value || null, notes: q('#pe-notes').value.trim() || null,
+      } });
+      toast('הפגישה נוספה', 'ok');
+      render();
+    } catch (e) { toast(e.message || 'לא ניתן להוסיף את הפגישה', 'err'); }
+  });
+  return form;
+}
+
 /* ---- טופס משימה חד־פעמית חדשה (בתחתית לוח המשימות, וגם בלוח השנה לאחר פתיחת יום) ---- */
 function newTaskForm(defaultDue) {
   const form = el('div', 'card new-task-card');
@@ -1217,12 +1267,13 @@ async function renderCalendar(main) {
         : `<span class="cal-dot" style="background:${(PR_META[it.priority] || PR_META['רגיל']).color}"></span>`;
     }
     if (openItems.length > 4) dots += `<span class="cal-more">+${openItems.length - 4}</span>`;
+    const hasEvents = day.items.some((it) => it.type === 'event');
     cell.innerHTML = `
       <div class="cal-daynum"><span>${day.day}</span><span class="cal-heb">${esc(day.hebDay)}</span></div>
       ${day.holiday ? `<div class="cal-holiday">${esc(day.holiday)}</div>` : ''}
       ${day.special ? `<div class="cal-special${blocked ? ' blocking' : ''}" title="${esc(day.special.title)}">${blocked ? '🚫 ' : '★ '}${esc(day.special.title)}</div>` : ''}
       ${day.parsha ? `<div class="cal-parsha">פ׳ ${esc(day.parsha)}</div>` : ''}
-      <div class="cal-dots">${dots}</div>
+      <div class="cal-dots">${dots}${hasEvents ? '<span class="cal-dot event" title="יש לך פגישה אישית">🕑</span>' : ''}</div>
       ${doneCount ? `<div class="cal-donecount">✓ ${doneCount}</div>` : ''}`;
     cell.addEventListener('click', () => { CAL_SELECTED = day.date; render(); });
     grid.append(cell);
@@ -1246,6 +1297,12 @@ async function renderCalendar(main) {
         row.addEventListener('click', () => { if ((USER.features || []).includes('problems')) { TAB = 'problems'; buildNav(); render(); } });
         panel.append(row);
       });
+      const events = day.items.filter((it) => it.type === 'event').sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+      if (events.length) {
+        panel.append(el('div', 'section-title', '🕑 פגישות אישיות ליום הזה'));
+        events.forEach((ev) => panel.append(personalEventRow(ev)));
+      }
+      panel.append(personalEventForm(day.date));
       panel.append(newTaskForm(day.date));
       main.append(panel);
     }

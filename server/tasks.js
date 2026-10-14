@@ -70,6 +70,7 @@ export function tasksForScope(scope, date = new Date(), user = null) {
   const rows = db.prepare(`
     SELECT i.id, i.period_key, i.due_date, i.status, i.done_by, i.done_at, i.note, i.source, i.assignee,
            i.description,
+           (SELECT COUNT(*) FROM task_comments c WHERE c.task_id = i.id) AS commentCount,
            COALESCE(i.priority, 'רגיל') AS priority, COALESCE(i.pinned, 0) AS pinned,
            COALESCE(i.scope, ${SQL_DEFAULT_SCOPE}) AS scope,
            COALESCE(i.title, t.title) AS title,
@@ -91,6 +92,7 @@ export function tasksForScope(scope, date = new Date(), user = null) {
     const extras = db.prepare(`
       SELECT i.id, i.period_key, i.due_date, i.status, i.done_by, i.done_at, i.note, i.source, i.assignee,
              i.description,
+             (SELECT COUNT(*) FROM task_comments c WHERE c.task_id = i.id) AS commentCount,
              COALESCE(i.priority, 'רגיל') AS priority, COALESCE(i.pinned, 0) AS pinned,
              COALESCE(i.scope, ${SQL_DEFAULT_SCOPE}) AS scope,
              i.title, i.category, 'once' AS frequency, 9999 AS sort

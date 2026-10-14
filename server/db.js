@@ -112,6 +112,16 @@ CREATE TABLE IF NOT EXISTS task_attachments (
   data TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
+-- פגישות/תורים אישיים בלוח השנה — פרטיים לגמרי, כל אחת רואה רק את שלה
+CREATE TABLE IF NOT EXISTS personal_events (
+  id INTEGER PRIMARY KEY,
+  user_name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  date TEXT NOT NULL,
+  time TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,
   user_name TEXT,

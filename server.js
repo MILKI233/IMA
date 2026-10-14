@@ -457,6 +457,7 @@ app.get('/api/calendar', mustLogin, requireFeature('calendar'), (req, res) => {
            COALESCE(i.category, t.category) AS category,
            i.description, i.assignee, COALESCE(i.scope, '${DEFAULT_SCOPE}') AS scope,
            i.status, COALESCE(i.priority,'רגיל') AS priority, i.due_date, i.source,
+           (SELECT COUNT(*) FROM task_comments c WHERE c.task_id = i.id) AS commentCount,
            COALESCE(t.frequency,'once') AS frequency
     FROM task_instances i LEFT JOIN task_templates t ON t.id = i.template_id
     WHERE i.due_date BETWEEN ? AND ?
@@ -466,9 +467,13 @@ app.get('/api/calendar', mustLogin, requireFeature('calendar'), (req, res) => {
   const problems = db.prepare(`
     SELECT id, 'problem' AS type, title, status, due_date FROM problems
     WHERE due_date BETWEEN ? AND ? AND status != 'נבדק'`).all(fromIso, toIso);
+  // פגישות אישיות — פרטיות, כל אחת רואה רק את שלה
+  const events = db.prepare(`
+    SELECT id, 'event' AS type, title, notes, time, date AS due_date FROM personal_events
+    WHERE user_name = ? AND date BETWEEN ? AND ?`).all(req.user.name, fromIso, toIso);
 
   const byDate = {};
-  [...items, ...problems].forEach((it) => (byDate[it.due_date] = byDate[it.due_date] || []).push(it));
+  [...items, ...problems, ...events].forEach((it) => (byDate[it.due_date] = byDate[it.due_date] || []).push(it));
 
   // ימים מיוחדים — לצביעה בממשק (blocks=1 מתנהג כמו חג: לא נוצרות בו משימות)
   const specialByDate = {};
@@ -492,6 +497,29 @@ app.get('/api/calendar', mustLogin, requireFeature('calendar'), (req, res) => {
     hebTitle: hebMonthTitle(first, last),
     days,
   });
+});
+
+// ---------- פגישות אישיות בלוח השנה (פרטיות לחלוטין, אין שיוך) ----------
+app.post('/api/personal-events', mustLogin, requireFeature('calendar'), (req, res) => {
+  const { title, date, time, notes } = req.body || {};
+  const err = firstError(
+    vText(title, 'כותרת הפגישה', { min: 2, max: 150 }),
+    vDate(date, 'תאריך', { required: true }),
+    vText(notes, 'הערות', { required: false, max: 500 }),
+  );
+  if (err) return res.status(400).json({ error: err });
+  if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ error: 'שעה לא תקינה (פורמט HH:MM)' });
+  const r = db.prepare('INSERT INTO personal_events (user_name, title, date, time, notes) VALUES (?, ?, ?, ?, ?)')
+    .run(req.user.name, title.trim(), date, time || null, notes || null);
+  audit(req.user.name, 'event.create', 'personal_event', r.lastInsertRowid, null, { title, date, time });
+  res.json({ id: r.lastInsertRowid });
+});
+app.delete('/api/personal-events/:id', mustLogin, requireFeature('calendar'), (req, res) => {
+  const ev = db.prepare('SELECT * FROM personal_events WHERE id = ? AND user_name = ?').get(req.params.id, req.user.name);
+  if (!ev) return res.status(404).json({ error: 'הפגישה לא נמצאה' });
+  db.prepare('DELETE FROM personal_events WHERE id = ?').run(ev.id);
+  audit(req.user.name, 'event.delete', 'personal_event', ev.id, ev, null);
+  res.json({ ok: true });
 });
 
 // ---------- לוח טיפול בבעיות (6 השלבים) ----------

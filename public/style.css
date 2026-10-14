@@ -52,6 +52,10 @@
   padding: 2px 6px; border-radius: 6px; opacity: .6; align-self: center;
 }
 .task-thread-btn:hover { opacity: 1; background: var(--blue-100); }
+.task-thread-btn.has-comments {
+  opacity: 1; background: var(--blue-100); color: var(--blue-500);
+  font-weight: 700; font-size: .82rem; padding: 3px 8px;
+}
 .tt-comment { padding: 10px 0; border-bottom: 1px solid var(--line-2); }
 .tt-comment:last-child { border-bottom: none; }
 .tt-comment.urgent { background: var(--danger-bg); border-radius: 10px; padding: 10px 12px; }
@@ -265,6 +269,7 @@
 .cal-dots { display: flex; flex-wrap: wrap; gap: 3px; margin-top: auto; align-items: center; }
 .cal-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .cal-dot.prob { width: auto; height: auto; font-size: .7rem; }
+.cal-dot.event { width: auto; height: auto; font-size: .7rem; }
 .cal-more { font-size: .66rem; color: var(--muted); font-weight: 700; }
 .cal-donecount { font-size: .66rem; color: var(--ok); font-weight: 700; }
 .cal-panel { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
