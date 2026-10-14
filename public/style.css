@@ -249,29 +249,32 @@
 .cal-title span { color: var(--blue-500); font-size: .85rem; font-weight: 600; }
 .cal-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--ink-2); font-weight: 500; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.cal-dow { text-align: center; font-weight: 700; color: var(--muted); padding: 6px 0; font-size: .82rem; }
+/* לוח שנה פשוט וקריא — בהשראת יומן גוגל: הרבה אוויר, מספר יום גדול, מינימום טקסט בתא */
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-dow { text-align: center; font-weight: 600; color: var(--muted); padding: 8px 0; font-size: .78rem; }
 .cal-cell {
-  min-height: 88px; background: var(--card); border: 1px solid var(--line);
-  border-radius: 10px; padding: 7px; cursor: pointer; transition: border-color .12s, box-shadow .12s;
-  display: flex; flex-direction: column; gap: 3px;
+  min-height: 76px; background: var(--card); border: 1px solid var(--line-2);
+  border-radius: 12px; padding: 8px; cursor: pointer; transition: border-color .12s, box-shadow .12s, background .12s;
+  display: flex; flex-direction: column; gap: 4px;
 }
 .cal-cell:hover { border-color: var(--blue-400); box-shadow: var(--shadow); }
 .cal-cell.pad { background: transparent; border: none; cursor: default; }
-.cal-cell.today { border-color: var(--navy-800); box-shadow: inset 0 0 0 1px var(--navy-800); }
-.cal-cell.selected { border-color: var(--blue-400); box-shadow: 0 0 0 3px var(--blue-100); }
+.cal-cell.today { background: var(--blue-100); border-color: var(--blue-500); }
+.cal-cell.today .cal-daynum > span:first-child {
+  background: var(--navy-800); color: #fff; width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; font-size: .85rem;
+}
+.cal-cell.selected { border-color: var(--blue-500); box-shadow: 0 0 0 3px var(--blue-100); }
 .cal-cell.weekend { background: var(--bg); }
-.cal-daynum { display: flex; justify-content: space-between; align-items: baseline; }
-.cal-daynum > span:first-child { font-weight: 700; color: var(--ink); }
-.cal-heb { font-size: .72rem; color: var(--muted); }
-.cal-holiday { font-size: .68rem; color: var(--danger); font-weight: 700; }
-.cal-parsha { font-size: .68rem; color: var(--blue-500); font-weight: 600; }
+.cal-daynum { display: flex; justify-content: space-between; align-items: center; }
+.cal-daynum > span:first-child { font-weight: 700; color: var(--ink); font-size: 1rem; }
+.cal-heb { font-size: .68rem; color: var(--muted); }
+.cal-holiday { font-size: .68rem; color: var(--danger); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-dots { display: flex; flex-wrap: wrap; gap: 3px; margin-top: auto; align-items: center; }
-.cal-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.cal-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .cal-dot.prob { width: auto; height: auto; font-size: .7rem; }
 .cal-dot.event { width: auto; height: auto; font-size: .7rem; }
-.cal-more { font-size: .66rem; color: var(--muted); font-weight: 700; }
-.cal-donecount { font-size: .66rem; color: var(--ok); font-weight: 700; }
+.cal-more { font-size: .64rem; color: var(--muted); font-weight: 700; }
 .cal-panel { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .cal-panel .task-row { padding-inline: 18px; }
 .cal-panel .section-title { margin: 0; padding: 15px 18px; border-bottom: 1px solid var(--line-2); }

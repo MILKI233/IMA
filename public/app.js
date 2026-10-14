@@ -654,16 +654,14 @@ function priorityDot(t, onChange) {
 
 function taskRow(t, refresh, { showBadges = true } = {}) {
   const today = CTX.today;
-  const freqLabel = { daily: 'יומי', weekly: 'שבועי', biweekly: 'דו־שבועי', monthly: 'חודשי', quarterly: 'רבעוני', once: 'חד־פעמי' };
   const isOneOff = t.source === 'manual' || t.frequency === 'once';
   const irrelevant = t.status === IRRELEVANT;
   const row = el('div', 'task-row' + (t.status === 'done' ? ' done' : '') +
     (irrelevant ? ' irrelevant' : '') + (isOneOff ? ' oneoff' : ''));
   row.style.borderInlineStart = `4px solid ${(PR_META[t.priority] || PR_META['רגיל']).color}`;
+  // פשטות כמו ביומן גוגל: הצבע בגבול השורה כבר מספר על העדיפות — לא צריך גם תג טקסט.
+  // רק מידע שדורש פעולה (באיחור / לא רלוונטי) נשאר כתג.
   const badges = showBadges ? (
-    (t.priority !== 'רגיל' ? `<span class="badge pr" style="background:${PR_META[t.priority].color}1a;color:${PR_META[t.priority].color}">${esc(t.priority)}</span>` : '') +
-    (t.source === 'inventory' ? '<span class="badge auto">מהמלאי</span>' : '') +
-    (t.source === 'manual' ? `<span class="badge">${freqLabel.once}</span>` : '') +
     (t.status === 'open' && t.due_date && t.due_date < today ? '<span class="badge overdue">באיחור</span>' : '') +
     (t.status === IRRELEVANT ? '<span class="badge irrelevant">לא רלוונטי היום</span>' : '')
   ) : '';
@@ -1259,22 +1257,22 @@ async function renderCalendar(main) {
     const cell = el('div', 'cal-cell' + (day.isToday ? ' today' : '') + (CAL_SELECTED === day.date ? ' selected' : '')
       + (day.dow >= 5 ? ' weekend' : '') + (blocked ? ' cal-blocked' : ''));
     const openItems = day.items.filter((it) => it.type === 'problem' || it.status === 'open');
-    const doneCount = day.items.filter((it) => it.type === 'task' && it.status === 'done').length;
     let dots = '';
-    for (const it of openItems.slice(0, 4)) {
+    for (const it of openItems.slice(0, 3)) {
       dots += it.type === 'problem'
         ? '<span class="cal-dot prob">⚠️</span>'
         : `<span class="cal-dot" style="background:${(PR_META[it.priority] || PR_META['רגיל']).color}"></span>`;
     }
-    if (openItems.length > 4) dots += `<span class="cal-more">+${openItems.length - 4}</span>`;
+    if (openItems.length > 3) dots += `<span class="cal-more">+${openItems.length - 3}</span>`;
     const hasEvents = day.items.some((it) => it.type === 'event');
+    // שורה אחת קצרה בלבד לחג/אירוע — פשטות כמו ביומן גוגל, בלי להציף את התא בטקסט
+    const topLine = day.special
+      ? `<div class="cal-special${blocked ? ' blocking' : ''}" title="${esc(day.special.title)}">${blocked ? '🚫 ' : '★ '}${esc(day.special.title)}</div>`
+      : (day.holiday ? `<div class="cal-holiday" title="${esc(day.holiday)}">${esc(day.holiday)}</div>` : '');
     cell.innerHTML = `
       <div class="cal-daynum"><span>${day.day}</span><span class="cal-heb">${esc(day.hebDay)}</span></div>
-      ${day.holiday ? `<div class="cal-holiday">${esc(day.holiday)}</div>` : ''}
-      ${day.special ? `<div class="cal-special${blocked ? ' blocking' : ''}" title="${esc(day.special.title)}">${blocked ? '🚫 ' : '★ '}${esc(day.special.title)}</div>` : ''}
-      ${day.parsha ? `<div class="cal-parsha">פ׳ ${esc(day.parsha)}</div>` : ''}
-      <div class="cal-dots">${dots}${hasEvents ? '<span class="cal-dot event" title="יש לך פגישה אישית">🕑</span>' : ''}</div>
-      ${doneCount ? `<div class="cal-donecount">✓ ${doneCount}</div>` : ''}`;
+      ${topLine}
+      <div class="cal-dots">${dots}${hasEvents ? '<span class="cal-dot event" title="יש לך פגישה אישית">🕑</span>' : ''}</div>`;
     cell.addEventListener('click', () => { CAL_SELECTED = day.date; render(); });
     grid.append(cell);
   }
