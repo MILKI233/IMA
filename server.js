@@ -12,7 +12,7 @@ import { integrationsRouter, scheduleAutoBackup, scheduleDailyReport, sendUrgent
 import { createYemotRouter } from './server/yemot.js';
 import { createCampaignYemotRouter } from './server/campaign-yemot.js';
 import { campaignApiRouter } from './server/campaign-api.js';
-import { scheduleCampaignSheetsSync, getCampaignSheetsCache } from './server/sheets-sync.js';
+import { scheduleCampaignSheetsSync, getCampaignSheetsCache, syncCampaignSheets, pushSheetUpdate, checkSyncPassword, POINTS_SHEET_ID, HUBS_SHEET_ID } from './server/sheets-sync.js';
 
 const PRIORITIES = ['רגיל', 'דחוף', 'חשוב', 'להמשך'];
 
@@ -894,9 +894,49 @@ app.use('/api/inv', requireFeature('inventory'), inventoryRouter({ mustLogin, mu
 app.use('/api/campaign', requireFeature('campaign'), campaignApiRouter({ mustLogin, mustManager, requireFeature, events }));
 app.use('/yemot-campaign', createCampaignYemotRouter({ events }));
 
-// הקמפיין האמיתי ("אוצרותינו") רץ על ימות המשיח ומסונכרן דרך Google Sheets — קריאה בלבד, אף פעם לא כתיבה
+// הקמפיין האמיתי ("אוצרותינו") רץ על ימות המשיח ומסונכרן דרך Google Sheets.
+// קריאה: ישירות מהגיליון הציבורי. כתיבה: רק אם המנהלת חיברה סקריפט כתיבה + סיסמת אישור בהגדרות הקמפיין.
 app.get('/api/campaign/sheets-data', mustLogin, requireFeature('campaign'), (req, res) => {
   res.json(getCampaignSheetsCache());
+});
+
+// רענון מיידי מהטבלה (לפני פתיחת עריכה, כדי למזער פער בין המספור בזיכרון לשורה האמיתית בגיליון)
+app.post('/api/campaign/sheets-data/refresh', mustLogin, requireFeature('campaign'), async (req, res) => {
+  const data = await syncCampaignSheets();
+  res.json(data);
+});
+
+app.post('/api/campaign/sheets-write/hub', mustLogin, requireFeature('campaign_hubs'), async (req, res) => {
+  try {
+    checkSyncPassword(req.body?.syncPassword);
+    const { row, kitsTotal, kitsDistributed, kitsAvailable, status } = req.body || {};
+    if (!row) return res.status(400).json({ error: 'שורה לא תקינה' });
+    const updates = {};
+    if (kitsTotal !== undefined && kitsTotal !== '') updates['כמות ערכות כוללת'] = kitsTotal;
+    if (kitsDistributed !== undefined && kitsDistributed !== '') updates['ערכות שחולקו בפועל'] = kitsDistributed;
+    if (kitsAvailable !== undefined && kitsAvailable !== '') updates['נשארו במלאי'] = kitsAvailable;
+    if (status) updates['סטטוס מוקד'] = status;
+    await pushSheetUpdate({ spreadsheetId: HUBS_SHEET_ID, sheetName: 'מוקדים ומלאי', row, updates });
+    audit(req.user.name, 'campaign.sheets.hub_update', 'campaign_sheets_hub', row, null, updates);
+    const data = await syncCampaignSheets();
+    res.json(data);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/campaign/sheets-write/points', mustLogin, requireFeature('campaign'), async (req, res) => {
+  try {
+    checkSyncPassword(req.body?.syncPassword);
+    const { row, weeklyPoints, totalAccrued, totalRedeemed } = req.body || {};
+    if (!row) return res.status(400).json({ error: 'שורה לא תקינה' });
+    const updates = {};
+    if (weeklyPoints !== undefined && weeklyPoints !== '') updates['נקודות השבוע'] = weeklyPoints;
+    if (totalAccrued !== undefined && totalAccrued !== '') updates['סך נצבר'] = totalAccrued;
+    if (totalRedeemed !== undefined && totalRedeemed !== '') updates['סך מומש'] = totalRedeemed;
+    await pushSheetUpdate({ spreadsheetId: POINTS_SHEET_ID, sheetName: 'משתתפים', row, updates });
+    audit(req.user.name, 'campaign.sheets.points_update', 'campaign_sheets_points', row, null, updates);
+    const data = await syncCampaignSheets();
+    res.json(data);
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ---------- לוח מנהלת ----------

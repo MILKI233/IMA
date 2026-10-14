@@ -144,6 +144,8 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         // לא לרשום את הלוגו (data URL ענק) ליומן הפעולות — רק שהוא השתנה
         const logged = { ...(req.body || {}) };
         if (logged.campaign_brand_logo) logged.campaign_brand_logo = '(עודכן לוגו)';
+        if (logged.campaign_sheets_write_secret) logged.campaign_sheets_write_secret = '(עודכן)';
+        if (logged.campaign_sync_admin_password) logged.campaign_sync_admin_password = '(עודכן)';
         audit(req.user.name, 'campaign.settings.update', 'campaign_settings', null, null, logged);
         events?.emit('campaign.update');
         res.json({ ok: true });

@@ -184,8 +184,10 @@ function applySettings(s) {
     else { logo.style.display = 'none'; }
 }
 
-/* ---- לוח בקרה חי מהגליונות של "אוצרותינו" (ימות המשיח) — קריאה בלבד, לעולם לא כותבים לשם ---- */
+/* ---- לוח בקרה חי מהגליונות של "אוצרותינו" (ימות המשיח) — קריאה מתמדת, כתיבה אופציונלית מאובטחת ---- */
 let lastSheetsData = null;
+let editingSheetPointsRow = null;
+let editingSheetHubRow = null;
 
 async function loadSheetsData() {
     try {
@@ -193,6 +195,16 @@ async function loadSheetsData() {
         lastSheetsData = data;
         renderSheetsDashboard(data);
     } catch (e) { /* לא מציקים עם alert על כל פעימת רענון — השגיאה תוצג בבאנר אם קיימת */ }
+}
+
+// לפני עריכה — מרעננים מיידית מהטבלה, כדי שמספר השורה שעליו כותבים יהיה עדכני ולא מהקאש של 3 הדקות האחרונות
+async function refreshSheetsThenEdit(openFn) {
+    try {
+        const data = await api('/api/campaign/sheets-data/refresh', { method: 'POST' });
+        lastSheetsData = data;
+        renderSheetsDashboard(data);
+        openFn();
+    } catch (e) { alert(e.message || 'הרענון נכשל'); }
 }
 
 function renderSheetsDashboard(data) {
@@ -216,16 +228,28 @@ function renderSheetsDashboard(data) {
     `;
 
     document.getElementById('volunteersEmpty').style.display = filtered.length ? 'none' : 'block';
-    document.querySelector('#volunteersTable tbody').innerHTML = filtered.map((p) => `
-        <tr>
-            <td>${p['שם (אפשר למלא ידנית)'] || '—'}</td>
-            <td>${p['טלפון'] || ''}</td>
-            <td>${p['נקודות השבוע'] || 0}</td>
-            <td>${p['יעד שבועי'] || '—'}</td>
-            <td>${p['סך נצבר'] || 0}</td>
-            <td>${p['סך מומש'] || 0}</td>
-            <td>${p['מספר דיווחים'] || 0}</td>
-        </tr>`).join('');
+    if (editingSheetPointsRow === null) {
+        document.querySelector('#volunteersTable tbody').innerHTML = filtered.map((p) => `
+            <tr>
+                <td>${p['שם (אפשר למלא ידנית)'] || '—'}</td>
+                <td>${p['טלפון'] || ''}</td>
+                <td>${p['נקודות השבוע'] || 0}</td>
+                <td>${p['יעד שבועי'] || '—'}</td>
+                <td>${p['סך נצבר'] || 0}</td>
+                <td>${p['סך מומש'] || 0}</td>
+                <td>${p['מספר דיווחים'] || 0}</td>
+                <td><button class="btn secondary" onclick="refreshSheetsThenEdit(() => openSheetPointsEdit(${p.__row}))">עריכה</button></td>
+            </tr>
+            <tr class="hub-edit-row hidden" id="sheet-points-edit-${p.__row}">
+                <td colspan="8">
+                    <input id="sp-week-${p.__row}" type="number" placeholder="נקודות השבוע" value="${p['נקודות השבוע'] || 0}" style="width:110px">
+                    <input id="sp-accrued-${p.__row}" type="number" placeholder="סך נצבר" value="${p['סך נצבר'] || 0}" style="width:100px">
+                    <input id="sp-redeemed-${p.__row}" type="number" placeholder="סך מומש" value="${p['סך מומש'] || 0}" style="width:100px">
+                    <button class="btn" onclick="saveSheetPointsEdit(${p.__row})">שמירה לטבלה</button>
+                    <button class="btn secondary" onclick="closeSheetPointsEdit(${p.__row})">ביטול</button>
+                </td>
+            </tr>`).join('');
+    }
 
     const txns = data.transactions || [];
     document.getElementById('txEmpty').style.display = txns.length ? 'none' : 'block';
@@ -240,6 +264,7 @@ function renderSheetsDashboard(data) {
 
     const hubs = data.hubs || [];
     document.getElementById('sheetHubsEmpty').style.display = hubs.length ? 'none' : 'block';
+    if (editingSheetHubRow !== null) return;
     document.getElementById('sheetHubCards').innerHTML = hubs.map((h) => {
         const total = parseFloat(h['כמות ערכות כוללת']) || 0;
         const left = parseFloat(h['נשארו במלאי']) || 0;
@@ -252,8 +277,74 @@ function renderSheetsDashboard(data) {
             <div class="hc-meta">${h['סטטוס מוקד'] || ''}</div>
             <div class="hub-bar"><div class="hub-bar-fill${low ? ' low' : ''}" style="width:${pct}%"></div></div>
             <div class="hc-count">${left} פנויות מתוך ${total}${low ? ' ⚠️' : ''} (חולקו: ${h['ערכות שחולקו בפועל'] || 0})</div>
+            <div class="hc-actions">
+                <button class="btn secondary" onclick="refreshSheetsThenEdit(() => openSheetHubEdit(${h.__row}))">עריכת מלאי</button>
+            </div>
+            <div class="hub-edit-row hidden" id="sheet-hub-edit-${h.__row}">
+                <input id="sh-total-${h.__row}" type="number" placeholder="כמות כוללת" value="${h['כמות ערכות כוללת'] || 0}" style="width:100px">
+                <input id="sh-dist-${h.__row}" type="number" placeholder="חולקו בפועל" value="${h['ערכות שחולקו בפועל'] || 0}" style="width:100px">
+                <input id="sh-avail-${h.__row}" type="number" placeholder="נשארו במלאי" value="${h['נשארו במלאי'] || 0}" style="width:100px">
+                <input id="sh-status-${h.__row}" placeholder="סטטוס מוקד" value="${h['סטטוס מוקד'] || ''}" style="flex:1">
+                <button class="btn" onclick="saveSheetHubEdit(${h.__row})">שמירה לטבלה</button>
+                <button class="btn secondary" onclick="closeSheetHubEdit(${h.__row})">ביטול</button>
+            </div>
         </div>`;
     }).join('');
+}
+
+function openSheetPointsEdit(row) {
+    const el = document.getElementById(`sheet-points-edit-${row}`);
+    if (!el) return;
+    el.classList.remove('hidden');
+    editingSheetPointsRow = row;
+}
+function closeSheetPointsEdit(row) {
+    editingSheetPointsRow = null;
+    if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
+}
+async function saveSheetPointsEdit(row) {
+    const pw = prompt('סיסמת מנהל לאישור כתיבה לטבלה:');
+    if (pw === null) return;
+    try {
+        const data = await api('/api/campaign/sheets-write/points', { method: 'POST', body: {
+            row,
+            weeklyPoints: document.getElementById(`sp-week-${row}`).value,
+            totalAccrued: document.getElementById(`sp-accrued-${row}`).value,
+            totalRedeemed: document.getElementById(`sp-redeemed-${row}`).value,
+            syncPassword: pw,
+        } });
+        editingSheetPointsRow = null;
+        lastSheetsData = data;
+        renderSheetsDashboard(data);
+    } catch (e) { alert(e.message || 'השמירה לטבלה נכשלה'); }
+}
+
+function openSheetHubEdit(row) {
+    const el = document.getElementById(`sheet-hub-edit-${row}`);
+    if (!el) return;
+    el.classList.remove('hidden');
+    editingSheetHubRow = row;
+}
+function closeSheetHubEdit(row) {
+    editingSheetHubRow = null;
+    if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
+}
+async function saveSheetHubEdit(row) {
+    const pw = prompt('סיסמת מנהל לאישור כתיבה לטבלה:');
+    if (pw === null) return;
+    try {
+        const data = await api('/api/campaign/sheets-write/hub', { method: 'POST', body: {
+            row,
+            kitsTotal: document.getElementById(`sh-total-${row}`).value,
+            kitsDistributed: document.getElementById(`sh-dist-${row}`).value,
+            kitsAvailable: document.getElementById(`sh-avail-${row}`).value,
+            status: document.getElementById(`sh-status-${row}`).value,
+            syncPassword: pw,
+        } });
+        editingSheetHubRow = null;
+        lastSheetsData = data;
+        renderSheetsDashboard(data);
+    } catch (e) { alert(e.message || 'השמירה לטבלה נכשלה'); }
 }
 
 function renderHubs(data) {

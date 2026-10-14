@@ -1,9 +1,11 @@
-// סנכרון קריאה-בלבד מהגליונות של קמפיין "אוצרותינו" בימות המשיח — לעולם לא כותבים חזרה לטבלאות.
-// הגיליונות פתוחים לצפייה ציבורית, ולכן אפשר למשוך אותם בבקשת GET רגילה בלי מפתחות/הרשאות.
+// סנכרון מהגליונות של קמפיין "אוצרותינו" בימות המשיח.
+// קריאה: ישירות מהגיליון הציבורי (CSV), בלי מפתחות.
+// כתיבה (אופציונלי): דרך סקריפט Apps Script שהמנהלת מפרסמת בעצמה מהגיליון שלה, עם סיסמת אישור בתוכנה.
 import { parse } from 'csv-parse/sync';
+import { getAllCampaignSettings } from './db.js';
 
-const POINTS_SHEET_ID = '1h-Hj2Wam8UeW6Cn9zg-ovkOc5kf1_evXY9UgBRmmuVA';
-const HUBS_SHEET_ID = '1DZ4tcEuNA_ZcCEuOTDaDo5FK7EVypNsD-71_3yWX0sM';
+export const POINTS_SHEET_ID = '1h-Hj2Wam8UeW6Cn9zg-ovkOc5kf1_evXY9UgBRmmuVA';
+export const HUBS_SHEET_ID = '1DZ4tcEuNA_ZcCEuOTDaDo5FK7EVypNsD-71_3yWX0sM';
 
 let cache = { participants: [], transactions: [], hubs: [], syncedAt: null, error: null };
 
@@ -12,8 +14,11 @@ async function fetchSheetRows(spreadsheetId, sheetName) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`שליפת הגיליון "${sheetName}" נכשלה (${res.status})`);
   const csvText = await res.text();
-  const rows = parse(csvText, { columns: true, skip_empty_lines: true, relax_column_count: true });
-  return rows;
+  // לא מדלגים על שורות ריקות בשלב הפענוח — כדי שמספר השורה (__row) ישקף נכון את השורה האמיתית בגיליון
+  const rows = parse(csvText, { columns: true, skip_empty_lines: false, relax_column_count: true });
+  return rows
+    .map((r, i) => ({ ...r, __row: i + 2 })) // שורה 1 = כותרות
+    .filter((r) => Object.keys(r).some((k) => k !== '__row' && String(r[k] ?? '').trim() !== ''));
 }
 
 export async function syncCampaignSheets() {
@@ -23,7 +28,6 @@ export async function syncCampaignSheets() {
       fetchSheetRows(POINTS_SHEET_ID, 'תנועות'),
       fetchSheetRows(HUBS_SHEET_ID, 'מוקדים ומלאי'),
     ]);
-    // התנועות האחרונות קודם — נוח יותר לתצוגה
     transactions.reverse();
     cache = { participants, transactions: transactions.slice(0, 100), hubs, syncedAt: new Date().toISOString(), error: null };
   } catch (e) {
@@ -40,6 +44,29 @@ export function getCampaignSheetsCache() {
 let syncTimer = null;
 export function scheduleCampaignSheetsSync() {
   if (syncTimer) clearInterval(syncTimer);
-  syncCampaignSheets(); // סנכרון ראשון מיידי עם עליית השרת
-  syncTimer = setInterval(syncCampaignSheets, 3 * 60 * 1000); // כל 3 דקות
+  syncCampaignSheets();
+  syncTimer = setInterval(syncCampaignSheets, 3 * 60 * 1000);
+}
+
+// כתיבה חזרה לגיליון — רק אם המנהלת חיברה סקריפט Apps Script וסיסמת אישור בהגדרות הקמפיין
+export async function pushSheetUpdate({ spreadsheetId, sheetName, row, updates }) {
+  const settings = getAllCampaignSettings();
+  const url = settings.campaign_sheets_write_url;
+  const secret = settings.campaign_sheets_write_secret;
+  if (!url || !secret) throw new Error('סנכרון הכתיבה לטבלה לא מוגדר עדיין (חסר קישור סקריפט או סיסמה בהגדרות הקמפיין)');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ secret, spreadsheetId, sheetName, row, updates }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || `הכתיבה לטבלה נכשלה (${res.status})`);
+  return data;
+}
+
+export function checkSyncPassword(pw) {
+  const settings = getAllCampaignSettings();
+  const expected = settings.campaign_sync_admin_password;
+  if (!expected) throw new Error('לא הוגדרה סיסמת אישור לסנכרון כתיבה בהגדרות הקמפיין');
+  if (String(pw || '') !== String(expected)) throw new Error('סיסמת מנהל שגויה');
 }

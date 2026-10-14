@@ -820,7 +820,10 @@ const CAMPAIGN_SETTING_DEFAULTS = {
     campaign_brand_primary: '#14497c',
     campaign_brand_accent: '#1e5fa8',
     campaign_brand_dark: '#0b2a4a',
-    campaign_brand_logo: ''
+    campaign_brand_logo: '',
+    campaign_sheets_write_url: '',
+    campaign_sheets_write_secret: '',
+    campaign_sync_admin_password: ''
 };
 
 export function getCampaignSetting(key) {

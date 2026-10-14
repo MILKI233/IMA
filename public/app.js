@@ -2361,7 +2361,17 @@ async function renderCampaignAdminCards(main) {
         <div><label class="sub muted">אחוז בונוס יעד שבועי</label><br><input type="number" class="in" id="ca-goal-bonus" style="max-width:90px" value="${esc(s.campaign_goal_bonus_percent ?? 10)}"></div>
         <div><label class="sub muted">אחוז המרה לגיוס מוצר</label><br><input type="number" class="in" id="ca-conv" placeholder="ריק = אין" style="max-width:130px" value="${esc(s.campaign_product_conversion_percent ?? '')}"></div>
       </div>
-      <button class="btn-secondary" id="ca-save-calc" style="margin-top:10px">שמירת הגדרות נקודות</button>`;
+      <button class="btn-secondary" id="ca-save-calc" style="margin-top:10px">שמירת הגדרות נקודות</button>
+      <div class="section-title">סנכרון כתיבה לטבלת גוגל (אוצרותינו)</div>
+      <p class="sub muted">אופציונלי. כדי לאפשר עדכון נקודות/מוקדים מתוך התוכנה ושיחזרו לטבלה בגוגל, יש לפרסם סקריפט Apps Script מתוך הגיליון ולהדביק כאן את הכתובת והסיסמה שבחרת בסקריפט. בלי זה — התוכנה ממשיכה לקרוא מהטבלה בלבד.</p>
+      <div class="row">
+        <div style="flex:2"><label class="sub muted">כתובת ה-Web App של הסקריפט (מסתיימת ב-/exec)</label><br><input class="in" id="ca-sw-url" style="width:100%" value="${esc(s.campaign_sheets_write_url || '')}"></div>
+        <div><label class="sub muted">סיסמה סודית (כמו שהוגדרה בסקריפט)</label><br><input class="in" id="ca-sw-secret" type="password" value="${esc(s.campaign_sheets_write_secret || '')}"></div>
+      </div>
+      <div class="row">
+        <div><label class="sub muted">סיסמת אישור לפני כל כתיבה בפועל</label><br><input class="in" id="ca-sync-pw" type="password" value="${esc(s.campaign_sync_admin_password || '')}"></div>
+      </div>
+      <button class="btn-secondary" id="ca-save-sync" style="margin-top:10px">שמירת הגדרות סנכרון כתיבה</button>`;
     main.append(card);
     $('#ca-save-brand').addEventListener('click', async () => {
       const payload = { campaign_brand_primary: $('#ca-c1').value, campaign_brand_accent: $('#ca-c2').value, campaign_brand_dark: $('#ca-c3').value };
@@ -2377,6 +2387,16 @@ async function renderCampaignAdminCards(main) {
           campaign_goal_bonus_percent: $('#ca-goal-bonus').value, campaign_product_conversion_percent: $('#ca-conv').value,
         } });
         toast('ההגדרות נשמרו', 'ok');
+      } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+    });
+    $('#ca-save-sync').addEventListener('click', async () => {
+      try {
+        await api('/api/campaign/settings', { method: 'PUT', body: {
+          campaign_sheets_write_url: $('#ca-sw-url').value.trim(),
+          campaign_sheets_write_secret: $('#ca-sw-secret').value,
+          campaign_sync_admin_password: $('#ca-sync-pw').value,
+        } });
+        toast('הגדרות הסנכרון נשמרו', 'ok');
       } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
     });
   }
