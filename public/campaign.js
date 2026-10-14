@@ -97,7 +97,7 @@ function startApp() {
     });
     document.getElementById('volunteerSearch').addEventListener('input', (e) => {
         volunteerQuery = e.target.value.trim();
-        if (lastData) renderVolunteers(lastData);
+        if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
     });
     document.getElementById('hubSearch').addEventListener('input', (e) => {
         hubQuery = e.target.value.trim();
@@ -110,6 +110,8 @@ function startApp() {
 
     loadDashboard();
     setInterval(loadDashboard, 5000);
+    loadSheetsData();
+    setInterval(loadSheetsData, 15000);
 }
 
 async function loadActivity() {
@@ -162,28 +164,6 @@ function fmtDate(s) {
     return s.replace('T', ' ').slice(0, 16);
 }
 
-function timeAgo(s) {
-    if (!s) return '';
-    const diffMin = Math.round((Date.now() - new Date(s.replace(' ', 'T')).getTime()) / 60000);
-    if (diffMin < 1) return 'הרגע';
-    if (diffMin < 60) return `לפני ${diffMin} דק׳`;
-    const diffHr = Math.round(diffMin / 60);
-    if (diffHr < 24) return `לפני ${diffHr} שעות`;
-    return `לפני ${Math.round(diffHr / 24)} ימים`;
-}
-
-/* בנר "התקשרה לאחרונה" — זיהוי מיידי כשמתנדבת מתקשרת ודיווחה דרך הטלפון */
-function renderLastCall(data) {
-    const banner = document.getElementById('lastCallBanner');
-    const last = data.recentTxns.find((t) => t.type !== 'manual');
-    if (!last) { banner.classList.add('hidden'); return; }
-    const vol = data.volunteers.find((v) => v.phone === last.phone);
-    banner.classList.remove('hidden');
-    banner.innerHTML = `📞 התקשרה לאחרונה: <b>${last.name || last.phone}</b>` +
-        `<span class="lcb-balance">${vol ? vol.balance : '—'} נקודות</span>` +
-        `<span class="lcb-time">${timeAgo(last.created_at)} · ${TXN_TYPE_LABEL[last.type] || last.type}</span>`;
-}
-
 async function loadDashboard() {
     try {
         const data = await api('/api/campaign/dashboard');
@@ -204,41 +184,76 @@ function applySettings(s) {
     else { logo.style.display = 'none'; }
 }
 
-function renderStats(data) {
-    const weekPoints = data.recentTxns
-        .filter((t) => t.status === 'approved' && t.points > 0 && t.created_at >= data.weekStart)
-        .reduce((sum, t) => sum + t.points, 0);
-    const lowHubs = data.hubs.filter((h) => h.kits_total > 0 && h.kits_available / h.kits_total <= 0.2).length;
-    const cards = [
-        { num: data.volunteers.length, label: 'מתנדבות', alert: false },
-        { num: weekPoints, label: 'נקודות השבוע', alert: false },
-        { num: data.pending.length, label: 'ממתינות לאישור', alert: data.pending.length > 0 },
-        { num: data.hubs.length, label: 'מוקדי הפצה', alert: false },
-        { num: lowHubs, label: 'מוקדים כמעט ריקים', alert: lowHubs > 0 },
-    ];
-    document.getElementById('statRow').innerHTML = cards.map((c) => `
-        <div class="stat-card${c.alert ? ' alert' : ''}">
-            <div class="stat-num">${c.num}</div>
-            <div class="stat-label">${c.label}</div>
-        </div>`).join('');
+/* ---- לוח בקרה חי מהגליונות של "אוצרותינו" (ימות המשיח) — קריאה בלבד, לעולם לא כותבים לשם ---- */
+let lastSheetsData = null;
+
+async function loadSheetsData() {
+    try {
+        const data = await api('/api/campaign/sheets-data');
+        lastSheetsData = data;
+        renderSheetsDashboard(data);
+    } catch (e) { /* לא מציקים עם alert על כל פעימת רענון — השגיאה תוצג בבאנר אם קיימת */ }
 }
 
-function renderVolunteers(data) {
-    const goalByVol = {};
-    data.goals.forEach((g) => { goalByVol[g.volunteer_id] = g.goal_points; });
+function renderSheetsDashboard(data) {
+    const synced = document.getElementById('sheetsSyncedAt');
+    synced.textContent = data.syncedAt ? `עודכן לאחרונה מהטבלה: ${fmtDate(data.syncedAt)}` : '';
+
+    const errBanner = document.getElementById('sheetsErrBanner');
+    if (data.error) { errBanner.textContent = `שגיאה בסנכרון מהטבלה: ${data.error}`; errBanner.classList.remove('hidden'); }
+    else { errBanner.classList.add('hidden'); }
+
+    const participants = data.participants || [];
     const q = volunteerQuery.toLowerCase();
-    const filtered = data.volunteers
-        .filter((v) => !q || (v.name || '').toLowerCase().includes(q) || v.phone.includes(q))
-        .sort((a, b) => b.balance - a.balance);
+    const filtered = participants.filter((p) => !q
+        || (p['שם (אפשר למלא ידנית)'] || '').toLowerCase().includes(q)
+        || (p['טלפון'] || '').toLowerCase().includes(q));
+
+    document.getElementById('statRow').innerHTML = `
+        <div class="stat-card"><div class="stat-num">${participants.length}</div><div class="stat-label">משתתפות</div></div>
+        <div class="stat-card"><div class="stat-num">${(data.transactions || []).length}</div><div class="stat-label">תנועות אחרונות</div></div>
+        <div class="stat-card"><div class="stat-num">${(data.hubs || []).length}</div><div class="stat-label">מוקדים</div></div>
+    `;
+
     document.getElementById('volunteersEmpty').style.display = filtered.length ? 'none' : 'block';
-    document.querySelector('#volunteersTable tbody').innerHTML = filtered.map((v) => `
+    document.querySelector('#volunteersTable tbody').innerHTML = filtered.map((p) => `
         <tr>
-            <td>${v.name || '<span class="badge warn">לא מזוהה</span>'}</td>
-            <td>${v.phone}</td>
-            <td><b>${v.balance}</b></td>
-            <td>${goalByVol[v.id] ?? '—'}</td>
-            <td><button class="btn secondary" onclick="adjustPoints(${v.id})">✎ נקודות</button></td>
+            <td>${p['שם (אפשר למלא ידנית)'] || '—'}</td>
+            <td>${p['טלפון'] || ''}</td>
+            <td>${p['נקודות השבוע'] || 0}</td>
+            <td>${p['יעד שבועי'] || '—'}</td>
+            <td>${p['סך נצבר'] || 0}</td>
+            <td>${p['סך מומש'] || 0}</td>
+            <td>${p['מספר דיווחים'] || 0}</td>
         </tr>`).join('');
+
+    const txns = data.transactions || [];
+    document.getElementById('txEmpty').style.display = txns.length ? 'none' : 'block';
+    document.querySelector('#activityTable tbody').innerHTML = txns.map((t) => `
+        <tr>
+            <td>${t['תאריך ושעה'] || ''}</td>
+            <td>${t['שם'] || t['טלפון'] || ''}</td>
+            <td>${t['פעולה / מוצר'] || ''}</td>
+            <td>${t['סה"כ נקודות'] || 0}</td>
+            <td>${t['נקודות בונוס'] || 0}</td>
+        </tr>`).join('');
+
+    const hubs = data.hubs || [];
+    document.getElementById('sheetHubsEmpty').style.display = hubs.length ? 'none' : 'block';
+    document.getElementById('sheetHubCards').innerHTML = hubs.map((h) => {
+        const total = parseFloat(h['כמות ערכות כוללת']) || 0;
+        const left = parseFloat(h['נשארו במלאי']) || 0;
+        const pct = total > 0 ? Math.round((left / total) * 100) : 0;
+        const low = total > 0 && pct <= 20;
+        return `
+        <div class="hub-card">
+            <div class="hc-name">${h['שם מוקד / שכונה'] || '—'}</div>
+            <div class="hc-meta">אחראית: ${h['שם האחראית'] || '—'}${h['מספר טלפון של האחראית'] ? ' · ' + h['מספר טלפון של האחראית'] : ''}</div>
+            <div class="hc-meta">${h['סטטוס מוקד'] || ''}</div>
+            <div class="hub-bar"><div class="hub-bar-fill${low ? ' low' : ''}" style="width:${pct}%"></div></div>
+            <div class="hc-count">${left} פנויות מתוך ${total}${low ? ' ⚠️' : ''} (חולקו: ${h['ערכות שחולקו בפועל'] || 0})</div>
+        </div>`;
+    }).join('');
 }
 
 function renderHubs(data) {
@@ -294,18 +309,6 @@ async function saveHubEdit(id) {
 function render(data) {
     lastData = data;
     applySettings(data.settings || {});
-    renderStats(data);
-    renderLastCall(data);
-    renderVolunteers(data);
-
-    document.querySelector('#activityTable tbody').innerHTML = data.recentTxns.map((tx) => `
-        <tr>
-            <td>${tx.name || tx.phone}</td>
-            <td>${TXN_TYPE_LABEL[tx.type] || tx.type}</td>
-            <td>${tx.points ?? '—'}</td>
-            <td><span class="badge ${tx.status === 'approved' ? 'ok' : tx.status === 'pending' ? 'warn' : ''}">${STATUS_LABEL[tx.status] || tx.status}</span></td>
-            <td>${fmtDate(tx.created_at)}</td>
-        </tr>`).join('');
 
     document.getElementById('pendingCount').textContent = data.pending.length ? `(${data.pending.length})` : '';
     document.getElementById('pendingEmpty').style.display = data.pending.length ? 'none' : 'block';
@@ -342,30 +345,6 @@ async function approveTxn(id) {
     catch (e) { alert(e.message); }
 }
 async function rejectTxn(id) { await api(`/api/campaign/reject/${id}`, { method: 'POST' }); loadDashboard(); }
-async function adjustPoints(id) {
-    const v = lastData.volunteers.find((x) => x.id === id);
-    const val = prompt(`כמה נקודות להוסיף ל${v ? (v.name || v.phone) : 'המתנדבת'}? (מספר שלילי = הפחתה)`);
-    if (val === null) return;
-    const pts = parseInt(val, 10);
-    if (!Number.isFinite(pts) || pts === 0) { alert('יש להזין מספר שלם תקין, לא אפס'); return; }
-    try {
-        await api(`/api/campaign/volunteers/${id}/points`, { method: 'POST', body: { points: pts } });
-        loadDashboard();
-    } catch (e) { alert(e.message); }
-}
-document.getElementById('addVolBtn').addEventListener('click', async () => {
-    const phone = document.getElementById('newVolPhone').value.trim();
-    const name = document.getElementById('newVolName').value.trim();
-    const err = document.getElementById('newVolErr');
-    err.textContent = '';
-    if (!phone) { err.textContent = 'יש להזין מספר טלפון'; return; }
-    try {
-        await api('/api/campaign/volunteers', { method: 'POST', body: { phone, name } });
-        document.getElementById('newVolPhone').value = '';
-        document.getElementById('newVolName').value = '';
-        loadDashboard();
-    } catch (e) { err.textContent = e.message || 'ההוספה נכשלה'; }
-});
 async function deleteHub(id) { if (!confirm('למחוק את המוקד?')) return; await api(`/api/campaign/hubs/${id}`, { method: 'DELETE' }); loadDashboard(); }
 
 /* ---- עסקים: מי פנתה ולמה ---- */

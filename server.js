@@ -12,6 +12,7 @@ import { integrationsRouter, scheduleAutoBackup, scheduleDailyReport, sendUrgent
 import { createYemotRouter } from './server/yemot.js';
 import { createCampaignYemotRouter } from './server/campaign-yemot.js';
 import { campaignApiRouter } from './server/campaign-api.js';
+import { scheduleCampaignSheetsSync, getCampaignSheetsCache } from './server/sheets-sync.js';
 
 const PRIORITIES = ['רגיל', 'דחוף', 'חשוב', 'להמשך'];
 
@@ -893,6 +894,11 @@ app.use('/api/inv', requireFeature('inventory'), inventoryRouter({ mustLogin, mu
 app.use('/api/campaign', requireFeature('campaign'), campaignApiRouter({ mustLogin, mustManager, requireFeature, events }));
 app.use('/yemot-campaign', createCampaignYemotRouter({ events }));
 
+// הקמפיין האמיתי ("אוצרותינו") רץ על ימות המשיח ומסונכרן דרך Google Sheets — קריאה בלבד, אף פעם לא כתיבה
+app.get('/api/campaign/sheets-data', mustLogin, requireFeature('campaign'), (req, res) => {
+  res.json(getCampaignSheetsCache());
+});
+
 // ---------- לוח מנהלת ----------
 app.get('/api/dashboard', mustLogin, requireFeature('dashboard'), (req, res) => {
   ensureInstances();
@@ -948,4 +954,5 @@ app.get('/api/integration/health', (req, res) => res.json({ ok: true, module: 't
 ensureInstances();
 scheduleAutoBackup();
 scheduleDailyReport();
+scheduleCampaignSheetsSync();
 app.listen(PORT, () => console.log(`מערכת אמא במשמרת עלתה על http://localhost:${PORT}`));

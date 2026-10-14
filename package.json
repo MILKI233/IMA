@@ -16,6 +16,7 @@
     "@anthropic-ai/sdk": "^0.111.0",
     "@hebcal/core": "^6.6.0",
     "better-sqlite3": "^12.11.1",
+    "csv-parse": "^7.0.3",
     "electron-updater": "^6.8.9",
     "express": "^5.2.1",
     "nodemailer": "^9.0.3",

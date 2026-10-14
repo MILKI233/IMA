@@ -38,29 +38,32 @@
 
 <main class="c-main">
     <section id="dashboard" class="c-section active">
-        <div id="lastCallBanner" class="hidden"></div>
+        <div class="card-head-row" style="margin-bottom:6px">
+            <span class="hint" id="sheetsSyncedAt"></span>
+        </div>
+        <div id="sheetsErrBanner" class="hidden" style="background:#fbe6e4;color:#c1362f;border-radius:12px;padding:10px 16px;margin-bottom:14px;font-size:.9rem"></div>
         <div class="stat-row" id="statRow"></div>
         <div class="card">
             <div class="card-head-row">
-                <h2>לוח מתנדבות ונקודות</h2>
+                <h2>משתתפות ונקודות</h2>
                 <input id="volunteerSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם או טלפון">
             </div>
             <table id="volunteersTable"><thead><tr>
-                <th>שם</th><th>טלפון</th><th>נקודות</th><th>יעד שבועי</th><th></th>
+                <th>שם</th><th>טלפון</th><th>נקודות השבוע</th><th>יעד שבועי</th><th>סך נצבר</th><th>סך מומש</th><th>דיווחים</th>
             </tr></thead><tbody></tbody></table>
-            <div class="empty" id="volunteersEmpty" style="display:none">אין מתנדבות עדיין</div>
-            <div class="row" style="margin-top:14px">
-                <input id="newVolPhone" placeholder="טלפון" style="width:140px">
-                <input id="newVolName" placeholder="שם (לא חובה)" style="width:160px">
-                <button class="btn" id="addVolBtn">➕ הוספת מתנדבת</button>
-            </div>
-            <div id="newVolErr" class="hint"></div>
+            <div class="empty" id="volunteersEmpty" style="display:none">אין עדיין משתתפות</div>
         </div>
         <div class="card">
-            <h2>פעילות אחרונה</h2>
+            <h2>תנועות אחרונות</h2>
             <table id="activityTable"><thead><tr>
-                <th>מתנדבת</th><th>סוג</th><th>נקודות</th><th>סטטוס</th><th>תאריך</th>
+                <th>תאריך</th><th>מי</th><th>פעולה / מוצר</th><th>נקודות</th><th>בונוס</th>
             </tr></thead><tbody></tbody></table>
+            <div class="empty" id="txEmpty" style="display:none">אין עדיין תנועות</div>
+        </div>
+        <div class="card">
+            <h2>מוקדים ומלאי</h2>
+            <div class="hub-cards" id="sheetHubCards"></div>
+            <div class="empty" id="sheetHubsEmpty" style="display:none">אין עדיין מוקדים</div>
         </div>
     </section>
 
