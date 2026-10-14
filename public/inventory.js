@@ -261,7 +261,7 @@ async function startApp() {
   if (NAV_TEMPLATE === null) NAV_TEMPLATE = $('#side-nav').innerHTML;
   $('#side-nav').innerHTML = NAV_TEMPLATE;
 
-  // מסכים כספיים + ניהול מלאי + דוחות — למנהלת בלבד; ההשכרה (הזמנות/סריקה/לקוחות) פתוחה לאחמ"שית
+  // מסכים כספיים + ניהול מלאי + דוחות — למנהלת בלבד; ההשכרה (הזמנות/סריקה/לקוחות) פתוחה למוקדנית
   if (!isManager()) {
     $$('.nav-item').forEach((n) => {
       if (['cash', 'cancellations', 'catalog', 'manual', 'stockcheck'].includes(n.dataset.tab)) n.remove();
@@ -1441,7 +1441,7 @@ async function renderStation(main) {
       card.innerHTML = `
         <div class="item-visual">👗</div>
         <div class="item-info">
-          ${isLate ? '<div class="late-banner">⏰ החזרה מאוחרת! להודיע לאחמ"שית</div>' : ''}
+          ${isLate ? '<div class="late-banner">⏰ החזרה מאוחרת! להודיע למוקדנית</div>' : ''}
           <div class="item-title">${esc(it.model_code)} · ${esc(it.model_name)}</div>
           <div class="item-sub">ברקוד ${esc(it.barcode)}${it.size ? ' · מידה ' + esc(it.size) : ''} · ${esc(it.category)}
             · ${it.premium ? '⭐ פרימיום ' + nis(it.premium_price) : nis(it.price)}${wasManual ? ' · <b style="color:var(--warn)">⌨️ הוקלד ידנית</b>' : ''}</div>
@@ -1468,8 +1468,8 @@ async function renderStation(main) {
         const r = await api('/api/inv/return', { method: 'POST', body: returnBody({}) });
         if (r.late) {
           beep('alert');
-          card.querySelector('#scan-msg').innerHTML = `⏰ <b style="color:var(--danger)">החזרה מאוחרת נרשמה!</b> נשלחה הודעה לאחמ"שית · הזמנה #${r.order_id}`;
-          toast('החזרה מאוחרת — הודעה נשלחה לאחמ"שית', 'err');
+          card.querySelector('#scan-msg').innerHTML = `⏰ <b style="color:var(--danger)">החזרה מאוחרת נרשמה!</b> נשלחה הודעה למוקדנית · הזמנה #${r.order_id}`;
+          toast('החזרה מאוחרת — הודעה נשלחה למוקדנית', 'err');
         } else {
           card.querySelector('#scan-msg').innerHTML = `✅ נקלטה החזרה — הזמנה #${r.order_id}. השמלה הועברה לכביסה.`;
           toast('החזרה נקלטה', 'ok');

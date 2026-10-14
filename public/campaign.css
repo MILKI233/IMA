@@ -8,7 +8,7 @@
 * { box-sizing: border-box; }
 body {
     margin: 0;
-    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    font-family: 'Heebo', 'Segoe UI', 'Assistant', system-ui, sans-serif;
     background: linear-gradient(160deg, #eef3fa 0%, #f6f8fb 55%, #eef2f7 100%);
     color: var(--c-dark);
     min-height: 100vh;
@@ -21,7 +21,7 @@ body {
     box-shadow: 0 10px 30px rgba(11,42,74,.12); border-top: 4px solid var(--c-gold);
 }
 .login-crest { font-size: 2.2rem; color: var(--c-raspberry); }
-.login-title { font-family: Georgia, serif; font-size: 1.3rem; margin-top: 6px; }
+.login-title { font-size: 1.3rem; margin-top: 6px; }
 .login-sub { color: #6b7a90; font-size: .9rem; margin-bottom: 18px; }
 .login-card input {
     width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #e3e8f0; font-size: 1.1rem;
@@ -37,7 +37,7 @@ header.c-header {
 }
 header.c-header::after { content: ''; display: block; width: 90px; height: 3px; margin: 14px auto 0; background: var(--c-gold); border-radius: 2px; }
 header.c-header img.brand-logo { height: 46px; margin-bottom: 8px; display: block; margin-inline: auto; }
-header.c-header h1 { margin: 0; font-family: Georgia, serif; font-size: 1.5rem; }
+header.c-header h1 { margin: 0; font-size: 1.5rem; }
 header.c-header p { margin: 6px 0 0; opacity: .92; font-size: .9rem; }
 header.c-header a.back-link { position: absolute; inset-inline-start: 20px; top: 24px; color: #fff; text-decoration: none; font-size: .85rem; opacity: .9; }
 
@@ -56,7 +56,7 @@ section.c-section.active { display: block; }
     background: #ffffff; border-radius: 18px; padding: 22px; margin-bottom: 20px;
     box-shadow: 0 6px 20px rgba(11,42,74,.07); border-top: 3px solid var(--c-gold);
 }
-.card h2 { margin-top: 0; font-family: Georgia, serif; font-size: 1.25rem; color: var(--c-raspberry); }
+.card h2 { margin-top: 0; font-size: 1.25rem; color: var(--c-raspberry); }
 
 table { width: 100%; border-collapse: collapse; font-size: .92rem; }
 th, td { padding: 10px 8px; text-align: right; border-bottom: 1px solid #eef2f7; }
@@ -95,7 +95,7 @@ label.settingLabel { font-size: .85rem; color: #6b7a90; display: block; margin-b
     background: #ffffff; border-radius: 16px; padding: 18px; text-align: center;
     box-shadow: 0 4px 14px rgba(11,42,74,.06); border-top: 3px solid var(--c-gold);
 }
-.stat-card .stat-num { font-size: 1.9rem; font-weight: 700; color: var(--c-raspberry); font-family: Georgia, serif; }
+.stat-card .stat-num { font-size: 1.9rem; font-weight: 700; color: var(--c-raspberry); }
 .stat-card .stat-label { font-size: .82rem; color: #6b7a90; margin-top: 2px; }
 .stat-card.alert { border-top-color: #c1362f; }
 .stat-card.alert .stat-num { color: #c1362f; }
@@ -113,7 +113,7 @@ label.settingLabel { font-size: .85rem; color: #6b7a90; display: block; margin-b
 }
 .pending-card .pc-who { font-weight: 600; }
 .pending-card .pc-meta { font-size: .85rem; color: #6b7a90; }
-.pending-card .pc-value { font-size: 1.3rem; font-weight: 700; color: var(--c-raspberry); font-family: Georgia, serif; }
+.pending-card .pc-value { font-size: 1.3rem; font-weight: 700; color: var(--c-raspberry); }
 .pending-card .pc-actions { display: flex; align-items: center; gap: 8px; }
 .pending-card .pc-actions input { width: 75px; }
 

@@ -817,7 +817,7 @@ app.get('/api/users', mustLogin, mustTop, (req, res) => {
   res.json(db.prepare('SELECT id, name, role, code, active FROM users').all());
 });
 app.post('/api/users', mustLogin, mustTop, (req, res) => {
-  const { name, role = 'אחמ"שית', code } = req.body || {};
+  const { name, role = 'מוקדנית', code } = req.body || {};
   const err = firstError(
     vText(name, 'שם העובדת', { min: 2, max: 50 }),
     vEnum(role, 'תפקיד', ROLES),

@@ -833,7 +833,7 @@ export function inventoryRouter({ mustLogin, mustManager, events }) {
       .run(barcode, orderId || null, context, signature, userName);
     audit(userName, 'barcode.manual', 'manual_barcode', barcode, null, { context, orderId });
     const today = isoDate(new Date());
-    // התראה מיידית פר-הקלדה — משימה לא משויכת, נראית גם למנהלת וגם לאחמ"שית
+    // התראה מיידית פר-הקלדה — משימה לא משויכת, נראית גם למנהלת וגם למוקדנית
     createAutoTask({
       title: `⌨️ ברקוד תקול הוקלד ידנית: ${barcode} (${context}${orderId ? ', הזמנה #' + orderId : ''}) — ע"י ${userName}`,
       category: 'ניהול מלאי', due_date: today, priority: 'חשוב',
@@ -890,7 +890,7 @@ export function inventoryRouter({ mustLogin, mustManager, events }) {
           });
         }
         if (isLate) {
-          // הודעה מיידית לאחמ"שית + הערה בכרטיס
+          // הודעה מיידית למוקדנית + הערה בכרטיס
           appendCustomerNote(oi.customer_id, `החזרה מאוחרת: שמלה ${bc} חזרה ב-${today} (הזמנה ${oi.order_id})`);
           db.prepare('INSERT INTO messages(from_user, body) VALUES (?,?)').run('מערכת ⏰',
             `החזרה מאוחרת: ${oi.customer_name} החזירה שמלה ${bc} (הזמנה ${oi.order_id}) באיחור`);
@@ -970,7 +970,7 @@ export function inventoryRouter({ mustLogin, mustManager, events }) {
     res.json(rows);
   });
 
-  // רישום/עדכון טיפול במשפחה (כובסת פותחת ביציאה, אחמ"שית ממשיכה)
+  // רישום/עדכון טיפול במשפחה (כובסת פותחת ביציאה, מוקדנית ממשיכה)
   r.post('/followups', (req, res) => {
     const { order_id, called, outcome, next_action, close } = req.body || {};
     const o = db.prepare('SELECT id, customer_id FROM orders WHERE id = ?').get(order_id);

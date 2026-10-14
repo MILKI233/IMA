@@ -25,7 +25,7 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'אחמ"שית',   -- יוטי / מנהלת / אחמ"שית / מתנדבת
+  role TEXT NOT NULL DEFAULT 'מוקדנית',   -- יוטי / מנהלת / מוקדנית / מתנדבת
   code TEXT NOT NULL UNIQUE,
   active INTEGER NOT NULL DEFAULT 1
 );
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS return_rounds (
   closed_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
   late_count INTEGER NOT NULL DEFAULT 0
 );
--- מעקב טיפול במשפחות שלא החזירו: כובסת פותחת ביציאה, אחמ"שית ממשיכה במשמרת הבאה
+-- מעקב טיפול במשפחות שלא החזירו: כובסת פותחת ביציאה, מוקדנית ממשיכה במשמרת הבאה
 CREATE TABLE IF NOT EXISTS return_followups (
   id INTEGER PRIMARY KEY,
   order_id INTEGER NOT NULL REFERENCES orders(id),
@@ -226,7 +226,7 @@ CREATE TABLE IF NOT EXISTS return_followups (
   updated_at TEXT,
   UNIQUE(order_id)
 );
--- ברקודים שהוקלדו ידנית (הסורק לא עבד) — עם אימות כפול וחתימה; דוח יומי לאחמ"שית
+-- ברקודים שהוקלדו ידנית (הסורק לא עבד) — עם אימות כפול וחתימה; דוח יומי למוקדנית
 CREATE TABLE IF NOT EXISTS manual_barcodes (
   id INTEGER PRIMARY KEY,
   barcode TEXT NOT NULL,
@@ -300,7 +300,7 @@ for (const stmt of [
   `ALTER TABLE task_instances ADD COLUMN priority TEXT NOT NULL DEFAULT 'רגיל'`,
   `ALTER TABLE task_templates ADD COLUMN assignee TEXT`,   // משימה לעובדת ספציפית (למשל: רותי)
   `ALTER TABLE task_instances ADD COLUMN assignee TEXT`,
-  `ALTER TABLE task_templates ADD COLUMN scope TEXT NOT NULL DEFAULT 'תחילת משמרת'`,  // שיוך: תחילת משמרת/סוף משמרת/מנהלת/אחמשית בוקר
+  `ALTER TABLE task_templates ADD COLUMN scope TEXT NOT NULL DEFAULT 'תחילת משמרת'`,  // שיוך: תחילת משמרת/סוף משמרת/מנהלת/מוקדנית בוקר
   `ALTER TABLE task_instances ADD COLUMN scope TEXT NOT NULL DEFAULT 'תחילת משמרת'`,
   // נעיצת משימה לראש הלוח — מה שחשוב היום נשאר מול העיניים
   `ALTER TABLE task_instances ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
@@ -323,7 +323,7 @@ for (const stmt of [
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------
 // "כללי" היה מבלבל (כל משימה נפלה לתוכו והוא לא אמר כלום על מתי לבצע).
-// המבנה החדש: תחילת משמרת / סוף משמרת / אישי (אחראית בשם) + מנהלת ואחמ"שית בוקר כהרשאות.
+// המבנה החדש: תחילת משמרת / סוף משמרת / אישי (אחראית בשם) + מנהלת ומוקדנית בוקר כהרשאות.
 // מיגרציה רכה — רצה גם על מסד קיים ולא מוחקת דבר, רק מסבה שם שיוך.
 export const LEGACY_SCOPE = 'כללי';
 export const DEFAULT_SCOPE = 'תחילת משמרת';
@@ -404,7 +404,9 @@ export const FEATURES = [
 ];
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 // היררכיית הדרגות מלמעלה למטה.
-export const ROLE_ORDER = [TOP_ROLE, 'מנהלת', 'אחמ"שית', 'מתנדבת'];
+export const ROLE_ORDER = [TOP_ROLE, 'מנהלת', 'מוקדנית', 'מתנדבת'];
+// שם קודם לדרגת "מוקדנית" — לצורך מיגרציה של התקנות ותיקות
+export const SHIFT_ROLE_LEGACY = 'אחמ"שית';
 export const ROLES = ROLE_ORDER;
 
 export const isTop = (role) => role === TOP_ROLE;
@@ -424,7 +426,7 @@ export const TASK_STATUSES = ['open', 'done', TASK_IRRELEVANT];
 export const TASK_SCOPES = [
   { key: 'תחילת משמרת', label: 'תחילת משמרת', desc: 'צ׳ק-ליסט בכניסה — כל הצוות רואה' },
   { key: 'סוף משמרת', label: 'סוף משמרת', desc: 'צ׳ק-ליסט ביציאה' },
-  { key: 'אחמשית בוקר', label: 'אחמ"שית בוקר', desc: 'כל אחמ"שית שנכנסת' },
+  { key: 'מוקדנית בוקר', label: 'מוקדנית בוקר', desc: 'כל מוקדנית שנכנסת' },
   { key: 'מנהלת', label: 'מנהלת בלבד', desc: 'סגור בפני העובדות' },
 ];
 export const SCOPE_KEYS = TASK_SCOPES.map((s) => s.key);
@@ -435,7 +437,7 @@ const MANAGER_DEFAULTS = FEATURE_KEYS.filter((k) => k !== 'admin');
 const PERM_DEFAULTS = {
   [TOP_ROLE]: FEATURE_KEYS,
   'מנהלת': MANAGER_DEFAULTS,
-  'אחמ"שית': ['today', 'week', 'periodic', 'calendar', 'problems', 'handover', 'messages', 'attendance', 'inventory', 'campaign', 'ai'],
+  'מוקדנית': ['today', 'week', 'periodic', 'calendar', 'problems', 'handover', 'messages', 'attendance', 'inventory', 'campaign', 'ai'],
   'מתנדבת': ['today', 'messages', 'attendance'],
 };
 
@@ -457,14 +459,21 @@ if (db.prepare('SELECT COUNT(*) c FROM role_permissions').get().c === 0) {
 
 // ---------- מיגרציית ההיררכיה החדשה (רכה — רצה גם על מסד קיים) ----------
 try {
-  // 'עובדת' בוטל (חפף ל'אחמ"שית') — כל מי שהייתה עובדת הופכת לאחמ"שית
-  db.prepare(`UPDATE users SET role = 'אחמ"שית' WHERE role = 'עובדת'`).run();
+  // 'עובדת' בוטל (חפף למוקדנית) — כל מי שהייתה עובדת הופכת למוקדנית
+  db.prepare(`UPDATE users SET role = 'מוקדנית' WHERE role = 'עובדת'`).run();
   db.prepare(`DELETE FROM role_permissions WHERE role = 'עובדת'`).run();
 } catch { /* אין מה לעדכן */ }
 try {
   // 'כובסת' בוטל — אינו תפקיד רלוונטי לארגון; מי שהייתה בדרגה זו הופכת למתנדבת
   db.prepare(`UPDATE users SET role = 'מתנדבת' WHERE role = 'כובסת'`).run();
   db.prepare(`DELETE FROM role_permissions WHERE role = 'כובסת'`).run();
+} catch { /* אין מה לעדכן */ }
+try {
+  // 'אחמ"שית' שונה ל'מוקדנית' — מעבירים משתמשות, הרשאות, ושיוכי משימות קיימים לשם החדש
+  db.prepare('UPDATE users SET role = ? WHERE role = ?').run('מוקדנית', SHIFT_ROLE_LEGACY);
+  db.prepare('DELETE FROM role_permissions WHERE role = ?').run(SHIFT_ROLE_LEGACY);
+  db.prepare(`UPDATE task_templates SET scope = 'מוקדנית בוקר' WHERE scope = 'אחמשית בוקר'`).run();
+  db.prepare(`UPDATE task_instances SET scope = 'מוקדנית בוקר' WHERE scope = 'אחמשית בוקר'`).run();
 } catch { /* אין מה לעדכן */ }
 try {
   // המנהלת הראשית (קוד 1111) מקבלת את דרגת העל
