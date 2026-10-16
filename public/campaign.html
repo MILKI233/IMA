@@ -62,6 +62,7 @@
         </div>
         <div class="card">
             <h2>מוקדים ומלאי</h2>
+            <div class="stat-row" id="kitsSummaryRow" style="margin-bottom:14px"></div>
             <div class="hub-cards" id="sheetHubCards"></div>
             <div class="empty" id="sheetHubsEmpty" style="display:none">אין עדיין מוקדים</div>
         </div>
@@ -96,9 +97,14 @@
         <div class="card">
             <div class="card-head-row">
                 <h2>עסקים — מי פנתה ולמה</h2>
-                <input id="bizSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם עסק">
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input id="bizSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם עסק">
+                    <button class="btn secondary" id="bizExportBtn">⬇ הורדה כאקסל</button>
+                </div>
             </div>
-            <div id="bizCards" class="hub-cards"></div>
+            <table id="bizTable"><thead><tr>
+                <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>סטטוס</th><th>תגובה</th><th></th>
+            </tr></thead><tbody></tbody></table>
             <div class="empty" id="bizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
         </div>
         <div class="card">
@@ -107,6 +113,7 @@
                 <input id="bizName" placeholder="שם העסק" style="width:200px">
                 <input id="bizContactedBy" placeholder="מי פנתה (שם)" style="width:160px">
                 <input id="bizPhone" placeholder="טלפון העסק (לא חובה)" style="width:150px">
+                <input id="bizEmail" placeholder="מייל העסק (לא חובה)" style="width:180px">
             </div>
             <div class="row">
                 <select id="bizStatus" style="width:140px">

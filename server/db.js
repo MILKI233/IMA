@@ -319,6 +319,8 @@ for (const stmt of [
   `ALTER TABLE messages ADD COLUMN reply_to INTEGER REFERENCES messages(id)`,
   // טיוטה: נשמרת אך לא נשלחת עדיין — לא מופיעה בתיבה הנכנסת/באנר של אף אחת חוץ מהכותבת
   `ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'sent'`,
+  // כתובת מייל לעסק
+  `ALTER TABLE campaign_businesses ADD COLUMN email TEXT`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

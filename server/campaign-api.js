@@ -1,5 +1,5 @@
 import express from 'express';
-import { read, utils } from 'xlsx';
+import { read, utils, write } from 'xlsx';
 import {
     db, audit, getVolunteerBalance, campaignWeekStart, getAllCampaignSettings, setCampaignSettings, campaignGeoLeaves,
     findOrCreateVolunteer
@@ -84,11 +84,12 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         if (!name) return res.status(400).json({ error: 'יש להזין שם עסק' });
         const contactedBy = String(req.body?.contacted_by ?? '').trim() || req.user.name;
         const phone = String(req.body?.phone ?? '').trim() || null;
+        const email = String(req.body?.email ?? '').trim() || null;
         const response = String(req.body?.response ?? '').trim() || null;
         const status = BUSINESS_STATUSES.includes(req.body?.status) ? req.body.status : 'ממתין';
-        const r = db.prepare(`INSERT INTO campaign_businesses (name, contacted_by, phone, response, status, created_at)
-                              VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))`)
-            .run(name, contactedBy, phone, response, status);
+        const r = db.prepare(`INSERT INTO campaign_businesses (name, contacted_by, phone, email, response, status, created_at)
+                              VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`)
+            .run(name, contactedBy, phone, email, response, status);
         audit(req.user.name, 'campaign.business.create', 'campaign_businesses', r.lastInsertRowid, null, { name, contacted_by: contactedBy, status });
         events?.emit('campaign.update');
         res.json({ ok: true, id: r.lastInsertRowid });
@@ -99,10 +100,11 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         const name = String(req.body?.name ?? before.name).trim();
         const contactedBy = String(req.body?.contacted_by ?? before.contacted_by ?? '').trim() || null;
         const phone = String(req.body?.phone ?? before.phone ?? '').trim() || null;
+        const email = String(req.body?.email ?? before.email ?? '').trim() || null;
         const response = String(req.body?.response ?? before.response ?? '').trim() || null;
         const status = BUSINESS_STATUSES.includes(req.body?.status) ? req.body.status : before.status;
-        db.prepare(`UPDATE campaign_businesses SET name=?, contacted_by=?, phone=?, response=?, status=?, updated_at=datetime('now','localtime') WHERE id=?`)
-            .run(name, contactedBy, phone, response, status, before.id);
+        db.prepare(`UPDATE campaign_businesses SET name=?, contacted_by=?, phone=?, email=?, response=?, status=?, updated_at=datetime('now','localtime') WHERE id=?`)
+            .run(name, contactedBy, phone, email, response, status, before.id);
         audit(req.user.name, 'campaign.business.update', 'campaign_businesses', before.id,
             { status: before.status }, { name, contacted_by: contactedBy, status, response });
         events?.emit('campaign.update');
@@ -115,6 +117,21 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         audit(req.user.name, 'campaign.business.delete', 'campaign_businesses', before.id, before, null);
         events?.emit('campaign.update');
         res.json({ ok: true });
+    });
+    // ייצוא רשימת העסקים כאקסל להורדה
+    router.get('/businesses/export.xlsx', mustLogin, (req, res) => {
+        const rows = db.prepare('SELECT name, contacted_by, phone, email, status, response, created_at, updated_at FROM campaign_businesses ORDER BY id DESC').all();
+        const data = rows.map((r) => ({
+            'שם העסק': r.name, 'מי פנתה': r.contacted_by || '', 'טלפון': r.phone || '', 'מייל': r.email || '',
+            'סטטוס': r.status, 'תגובה': r.response || '', 'נוצר': r.created_at, 'עודכן': r.updated_at || '',
+        }));
+        const wb = utils.book_new();
+        const sheet = utils.json_to_sheet(data);
+        utils.book_append_sheet(wb, sheet, 'עסקים');
+        const buf = write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=businesses.xlsx; filename*=UTF-8''${encodeURIComponent('עסקים.xlsx')}`);
+        res.send(buf);
     });
 
     // הוספת מתנדבת ידנית — ממסך הדשבורד הרגיל, לא רק דרך ניהול/אקסל

@@ -264,6 +264,16 @@ function renderSheetsDashboard(data) {
 
     const hubs = data.hubs || [];
     document.getElementById('sheetHubsEmpty').style.display = hubs.length ? 'none' : 'block';
+
+    const kitsTotalSum = hubs.reduce((s, h) => s + (parseFloat(h['כמות ערכות כוללת']) || 0), 0);
+    const kitsDistSum = hubs.reduce((s, h) => s + (parseFloat(h['ערכות שחולקו בפועל']) || 0), 0);
+    const kitsLeftSum = hubs.reduce((s, h) => s + (parseFloat(h['נשארו במלאי']) || 0), 0);
+    document.getElementById('kitsSummaryRow').innerHTML = `
+        <div class="stat-card"><div class="stat-num">${kitsTotalSum}</div><div class="stat-label">סה״כ ערכות בכל המוקדים</div></div>
+        <div class="stat-card"><div class="stat-num">${kitsDistSum}</div><div class="stat-label">חולקו בפועל</div></div>
+        <div class="stat-card"><div class="stat-num">${kitsLeftSum}</div><div class="stat-label">נשארו במלאי</div></div>
+    `;
+
     if (editingSheetHubRow !== null) return;
     document.getElementById('sheetHubCards').innerHTML = hubs.map((h) => {
         const total = parseFloat(h['כמות ערכות כוללת']) || 0;
@@ -455,24 +465,29 @@ function renderBusinesses(rows) {
     const q = bizQuery.toLowerCase();
     const filtered = rows.filter((b) => !q || b.name.toLowerCase().includes(q));
     document.getElementById('bizEmpty').style.display = filtered.length ? 'none' : 'block';
-    document.getElementById('bizCards').innerHTML = filtered.map((b) => `
-        <div class="hub-card">
-            <div class="hc-name">${b.name}</div>
-            <div class="hc-meta">${b.contacted_by ? 'פנתה: ' + b.contacted_by : 'לא ידוע מי פנתה'}${b.phone ? ' · ' + b.phone : ''}</div>
-            <div class="hc-meta"><span class="badge ${BIZ_STATUS_CLASS[b.status] || ''}">${b.status}</span></div>
-            <div class="hc-meta">${b.response || 'אין עדיין תגובה רשומה'}</div>
-            <div class="hc-actions">
+    document.querySelector('#bizTable tbody').innerHTML = filtered.map((b) => `
+        <tr>
+            <td>${b.name}</td>
+            <td>${b.contacted_by || '—'}</td>
+            <td>${b.phone || ''}</td>
+            <td>${b.email || ''}</td>
+            <td><span class="badge ${BIZ_STATUS_CLASS[b.status] || ''}">${b.status}</span></td>
+            <td>${b.response || ''}</td>
+            <td>
                 <button class="btn secondary" onclick="toggleBizEdit(${b.id})">עריכה</button>
                 <button class="btn danger" onclick="deleteBusiness(${b.id})">מחיקה</button>
-            </div>
-            <div class="hub-edit-row hidden" id="biz-edit-${b.id}">
+            </td>
+        </tr>
+        <tr class="hub-edit-row hidden" id="biz-edit-${b.id}">
+            <td colspan="7">
+                <input id="be-email-${b.id}" placeholder="מייל" value="${b.email || ''}" style="width:180px">
                 <select id="be-status-${b.id}">
                     ${['ממתין', 'נוצר קשר', 'תרם', 'סירב'].map((s) => `<option${s === b.status ? ' selected' : ''}>${s}</option>`).join('')}
                 </select>
                 <input id="be-response-${b.id}" placeholder="תגובה" value="${b.response || ''}" style="flex:2">
                 <button class="btn" onclick="saveBizEdit(${b.id})">שמירה</button>
-            </div>
-        </div>`).join('');
+            </td>
+        </tr>`).join('');
 }
 
 function toggleBizEdit(id) {
@@ -483,6 +498,7 @@ function toggleBizEdit(id) {
 async function saveBizEdit(id) {
     try {
         await api(`/api/campaign/businesses/${id}`, { method: 'PUT', body: {
+            email: document.getElementById(`be-email-${id}`).value,
             status: document.getElementById(`be-status-${id}`).value,
             response: document.getElementById(`be-response-${id}`).value,
         } });
@@ -503,15 +519,30 @@ document.getElementById('addBizBtn').addEventListener('click', async () => {
             name: document.getElementById('bizName').value,
             contacted_by: document.getElementById('bizContactedBy').value,
             phone: document.getElementById('bizPhone').value,
+            email: document.getElementById('bizEmail').value,
             status: document.getElementById('bizStatus').value,
             response: document.getElementById('bizResponse').value,
         } });
         document.getElementById('bizName').value = '';
         document.getElementById('bizContactedBy').value = '';
         document.getElementById('bizPhone').value = '';
+        document.getElementById('bizEmail').value = '';
         document.getElementById('bizResponse').value = '';
         loadBusinesses();
     } catch (e) { alert(e.message); }
+});
+
+document.getElementById('bizExportBtn').addEventListener('click', async () => {
+    try {
+        const res = await fetch('/api/campaign/businesses/export.xlsx', { headers: { 'x-user-id': USER ? USER.id : '' } });
+        if (!res.ok) throw new Error('ההורדה נכשלה');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url; link.download = 'עסקים.xlsx';
+        document.body.append(link); link.click(); link.remove();
+        URL.revokeObjectURL(url);
+    } catch (e) { alert(e.message || 'ההורדה נכשלה'); }
 });
 
 if (USER) startApp(); else initLogin();
