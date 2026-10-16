@@ -54,7 +54,10 @@
             <div class="empty" id="volunteersEmpty" style="display:none">אין עדיין משתתפות</div>
         </div>
         <div class="card">
-            <h2>תנועות אחרונות</h2>
+            <div class="card-head-row">
+                <h2>תנועות אחרונות</h2>
+                <input id="txSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/טלפון/פעולה">
+            </div>
             <table id="activityTable"><thead><tr>
                 <th>תאריך</th><th>מי</th><th>פעולה / מוצר</th><th>נקודות</th><th>בונוס</th>
             </tr></thead><tbody></tbody></table>
@@ -70,7 +73,10 @@
 
     <section id="pending" class="c-section">
         <div class="card">
-            <h2>דיווחי גיוס מוצר הממתינים לאישור</h2>
+            <div class="card-head-row">
+                <h2>דיווחי גיוס מוצר הממתינים לאישור</h2>
+                <input id="pendingSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/טלפון">
+            </div>
             <div class="pending-list" id="pendingList"></div>
             <div class="empty" id="pendingEmpty" style="display:none">אין דיווחים ממתינים — הכל מעודכן ✓</div>
         </div>
@@ -86,7 +92,10 @@
             <div class="empty" id="hubsEmpty" style="display:none">אין מוקדים מוגדרים עדיין</div>
         </div>
         <div class="card">
-            <h2>יומן מוקדים אחרון</h2>
+            <div class="card-head-row">
+                <h2>יומן מוקדים אחרון</h2>
+                <input id="hubLogsSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי מוקד/פרטים">
+            </div>
             <table id="hubLogsTable"><thead><tr>
                 <th>מוקד</th><th>סוג</th><th>פרטים</th><th>תאריך</th>
             </tr></thead><tbody></tbody></table>

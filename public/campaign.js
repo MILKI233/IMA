@@ -39,6 +39,9 @@ let editingHubId = null;
 let bizQuery = '';
 let bizLoaded = false;
 let editingBizId = null;
+let txQuery = '';
+let pendingQuery = '';
+let hubLogsQuery = '';
 
 async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -106,6 +109,18 @@ function startApp() {
     document.getElementById('bizSearch').addEventListener('input', (e) => {
         bizQuery = e.target.value.trim();
         if (bizLoaded) renderBusinesses(window.__bizRows || []);
+    });
+    document.getElementById('txSearch').addEventListener('input', (e) => {
+        txQuery = e.target.value.trim();
+        if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
+    });
+    document.getElementById('pendingSearch').addEventListener('input', (e) => {
+        pendingQuery = e.target.value.trim();
+        if (lastData) render(lastData);
+    });
+    document.getElementById('hubLogsSearch').addEventListener('input', (e) => {
+        hubLogsQuery = e.target.value.trim();
+        if (lastData) render(lastData);
     });
 
     loadDashboard();
@@ -251,7 +266,11 @@ function renderSheetsDashboard(data) {
             </tr>`).join('');
     }
 
-    const txns = data.transactions || [];
+    const tq = txQuery.toLowerCase();
+    const txns = (data.transactions || []).filter((t) => !tq
+        || (t['שם'] || '').toLowerCase().includes(tq)
+        || (t['טלפון'] || '').toLowerCase().includes(tq)
+        || (t['פעולה / מוצר'] || '').toLowerCase().includes(tq));
     document.getElementById('txEmpty').style.display = txns.length ? 'none' : 'block';
     document.querySelector('#activityTable tbody').innerHTML = txns.map((t) => `
         <tr>
@@ -412,8 +431,12 @@ function render(data) {
     applySettings(data.settings || {});
 
     document.getElementById('pendingCount').textContent = data.pending.length ? `(${data.pending.length})` : '';
-    document.getElementById('pendingEmpty').style.display = data.pending.length ? 'none' : 'block';
-    document.getElementById('pendingList').innerHTML = data.pending.map((p) => `
+    const pq = pendingQuery.toLowerCase();
+    const pendingFiltered = data.pending.filter((p) => !pq
+        || (p.name || '').toLowerCase().includes(pq)
+        || (p.phone || '').toLowerCase().includes(pq));
+    document.getElementById('pendingEmpty').style.display = pendingFiltered.length ? 'none' : 'block';
+    document.getElementById('pendingList').innerHTML = pendingFiltered.map((p) => `
         <div class="pending-card">
             <div>
                 <div class="pc-who">${p.name || p.phone}</div>
@@ -430,7 +453,12 @@ function render(data) {
 
     renderHubs(data);
 
-    document.querySelector('#hubLogsTable tbody').innerHTML = data.hubLogs.map((l) => `
+    const hlq = hubLogsQuery.toLowerCase();
+    const hubLogsFiltered = data.hubLogs.filter((l) => !hlq
+        || (l.hub_name || '').toLowerCase().includes(hlq)
+        || (l.message || '').toLowerCase().includes(hlq)
+        || (l.phone || '').toLowerCase().includes(hlq));
+    document.querySelector('#hubLogsTable tbody').innerHTML = hubLogsFiltered.map((l) => `
         <tr>
             <td>${l.hub_name}</td>
             <td>${l.kind === 'catalogs_taken' ? 'קטלוגים נלקחו' : 'הודעה'}</td>
