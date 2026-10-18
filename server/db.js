@@ -830,6 +830,38 @@ CREATE TABLE IF NOT EXISTS campaign_hub_logs (
 );
 `);
 
+// שחזור חד-פעמי של תגובות עסקים שנכתבו לפני שהייתה טבלת היסטוריה נפרדת (campaign_business_notes) —
+// התגובות הקודמות עדיין קיימות ביומן הפעולות (audit_log) בכל עדכון, רק לא הוצגו כרשומות נפרדות.
+try {
+    const businessesNoHistory = db.prepare(`
+        SELECT b.id, b.response, b.created_at, b.updated_at FROM campaign_businesses b
+        WHERE NOT EXISTS (SELECT 1 FROM campaign_business_notes n WHERE n.business_id = b.id)
+    `).all();
+    const insertNote = db.prepare('INSERT INTO campaign_business_notes (business_id, text, created_by, created_at) VALUES (?, ?, ?, ?)');
+    for (const biz of businessesNoHistory) {
+        const auditRows = db.prepare(`
+            SELECT user_name, after_state, at FROM audit_log
+            WHERE entity = 'campaign_businesses' AND entity_id = ? AND action = 'campaign.business.update'
+            ORDER BY id ASC
+        `).all(String(biz.id));
+        let lastText = null;
+        const toInsert = [];
+        for (const row of auditRows) {
+            let after;
+            try { after = JSON.parse(row.after_state); } catch { continue; }
+            const text = String(after?.response ?? '').trim();
+            if (!text || text === lastText) continue;
+            toInsert.push({ text, created_by: row.user_name, created_at: row.at });
+            lastText = text;
+        }
+        const currentText = String(biz.response ?? '').trim();
+        if (currentText && currentText !== lastText) {
+            toInsert.push({ text: currentText, created_by: null, created_at: biz.updated_at || biz.created_at });
+        }
+        for (const n of toInsert) insertNote.run(biz.id, n.text, n.created_by, n.created_at);
+    }
+} catch (e) { console.error('שחזור היסטוריית תגובות לעסקים נכשל:', e.message); }
+
 const CAMPAIGN_SETTING_DEFAULTS = {
     campaign_points_outreach: '2',
     campaign_points_errand: '4',
