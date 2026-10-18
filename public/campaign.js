@@ -42,6 +42,7 @@ let editingBizId = null;
 let txQuery = '';
 let pendingQuery = '';
 let hubLogsQuery = '';
+let kitRecipientsQuery = '';
 
 async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -121,6 +122,10 @@ function startApp() {
     document.getElementById('hubLogsSearch').addEventListener('input', (e) => {
         hubLogsQuery = e.target.value.trim();
         if (lastData) render(lastData);
+    });
+    document.getElementById('kitRecipientsSearch').addEventListener('input', (e) => {
+        kitRecipientsQuery = e.target.value.trim();
+        if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
     });
 
     loadDashboard();
@@ -319,6 +324,20 @@ function renderSheetsDashboard(data) {
             </div>
         </div>`;
     }).join('');
+
+    const krq = kitRecipientsQuery.toLowerCase();
+    const kitRecipients = (data.kitRecipients || []).filter((k) => !krq
+        || (k['מספר טלפון של התושב'] || '').toLowerCase().includes(krq)
+        || (k['אזור / מוקד'] || '').toLowerCase().includes(krq)
+        || (k['שם האחראית'] || '').toLowerCase().includes(krq));
+    document.getElementById('kitRecipientsEmpty').style.display = kitRecipients.length ? 'none' : 'block';
+    document.querySelector('#kitRecipientsTable tbody').innerHTML = kitRecipients.map((k) => `
+        <tr>
+            <td>${k['תאריך ושעה'] || ''}</td>
+            <td>${k['מספר טלפון של התושב'] || ''}</td>
+            <td>${k['אזור / מוקד'] || ''}</td>
+            <td>${k['שם האחראית'] || ''}</td>
+        </tr>`).join('');
 }
 
 function openSheetPointsEdit(row) {

@@ -7,7 +7,7 @@ import { getAllCampaignSettings } from './db.js';
 export const POINTS_SHEET_ID = '1h-Hj2Wam8UeW6Cn9zg-ovkOc5kf1_evXY9UgBRmmuVA';
 export const HUBS_SHEET_ID = '1DZ4tcEuNA_ZcCEuOTDaDo5FK7EVypNsD-71_3yWX0sM';
 
-let cache = { participants: [], transactions: [], hubs: [], syncedAt: null, error: null };
+let cache = { participants: [], transactions: [], hubs: [], kitRecipients: [], syncedAt: null, error: null };
 
 async function fetchSheetRows(spreadsheetId, sheetName) {
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
@@ -23,13 +23,15 @@ async function fetchSheetRows(spreadsheetId, sheetName) {
 
 export async function syncCampaignSheets() {
   try {
-    const [participants, transactions, hubs] = await Promise.all([
+    const [participants, transactions, hubs, kitRecipients] = await Promise.all([
       fetchSheetRows(POINTS_SHEET_ID, 'משתתפים'),
       fetchSheetRows(POINTS_SHEET_ID, 'תנועות'),
       fetchSheetRows(HUBS_SHEET_ID, 'מוקדים ומלאי'),
+      fetchSheetRows(HUBS_SHEET_ID, 'מקבלי ערכות'),
     ]);
     transactions.reverse();
-    cache = { participants, transactions: transactions.slice(0, 100), hubs, syncedAt: new Date().toISOString(), error: null };
+    kitRecipients.reverse();
+    cache = { participants, transactions: transactions.slice(0, 100), hubs, kitRecipients, syncedAt: new Date().toISOString(), error: null };
   } catch (e) {
     cache = { ...cache, error: e.message, syncedAt: cache.syncedAt };
     console.error('סנכרון גליונות הקמפיין נכשל:', e.message);
