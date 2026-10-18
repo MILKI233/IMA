@@ -789,6 +789,15 @@ CREATE TABLE IF NOT EXISTS campaign_business_statuses (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+-- היסטוריית תגובות/עדכונים לעסק — כל מה שהיה בקשר איתו במשך הזמן (לא רק התגובה האחרונה)
+CREATE TABLE IF NOT EXISTS campaign_business_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  business_id INTEGER NOT NULL REFERENCES campaign_businesses(id),
+  text TEXT NOT NULL,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS campaign_prizes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code INTEGER UNIQUE NOT NULL,

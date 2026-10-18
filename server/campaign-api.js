@@ -126,6 +126,24 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         events?.emit('campaign.update');
         res.json({ ok: true });
     });
+    // היסטוריית תגובות/עדכונים לעסק — כל מה שהיה בקשר איתו, לא רק התגובה האחרונה
+    router.get('/businesses/:id/notes', mustLogin, (req, res) => {
+        const biz = db.prepare('SELECT id FROM campaign_businesses WHERE id = ?').get(req.params.id);
+        if (!biz) return res.status(404).json({ error: 'העסק לא נמצא' });
+        res.json(db.prepare('SELECT * FROM campaign_business_notes WHERE business_id = ? ORDER BY id DESC').all(biz.id));
+    });
+    router.post('/businesses/:id/notes', mustLogin, (req, res) => {
+        const biz = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
+        if (!biz) return res.status(404).json({ error: 'העסק לא נמצא' });
+        const text = String(req.body?.text ?? '').trim();
+        if (!text) return res.status(400).json({ error: 'יש להזין תגובה' });
+        const r = db.prepare(`INSERT INTO campaign_business_notes (business_id, text, created_by, created_at)
+                              VALUES (?, ?, ?, datetime('now','localtime'))`).run(biz.id, text, req.user.name);
+        db.prepare(`UPDATE campaign_businesses SET response=?, updated_at=datetime('now','localtime') WHERE id=?`).run(text, biz.id);
+        audit(req.user.name, 'campaign.business.note_add', 'campaign_businesses', biz.id, null, { text });
+        events?.emit('campaign.update');
+        res.json({ ok: true, id: r.lastInsertRowid });
+    });
     router.delete('/businesses/:id', mustLogin, mustManager, (req, res) => {
         const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
         if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });

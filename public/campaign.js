@@ -543,15 +543,63 @@ async function addBizStatus() {
     } catch (e) { alert(e.message || 'הוספת הסטטוס נכשלה'); }
 }
 
-async function quickAddResponse(id) {
-    const current = (window.__bizRows || []).find((b) => b.id === id);
-    const text = prompt('תגובה:', current?.response || '');
-    if (text === null) return;
-    try {
-        await api(`/api/campaign/businesses/${id}`, { method: 'PUT', body: { response: text } });
-        loadBusinesses();
-    } catch (e) { alert(e.message || 'השמירה נכשלה'); }
+/* ---- חלון פרטי עסק: כל ההיסטוריה והתגובות ---- */
+let bizModalId = null;
+
+async function openBizModal(id) {
+    const biz = (window.__bizRows || []).find((b) => b.id === id);
+    if (!biz) return;
+    bizModalId = id;
+    document.getElementById('bizModalTitle').textContent = biz.name;
+    document.getElementById('bizModalMeta').innerHTML = `
+        ${biz.contacted_by ? `פנתה: ${biz.contacted_by} · ` : ''}
+        ${biz.phone ? `טלפון: ${biz.phone} · ` : ''}
+        ${biz.email ? `מייל: ${biz.email} · ` : ''}
+        <span class="badge ${BIZ_STATUS_CLASS[biz.status] || ''}">${biz.status}</span>`;
+    document.getElementById('bizModalNewNote').value = '';
+    document.getElementById('bizModalOverlay').classList.remove('hidden');
+    await loadBizNotes(id, biz);
 }
+
+async function loadBizNotes(id, biz) {
+    const box = document.getElementById('bizModalNotes');
+    box.innerHTML = '<div class="hint">טוענת...</div>';
+    try {
+        const notes = await api(`/api/campaign/businesses/${id}/notes`);
+        if (!notes.length && biz?.response) {
+            // תגובה שנשמרה לפני שהיה היסטוריה — מציגים אותה כרשומה הראשונה
+            box.innerHTML = `<div class="modal-note"><div class="modal-note-text">${biz.response}</div><div class="modal-note-meta">תגובה קיימת</div></div>`;
+            return;
+        }
+        if (!notes.length) { box.innerHTML = '<div class="empty">אין עדיין תגובות או עדכונים</div>'; return; }
+        box.innerHTML = notes.map((n) => `
+            <div class="modal-note">
+                <div class="modal-note-text">${n.text}</div>
+                <div class="modal-note-meta">${n.created_by || ''} · ${fmtDate(n.created_at)}</div>
+            </div>`).join('');
+    } catch (e) { box.innerHTML = `<div class="hint">${e.message || 'שגיאה בטעינה'}</div>`; }
+}
+
+function closeBizModal() {
+    bizModalId = null;
+    document.getElementById('bizModalOverlay').classList.add('hidden');
+}
+
+async function addBizNote() {
+    const text = document.getElementById('bizModalNewNote').value.trim();
+    if (!text || bizModalId === null) return;
+    try {
+        await api(`/api/campaign/businesses/${bizModalId}/notes`, { method: 'POST', body: { text } });
+        document.getElementById('bizModalNewNote').value = '';
+        const biz = (window.__bizRows || []).find((b) => b.id === bizModalId);
+        await loadBizNotes(bizModalId, biz);
+        loadBusinesses();
+    } catch (e) { alert(e.message || 'ההוספה נכשלה'); }
+}
+
+document.getElementById('bizModalClose').addEventListener('click', closeBizModal);
+document.getElementById('bizModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'bizModalOverlay') closeBizModal(); });
+document.getElementById('bizModalAddNoteBtn').addEventListener('click', addBizNote);
 
 async function loadBusinesses() {
     try {
@@ -569,20 +617,19 @@ function renderBusinesses(rows) {
     const filtered = rows.filter((b) => !q || b.name.toLowerCase().includes(q));
     document.getElementById('bizEmpty').style.display = filtered.length ? 'none' : 'block';
     document.querySelector('#bizTable tbody').innerHTML = filtered.map((b) => `
-        <tr>
+        <tr class="biz-row" onclick="openBizModal(${b.id})">
             <td>${b.name}</td>
             <td>${b.contacted_by || '—'}</td>
             <td>${b.phone || ''}</td>
             <td>${b.email || ''}</td>
             <td><span class="badge ${BIZ_STATUS_CLASS[b.status] || ''}">${b.status}</span></td>
             <td>${b.response || '<span class="hint">אין תגובה</span>'}</td>
-            <td>
-                <button class="btn secondary" onclick="quickAddResponse(${b.id})">${b.response ? 'עריכת תגובה' : 'הוספת תגובה'}</button>
+            <td onclick="event.stopPropagation()">
                 <button class="btn secondary" onclick="toggleBizEdit(${b.id})">עריכה</button>
                 <button class="btn danger" onclick="deleteBusiness(${b.id})">מחיקה</button>
             </td>
         </tr>
-        <tr class="hub-edit-row hidden" id="biz-edit-${b.id}">
+        <tr class="hub-edit-row hidden" id="biz-edit-${b.id}" onclick="event.stopPropagation()">
             <td colspan="7">
                 <input id="be-email-${b.id}" placeholder="מייל" value="${b.email || ''}" style="width:180px">
                 <select id="be-status-${b.id}">
