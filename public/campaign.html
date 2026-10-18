@@ -44,8 +44,8 @@
     <button data-tab="pending" data-target="hd-pending">ממתינים לאישור</button>
     <button data-tab="hubs" data-target="hd-hubslist">מוקדי הפצה</button>
     <button data-tab="hubs" data-target="hd-hublogs">יומן מוקדים</button>
-    <button data-tab="businesses" data-target="hd-biz">עסקים</button>
     <button data-tab="businesses" data-target="hd-bizadd" title="טופס להוספת עסק חדש לרשימה">הוספת עסק</button>
+    <button data-tab="businesses" data-target="hd-biz">עסקים</button>
     <button data-tab="activity" data-target="hd-activity">יומן פעולות</button>
 </nav>
 
@@ -130,19 +130,6 @@
 
     <section id="businesses" class="c-section">
         <div class="card">
-            <div class="card-head-row">
-                <h2 id="hd-biz">עסקים — מי פנתה ולמה</h2>
-                <div style="display:flex;gap:8px;align-items:center">
-                    <input id="bizSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם עסק">
-                    <button class="btn secondary" id="bizExportBtn">⬇ הורדה כאקסל</button>
-                </div>
-            </div>
-            <table id="bizTable"><thead><tr>
-                <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>סטטוס</th><th>תגובה</th><th></th>
-            </tr></thead><tbody></tbody></table>
-            <div class="empty" id="bizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
-        </div>
-        <div class="card">
             <h2 id="hd-bizadd">הוספת עסק</h2>
             <div class="row">
                 <input id="bizName" placeholder="שם העסק" style="width:200px">
@@ -158,6 +145,19 @@
                 <input id="bizResponse" placeholder="מה הייתה התגובה (לא חובה)" style="width:300px">
                 <button class="btn" id="addBizBtn">הוספת עסק</button>
             </div>
+        </div>
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-biz">עסקים — מי פנתה ולמה</h2>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input id="bizSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם עסק">
+                    <button class="btn secondary" id="bizExportBtn">⬇ הורדה כאקסל</button>
+                </div>
+            </div>
+            <table id="bizTable"><thead><tr>
+                <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>סטטוס</th><th>תגובה</th><th></th>
+            </tr></thead><tbody></tbody></table>
+            <div class="empty" id="bizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
         </div>
     </section>
 
