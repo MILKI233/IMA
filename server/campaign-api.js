@@ -144,6 +144,14 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         events?.emit('campaign.update');
         res.json({ ok: true, id: r.lastInsertRowid });
     });
+    router.delete('/businesses/:id/notes/:noteId', mustLogin, (req, res) => {
+        const note = db.prepare('SELECT * FROM campaign_business_notes WHERE id = ? AND business_id = ?').get(req.params.noteId, req.params.id);
+        if (!note) return res.status(404).json({ error: 'הרשומה לא נמצאה' });
+        db.prepare('DELETE FROM campaign_business_notes WHERE id = ?').run(note.id);
+        audit(req.user.name, 'campaign.business.note_delete', 'campaign_businesses', note.business_id, note, null);
+        events?.emit('campaign.update');
+        res.json({ ok: true });
+    });
     router.delete('/businesses/:id', mustLogin, mustManager, (req, res) => {
         const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
         if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });

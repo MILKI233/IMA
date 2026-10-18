@@ -567,17 +567,33 @@ async function loadBizNotes(id, biz) {
     try {
         const notes = await api(`/api/campaign/businesses/${id}/notes`);
         if (!notes.length && biz?.response) {
-            // תגובה שנשמרה לפני שהיה היסטוריה — מציגים אותה כרשומה הראשונה
-            box.innerHTML = `<div class="modal-note"><div class="modal-note-text">${biz.response}</div><div class="modal-note-meta">תגובה קיימת</div></div>`;
+            // תגובה שנשמרה לפני שהיה היסטוריה — מציגים אותה כרשומה הראשונה, בלי אפשרות מחיקה (אין לה ID משלה)
+            box.innerHTML = `<div class="modal-note"><div class="modal-note-num">1</div><div class="modal-note-body"><div class="modal-note-text">${biz.response}</div><div class="modal-note-meta">תגובה קיימת</div></div></div>`;
             return;
         }
         if (!notes.length) { box.innerHTML = '<div class="empty">אין עדיין תגובות או עדכונים</div>'; return; }
-        box.innerHTML = notes.map((n) => `
-            <div class="modal-note">
-                <div class="modal-note-text">${n.text}</div>
-                <div class="modal-note-meta">${n.created_by || ''} · ${fmtDate(n.created_at)}</div>
+        const total = notes.length;
+        box.innerHTML = notes.map((n, i) => `
+            <div class="modal-note${i === 0 ? ' latest' : ''}">
+                <div class="modal-note-num">${total - i}</div>
+                <div class="modal-note-body">
+                    <div class="modal-note-text">${n.text}</div>
+                    <div class="modal-note-meta">
+                        ${i === 0 ? '<span class="badge ok">עדכון אחרון</span> · ' : ''}${n.created_by || ''} · ${fmtDate(n.created_at)}
+                        <button class="modal-note-del" onclick="deleteBizNote(${n.id})" title="מחיקת רשומה זו">✕</button>
+                    </div>
+                </div>
             </div>`).join('');
     } catch (e) { box.innerHTML = `<div class="hint">${e.message || 'שגיאה בטעינה'}</div>`; }
+}
+
+async function deleteBizNote(noteId) {
+    if (bizModalId === null || !confirm('למחוק את הרשומה הזו?')) return;
+    try {
+        await api(`/api/campaign/businesses/${bizModalId}/notes/${noteId}`, { method: 'DELETE' });
+        const biz = (window.__bizRows || []).find((b) => b.id === bizModalId);
+        await loadBizNotes(bizModalId, biz);
+    } catch (e) { alert(e.message || 'המחיקה נכשלה'); }
 }
 
 function closeBizModal() {
