@@ -62,7 +62,8 @@ nav.c-nav button.active { background: var(--c-dark); color: var(--c-gold); }
 .side-nav button.active { background: var(--c-rose); color: #fff; }
 @media (max-width: 1050px) { .side-nav { display: none; } }
 
-main.c-main { max-width: 1100px; margin: 0 auto; padding: 10px 16px 60px; }
+main.c-main { max-width: 1600px; margin: 0 auto; padding: 10px 190px 60px 16px; }
+@media (max-width: 1050px) { main.c-main { padding: 10px 16px 60px; } }
 section.c-section { display: none; }
 section.c-section.active { display: block; }
 
@@ -72,9 +73,11 @@ section.c-section.active { display: block; }
 }
 .card h2 { margin-top: 0; font-size: 1.25rem; color: var(--c-raspberry); }
 
+/* עטיפה אוטומטית לגלילה אופקית — טבלאות רחבות (הרבה עמודות) לא שוברות את הדף, גוללים בתוך הכרטיס בלבד */
+.card { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: .92rem; }
 th, td { padding: 10px 8px; text-align: right; border-bottom: 1px solid #eef2f7; }
-th { color: var(--c-raspberry); font-weight: 600; }
+th { color: var(--c-raspberry); font-weight: 600; white-space: nowrap; }
 tr:hover td { background: #f4f6fa; }
 
 .badge { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: .8rem; background: #e7f0fb; color: var(--c-raspberry); }
@@ -126,16 +129,6 @@ label.settingLabel { font-size: .85rem; color: #6b7a90; display: block; margin-b
 .empty { color: #6b7a90; padding: 20px 0; text-align: center; }
 .hint { color: #6b7a90; font-size: .82rem; }
 
-/* בנר "התקשרה לאחרונה" — זיהוי מיידי של מי שהתקשרה וכמה נקודות יש לה */
-#lastCallBanner {
-    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    background: linear-gradient(120deg, var(--c-rose), var(--c-raspberry)); color: #fff;
-    border-radius: 14px; padding: 12px 18px; margin-bottom: 16px; font-size: .95rem;
-}
-#lastCallBanner b { font-size: 1.1rem; }
-#lastCallBanner .lcb-balance { background: rgba(255,255,255,.2); border-radius: 999px; padding: 2px 12px; font-weight: 700; }
-#lastCallBanner .lcb-time { opacity: .85; font-size: .82rem; }
-
 /* כרטיסי סטטיסטיקה בראש הדשבורד */
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .stat-card {
@@ -151,18 +144,6 @@ label.settingLabel { font-size: .85rem; color: #6b7a90; display: block; margin-b
 .card-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .card-head-row h2 { margin: 0; }
 .search-box { min-width: 220px; }
-
-/* רשימת אישורים ממתינים כרטיסים */
-.pending-list { display: flex; flex-direction: column; gap: 14px; }
-.pending-card {
-    border: 1px solid #e3e8f0; border-radius: 14px; padding: 16px; background: #fff;
-    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
-}
-.pending-card .pc-who { font-weight: 600; }
-.pending-card .pc-meta { font-size: .85rem; color: #6b7a90; }
-.pending-card .pc-value { font-size: 1.3rem; font-weight: 700; color: var(--c-raspberry); }
-.pending-card .pc-actions { display: flex; align-items: center; gap: 8px; }
-.pending-card .pc-actions input { width: 75px; }
 
 /* כרטיסי מוקדים עם פס התקדמות מלאי */
 .hub-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }

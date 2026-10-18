@@ -6,7 +6,6 @@ function setNavTooltip(targetId, text) {
     if (btn) btn.title = text;
 }
 
-const TXN_TYPE_LABEL = { outreach: 'פנייה לעסק', errand: 'שליחות', product: 'גיוס מוצר', bonus: 'בונוס יעד', redeem: 'מימוש מתנה', manual: 'עדכון ידני' };
 const STATUS_LABEL = { approved: 'מאושר', pending: 'ממתין', rejected: 'נדחה' };
 const ACTION_LABEL = {
     'campaign.settings.update': 'עדכון הגדרות',
@@ -38,16 +37,11 @@ const ACTION_LABEL = {
 };
 let activityQuery = '';
 let activityLoaded = false;
-let lastData = null;
 let volunteerQuery = '';
-let hubQuery = '';
-let editingHubId = null;
 let bizQuery = '';
 let bizLoaded = false;
 let editingBizId = null;
 let txQuery = '';
-let pendingQuery = '';
-let hubLogsQuery = '';
 let kitRecipientsQuery = '';
 let recruitedQuery = '';
 
@@ -119,10 +113,6 @@ function startApp() {
         volunteerQuery = e.target.value.trim();
         if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
     });
-    document.getElementById('hubSearch').addEventListener('input', (e) => {
-        hubQuery = e.target.value.trim();
-        if (lastData) renderHubs(lastData);
-    });
     document.getElementById('bizSearch').addEventListener('input', (e) => {
         bizQuery = e.target.value.trim();
         if (bizLoaded) renderBusinesses(window.__bizRows || []);
@@ -130,14 +120,6 @@ function startApp() {
     document.getElementById('txSearch').addEventListener('input', (e) => {
         txQuery = e.target.value.trim();
         if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
-    });
-    document.getElementById('pendingSearch').addEventListener('input', (e) => {
-        pendingQuery = e.target.value.trim();
-        if (lastData) render(lastData);
-    });
-    document.getElementById('hubLogsSearch').addEventListener('input', (e) => {
-        hubLogsQuery = e.target.value.trim();
-        if (lastData) render(lastData);
     });
     document.getElementById('kitRecipientsSearch').addEventListener('input', (e) => {
         kitRecipientsQuery = e.target.value.trim();
@@ -208,10 +190,11 @@ function fmtDate(s) {
     return s.replace('T', ' ').slice(0, 16);
 }
 
+// עדיין נחוץ רק כדי למשוך את צבעי/לוגו המיתוג (נשמרים במסך "ניהול" הראשי) — שאר הדשבורד הישן הוחלף בגיליונות האמיתיים
 async function loadDashboard() {
     try {
         const data = await api('/api/campaign/dashboard');
-        render(data);
+        applySettings(data.settings || {});
     } catch (e) {
         if (e.status === 401) { localStorage.removeItem('gemach_user'); location.href = '/'; }
     }
@@ -446,109 +429,6 @@ async function saveSheetHubEdit(row) {
         renderSheetsDashboard(data);
     } catch (e) { alert(e.message || 'השמירה לטבלה נכשלה'); }
 }
-
-function renderHubs(data) {
-    setNavTooltip('hd-hubslist', `מוקדי הפצה: ${data.hubs.length}`);
-    // לא בונים מחדש בזמן שמישהי באמצע עריכת מוקד — אחרת הרענון התקופתי מוחק מה שהיא הקלידה
-    if (editingHubId !== null) return;
-    const q = hubQuery.toLowerCase();
-    const filtered = data.hubs.filter((h) => !q || h.name.toLowerCase().includes(q));
-    document.getElementById('hubsEmpty').style.display = filtered.length ? 'none' : 'block';
-    document.getElementById('hubCards').innerHTML = filtered.map((h) => {
-        const pct = h.kits_total > 0 ? Math.round((h.kits_available / h.kits_total) * 100) : 0;
-        const low = h.kits_total > 0 && pct <= 20;
-        return `
-        <div class="hub-card">
-            <div class="hc-name">${h.name}</div>
-            <div class="hc-meta">קוד ${h.pin} · ${h.area_path ? h.area_path.replace(/\//g, ' / ') : '<span class="badge warn">ללא אזור בשלוחה</span>'}</div>
-            <div class="hc-meta">${h.pickup_info || 'אין פרטי מסירה'}</div>
-            <div class="hub-bar"><div class="hub-bar-fill${low ? ' low' : ''}" style="width:${pct}%"></div></div>
-            <div class="hc-count">${h.kits_available} פנויות מתוך ${h.kits_total}${low ? ' ⚠️' : ''}</div>
-            <div class="hc-actions">
-                <button class="btn secondary" onclick="toggleHubEdit(${h.id})">עריכה</button>
-                <button class="btn danger" onclick="deleteHub(${h.id})">מחיקה</button>
-            </div>
-            <div class="hub-edit-row hidden" id="hub-edit-${h.id}">
-                <input id="he-total-${h.id}" type="number" placeholder="סה״כ ערכות" value="${h.kits_total}">
-                <input id="he-avail-${h.id}" type="number" placeholder="פנויות כעת" value="${h.kits_available}">
-                <input id="he-pickup-${h.id}" placeholder="פרטי מסירה" value="${h.pickup_info || ''}" style="flex:2">
-                <button class="btn" onclick="saveHubEdit(${h.id})">שמירה</button>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-function toggleHubEdit(id) {
-    const open = document.getElementById(`hub-edit-${id}`).classList.toggle('hidden') === false;
-    editingHubId = open ? id : null;
-}
-
-async function saveHubEdit(id) {
-    const hub = lastData.hubs.find((h) => h.id === id);
-    try {
-        await api(`/api/campaign/hubs/${id}`, { method: 'PUT', body: {
-            name: hub.name,
-            area_path: hub.area_path,
-            kits_total: document.getElementById(`he-total-${id}`).value,
-            kits_available: document.getElementById(`he-avail-${id}`).value,
-            pickup_info: document.getElementById(`he-pickup-${id}`).value,
-        } });
-        editingHubId = null;
-        loadDashboard();
-    } catch (e) { alert(e.message); }
-}
-
-function render(data) {
-    lastData = data;
-    applySettings(data.settings || {});
-
-    document.getElementById('pendingCount').textContent = data.pending.length ? `(${data.pending.length})` : '';
-    setNavTooltip('hd-pending', `ממתינים לאישור: ${data.pending.length}`);
-    const pq = pendingQuery.toLowerCase();
-    const pendingFiltered = data.pending.filter((p) => !pq
-        || (p.name || '').toLowerCase().includes(pq)
-        || (p.phone || '').toLowerCase().includes(pq));
-    document.getElementById('pendingEmpty').style.display = pendingFiltered.length ? 'none' : 'block';
-    document.getElementById('pendingList').innerHTML = pendingFiltered.map((p) => `
-        <div class="pending-card">
-            <div>
-                <div class="pc-who">${p.name || p.phone}</div>
-                <div class="pc-meta">${p.phone} · ${fmtDate(p.created_at)}${p.recording_path ? ` · <code>${p.recording_path}</code>` : ''}</div>
-            </div>
-            <div class="pc-value">${p.value_nis ?? '—'} ₪</div>
-            <div class="pc-actions">
-                <input type="number" min="0" placeholder="נקודות" id="pts-${p.id}" value="${p.suggested_points ?? ''}">
-                ${p.suggested_points != null ? `<span class="hint">(הצעה)</span>` : ''}
-                <button class="btn" onclick="approveTxn(${p.id})">אישור</button>
-                <button class="btn danger" onclick="rejectTxn(${p.id})">דחייה</button>
-            </div>
-        </div>`).join('');
-
-    renderHubs(data);
-
-    const hlq = hubLogsQuery.toLowerCase();
-    const hubLogsFiltered = data.hubLogs.filter((l) => !hlq
-        || (l.hub_name || '').toLowerCase().includes(hlq)
-        || (l.message || '').toLowerCase().includes(hlq)
-        || (l.phone || '').toLowerCase().includes(hlq));
-    document.querySelector('#hubLogsTable tbody').innerHTML = hubLogsFiltered.map((l) => `
-        <tr>
-            <td>${l.hub_name}</td>
-            <td>${l.kind === 'catalogs_taken' ? 'קטלוגים נלקחו' : 'הודעה'}</td>
-            <td>${l.kind === 'catalogs_taken' ? `${l.amount} ל-${l.phone}` : (l.message || '')}</td>
-            <td>${fmtDate(l.created_at)}</td>
-        </tr>`).join('');
-    setNavTooltip('hd-hublogs', `רשומות ביומן המוקדים: ${data.hubLogs.length}`);
-}
-
-async function approveTxn(id) {
-    const pts = document.getElementById(`pts-${id}`).value;
-    if (!pts) { alert('יש להזין מספר נקודות'); return; }
-    try { await api(`/api/campaign/approve/${id}`, { method: 'POST', body: { points: pts } }); loadDashboard(); }
-    catch (e) { alert(e.message); }
-}
-async function rejectTxn(id) { await api(`/api/campaign/reject/${id}`, { method: 'POST' }); loadDashboard(); }
-async function deleteHub(id) { if (!confirm('למחוק את המוקד?')) return; await api(`/api/campaign/hubs/${id}`, { method: 'DELETE' }); loadDashboard(); }
 
 /* ---- עסקים: מי פנתה ולמה ---- */
 const BIZ_STATUS_CLASS = { 'ממתין': 'warn', 'נוצר קשר': '', 'תרם': 'ok', 'סירב': '' };

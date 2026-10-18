@@ -30,8 +30,6 @@
 
 <nav class="c-nav">
     <button data-tab="dashboard" class="active">לוח בקרה חי</button>
-    <button data-tab="pending">אישורים ממתינים <span id="pendingCount"></span></button>
-    <button data-tab="hubs">מוקדי הפצה</button>
     <button data-tab="businesses">עסקים</button>
     <button data-tab="recruited">מוצרים שגויסו</button>
     <button data-tab="activity">יומן פעולות</button>
@@ -42,9 +40,6 @@
     <button data-tab="dashboard" data-target="hd-tx">תנועות</button>
     <button data-tab="dashboard" data-target="hd-kitsstock">מוקדים ומלאי</button>
     <button data-tab="dashboard" data-target="hd-kitrecipients">מקבלי ערכות</button>
-    <button data-tab="pending" data-target="hd-pending">ממתינים לאישור</button>
-    <button data-tab="hubs" data-target="hd-hubslist">מוקדי הפצה</button>
-    <button data-tab="hubs" data-target="hd-hublogs">יומן מוקדים</button>
     <button data-tab="businesses" data-target="hd-bizadd" title="טופס להוספת עסק חדש לרשימה">הוספת עסק</button>
     <button data-tab="businesses" data-target="hd-biz">עסקים</button>
     <button data-tab="recruited" data-target="hd-recruited">מוצרים שגויסו</button>
@@ -96,37 +91,6 @@
                 <th>תאריך ושעה</th><th>טלפון התושב</th><th>אזור / מוקד</th><th>שם האחראית</th>
             </tr></thead><tbody></tbody></table>
             <div class="empty" id="kitRecipientsEmpty" style="display:none">אין עדיין מקבלי ערכות</div>
-        </div>
-    </section>
-
-    <section id="pending" class="c-section">
-        <div class="card">
-            <div class="card-head-row">
-                <h2 id="hd-pending">דיווחי גיוס מוצר הממתינים לאישור</h2>
-                <input id="pendingSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/טלפון">
-            </div>
-            <div class="pending-list" id="pendingList"></div>
-            <div class="empty" id="pendingEmpty" style="display:none">אין דיווחים ממתינים — הכל מעודכן ✓</div>
-        </div>
-    </section>
-
-    <section id="hubs" class="c-section">
-        <div class="card">
-            <div class="card-head-row">
-                <h2 id="hd-hubslist">מוקדי הפצה — מלאי ערכות</h2>
-                <input id="hubSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם מוקד">
-            </div>
-            <div class="hub-cards" id="hubCards"></div>
-            <div class="empty" id="hubsEmpty" style="display:none">אין מוקדים מוגדרים עדיין</div>
-        </div>
-        <div class="card">
-            <div class="card-head-row">
-                <h2 id="hd-hublogs">יומן מוקדים אחרון</h2>
-                <input id="hubLogsSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי מוקד/פרטים">
-            </div>
-            <table id="hubLogsTable"><thead><tr>
-                <th>מוקד</th><th>סוג</th><th>פרטים</th><th>תאריך</th>
-            </tr></thead><tbody></tbody></table>
         </div>
     </section>
 
