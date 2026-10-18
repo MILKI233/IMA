@@ -1,5 +1,11 @@
 let USER = JSON.parse(localStorage.getItem('gemach_user') || 'null');
 
+// ריחוף על תגית ניווט בצד מציג סיכום נתונים עדכני של הקטגוריה (title native — לא תלוי עיצוב)
+function setNavTooltip(targetId, text) {
+    const btn = document.querySelector(`.side-nav button[data-target="${targetId}"]`);
+    if (btn) btn.title = text;
+}
+
 const TXN_TYPE_LABEL = { outreach: 'פנייה לעסק', errand: 'שליחות', product: 'גיוס מוצר', bonus: 'בונוס יעד', redeem: 'מימוש מתנה', manual: 'עדכון ידני' };
 const STATUS_LABEL = { approved: 'מאושר', pending: 'ממתין', rejected: 'נדחה' };
 const ACTION_LABEL = {
@@ -141,6 +147,9 @@ function startApp() {
     setInterval(loadDashboard, 5000);
     loadSheetsData();
     setInterval(loadSheetsData, 15000);
+    // טוענים גם עסקים/יומן פעולות מראש, כדי שתקציר הריחוף בניווט הצדי יהיה נכון עוד לפני כניסה ללשונית
+    loadBusinesses();
+    loadActivity();
 }
 
 async function loadActivity() {
@@ -186,6 +195,7 @@ function renderActivity(rows) {
             <td>${describeActivity(r)}</td>
             <td>${fmtDate(r.at)}</td>
         </tr>`).join('');
+    setNavTooltip('hd-activity', `יומן פעולות: ${rows.length} רשומות`);
 }
 
 function fmtDate(s) {
@@ -255,6 +265,8 @@ function renderSheetsDashboard(data) {
         <div class="stat-card"><div class="stat-num">${(data.transactions || []).length}</div><div class="stat-label">תנועות אחרונות</div></div>
         <div class="stat-card"><div class="stat-num">${(data.hubs || []).length}</div><div class="stat-label">מוקדים</div></div>
     `;
+    setNavTooltip('hd-volunteers', `משתתפות: ${participants.length}`);
+    setNavTooltip('hd-tx', `תנועות אחרונות: ${(data.transactions || []).length}`);
 
     document.getElementById('volunteersEmpty').style.display = filtered.length ? 'none' : 'block';
     if (editingSheetPointsRow === null) {
@@ -306,6 +318,7 @@ function renderSheetsDashboard(data) {
         <div class="stat-card"><div class="stat-num">${kitsDistSum}</div><div class="stat-label">חולקו בפועל</div></div>
         <div class="stat-card"><div class="stat-num">${kitsLeftSum}</div><div class="stat-label">נשארו במלאי</div></div>
     `;
+    setNavTooltip('hd-kitsstock', `${hubs.length} מוקדים · סה״כ ${kitsTotalSum} ערכות · חולקו ${kitsDistSum} · נשארו ${kitsLeftSum}`);
 
     if (editingSheetHubRow !== null) return;
     document.getElementById('sheetHubCards').innerHTML = hubs.map((h) => {
@@ -347,6 +360,7 @@ function renderSheetsDashboard(data) {
             <td>${k['אזור / מוקד'] || ''}</td>
             <td>${k['שם האחראית'] || ''}</td>
         </tr>`).join('');
+    setNavTooltip('hd-kitrecipients', `מקבלי ערכות: ${(data.kitRecipients || []).length}`);
 }
 
 function openSheetPointsEdit(row) {
@@ -405,6 +419,7 @@ async function saveSheetHubEdit(row) {
 }
 
 function renderHubs(data) {
+    setNavTooltip('hd-hubslist', `מוקדי הפצה: ${data.hubs.length}`);
     // לא בונים מחדש בזמן שמישהי באמצע עריכת מוקד — אחרת הרענון התקופתי מוחק מה שהיא הקלידה
     if (editingHubId !== null) return;
     const q = hubQuery.toLowerCase();
@@ -459,6 +474,7 @@ function render(data) {
     applySettings(data.settings || {});
 
     document.getElementById('pendingCount').textContent = data.pending.length ? `(${data.pending.length})` : '';
+    setNavTooltip('hd-pending', `ממתינים לאישור: ${data.pending.length}`);
     const pq = pendingQuery.toLowerCase();
     const pendingFiltered = data.pending.filter((p) => !pq
         || (p.name || '').toLowerCase().includes(pq)
@@ -493,6 +509,7 @@ function render(data) {
             <td>${l.kind === 'catalogs_taken' ? `${l.amount} ל-${l.phone}` : (l.message || '')}</td>
             <td>${fmtDate(l.created_at)}</td>
         </tr>`).join('');
+    setNavTooltip('hd-hublogs', `רשומות ביומן המוקדים: ${data.hubLogs.length}`);
 }
 
 async function approveTxn(id) {
@@ -517,6 +534,7 @@ async function loadBusinesses() {
 }
 
 function renderBusinesses(rows) {
+    setNavTooltip('hd-biz', `עסקים: ${rows.length}`);
     if (editingBizId !== null) return;
     const q = bizQuery.toLowerCase();
     const filtered = rows.filter((b) => !q || b.name.toLowerCase().includes(q));
