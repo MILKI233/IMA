@@ -75,7 +75,23 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
     });
 
     // מעקב עסקים — מי פנתה לאיזה עסק ומה הייתה התגובה
-    const BUSINESS_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
+    const BUILTIN_BUSINESS_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
+    function getAllBusinessStatuses() {
+        const custom = db.prepare('SELECT name FROM campaign_business_statuses ORDER BY id ASC').all().map((r) => r.name);
+        return [...BUILTIN_BUSINESS_STATUSES, ...custom];
+    }
+    router.get('/business-statuses', mustLogin, (req, res) => {
+        res.json(getAllBusinessStatuses());
+    });
+    router.post('/business-statuses', mustLogin, (req, res) => {
+        const name = String(req.body?.name ?? '').trim();
+        if (!name) return res.status(400).json({ error: 'יש להזין שם לסטטוס' });
+        if (getAllBusinessStatuses().includes(name)) return res.status(400).json({ error: 'הסטטוס הזה כבר קיים' });
+        db.prepare('INSERT INTO campaign_business_statuses (name) VALUES (?)').run(name);
+        audit(req.user.name, 'campaign.business_status.create', 'campaign_business_statuses', null, null, { name });
+        events?.emit('campaign.update');
+        res.json({ ok: true, statuses: getAllBusinessStatuses() });
+    });
     router.get('/businesses', mustLogin, (req, res) => {
         res.json(db.prepare('SELECT * FROM campaign_businesses ORDER BY id DESC').all());
     });
@@ -86,7 +102,7 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         const phone = String(req.body?.phone ?? '').trim() || null;
         const email = String(req.body?.email ?? '').trim() || null;
         const response = String(req.body?.response ?? '').trim() || null;
-        const status = BUSINESS_STATUSES.includes(req.body?.status) ? req.body.status : 'ממתין';
+        const status = getAllBusinessStatuses().includes(req.body?.status) ? req.body.status : 'ממתין';
         const r = db.prepare(`INSERT INTO campaign_businesses (name, contacted_by, phone, email, response, status, created_at)
                               VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`)
             .run(name, contactedBy, phone, email, response, status);
@@ -102,7 +118,7 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         const phone = String(req.body?.phone ?? before.phone ?? '').trim() || null;
         const email = String(req.body?.email ?? before.email ?? '').trim() || null;
         const response = String(req.body?.response ?? before.response ?? '').trim() || null;
-        const status = BUSINESS_STATUSES.includes(req.body?.status) ? req.body.status : before.status;
+        const status = getAllBusinessStatuses().includes(req.body?.status) ? req.body.status : before.status;
         db.prepare(`UPDATE campaign_businesses SET name=?, contacted_by=?, phone=?, email=?, response=?, status=?, updated_at=datetime('now','localtime') WHERE id=?`)
             .run(name, contactedBy, phone, email, response, status, before.id);
         audit(req.user.name, 'campaign.business.update', 'campaign_businesses', before.id,

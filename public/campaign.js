@@ -148,7 +148,7 @@ function startApp() {
     loadSheetsData();
     setInterval(loadSheetsData, 15000);
     // טוענים גם עסקים/יומן פעולות מראש, כדי שתקציר הריחוף בניווט הצדי יהיה נכון עוד לפני כניסה ללשונית
-    loadBusinesses();
+    loadBusinessStatuses().then(loadBusinesses);
     loadActivity();
 }
 
@@ -523,6 +523,35 @@ async function deleteHub(id) { if (!confirm('למחוק את המוקד?')) retu
 
 /* ---- עסקים: מי פנתה ולמה ---- */
 const BIZ_STATUS_CLASS = { 'ממתין': 'warn', 'נוצר קשר': '', 'תרם': 'ok', 'סירב': '' };
+let bizStatuses = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
+
+async function loadBusinessStatuses() {
+    try {
+        bizStatuses = await api('/api/campaign/business-statuses');
+        const addSelect = document.getElementById('bizStatus');
+        if (addSelect) addSelect.innerHTML = bizStatuses.map((s) => `<option>${s}</option>`).join('');
+    } catch (e) { /* נשארים עם הרשימה הקבועה אם השליפה נכשלה */ }
+}
+
+async function addBizStatus() {
+    const name = prompt('שם הסטטוס החדש:');
+    if (!name || !name.trim()) return;
+    try {
+        await api('/api/campaign/business-statuses', { method: 'POST', body: { name: name.trim() } });
+        await loadBusinessStatuses();
+        if (bizLoaded) renderBusinesses(window.__bizRows || []);
+    } catch (e) { alert(e.message || 'הוספת הסטטוס נכשלה'); }
+}
+
+async function quickAddResponse(id) {
+    const current = (window.__bizRows || []).find((b) => b.id === id);
+    const text = prompt('תגובה:', current?.response || '');
+    if (text === null) return;
+    try {
+        await api(`/api/campaign/businesses/${id}`, { method: 'PUT', body: { response: text } });
+        loadBusinesses();
+    } catch (e) { alert(e.message || 'השמירה נכשלה'); }
+}
 
 async function loadBusinesses() {
     try {
@@ -546,8 +575,9 @@ function renderBusinesses(rows) {
             <td>${b.phone || ''}</td>
             <td>${b.email || ''}</td>
             <td><span class="badge ${BIZ_STATUS_CLASS[b.status] || ''}">${b.status}</span></td>
-            <td>${b.response || ''}</td>
+            <td>${b.response || '<span class="hint">אין תגובה</span>'}</td>
             <td>
+                <button class="btn secondary" onclick="quickAddResponse(${b.id})">${b.response ? 'עריכת תגובה' : 'הוספת תגובה'}</button>
                 <button class="btn secondary" onclick="toggleBizEdit(${b.id})">עריכה</button>
                 <button class="btn danger" onclick="deleteBusiness(${b.id})">מחיקה</button>
             </td>
@@ -556,7 +586,7 @@ function renderBusinesses(rows) {
             <td colspan="7">
                 <input id="be-email-${b.id}" placeholder="מייל" value="${b.email || ''}" style="width:180px">
                 <select id="be-status-${b.id}">
-                    ${['ממתין', 'נוצר קשר', 'תרם', 'סירב'].map((s) => `<option${s === b.status ? ' selected' : ''}>${s}</option>`).join('')}
+                    ${bizStatuses.map((s) => `<option${s === b.status ? ' selected' : ''}>${s}</option>`).join('')}
                 </select>
                 <input id="be-response-${b.id}" placeholder="תגובה" value="${b.response || ''}" style="flex:2">
                 <button class="btn" onclick="saveBizEdit(${b.id})">שמירה</button>
@@ -586,6 +616,8 @@ async function deleteBusiness(id) {
     try { await api(`/api/campaign/businesses/${id}`, { method: 'DELETE' }); loadBusinesses(); }
     catch (e) { alert(e.message); }
 }
+
+document.getElementById('addBizStatusBtn').addEventListener('click', addBizStatus);
 
 document.getElementById('addBizBtn').addEventListener('click', async () => {
     try {

@@ -782,6 +782,13 @@ CREATE TABLE IF NOT EXISTS campaign_businesses (
   updated_at TEXT
 );
 
+-- סטטוסים מותאמים-אישית שמתווספים על גבי הרשימה הקבועה (ממתין/נוצר קשר/תרם/סירב)
+CREATE TABLE IF NOT EXISTS campaign_business_statuses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS campaign_prizes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code INTEGER UNIQUE NOT NULL,
