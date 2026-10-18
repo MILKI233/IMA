@@ -321,6 +321,11 @@ for (const stmt of [
   `ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'sent'`,
   // כתובת מייל לעסק
   `ALTER TABLE campaign_businesses ADD COLUMN email TEXT`,
+  // מספר פנייה (כמה פעמים פנו) ומספר הודעה (איזו הודעה מוכנה נשלחה) — גם לעסק עצמו וגם לכל תגובה בהיסטוריה
+  `ALTER TABLE campaign_businesses ADD COLUMN contact_number TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN message_number TEXT`,
+  `ALTER TABLE campaign_business_notes ADD COLUMN contact_number TEXT`,
+  `ALTER TABLE campaign_business_notes ADD COLUMN message_number TEXT`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

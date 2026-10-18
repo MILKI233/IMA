@@ -102,10 +102,12 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         const phone = String(req.body?.phone ?? '').trim() || null;
         const email = String(req.body?.email ?? '').trim() || null;
         const response = String(req.body?.response ?? '').trim() || null;
+        const contactNumber = String(req.body?.contact_number ?? '').trim() || null;
+        const messageNumber = String(req.body?.message_number ?? '').trim() || null;
         const status = getAllBusinessStatuses().includes(req.body?.status) ? req.body.status : 'ממתין';
-        const r = db.prepare(`INSERT INTO campaign_businesses (name, contacted_by, phone, email, response, status, created_at)
-                              VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`)
-            .run(name, contactedBy, phone, email, response, status);
+        const r = db.prepare(`INSERT INTO campaign_businesses (name, contacted_by, phone, email, response, status, contact_number, message_number, created_at)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`)
+            .run(name, contactedBy, phone, email, response, status, contactNumber, messageNumber);
         audit(req.user.name, 'campaign.business.create', 'campaign_businesses', r.lastInsertRowid, null, { name, contacted_by: contactedBy, status });
         events?.emit('campaign.update');
         res.json({ ok: true, id: r.lastInsertRowid });
@@ -118,9 +120,11 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         const phone = String(req.body?.phone ?? before.phone ?? '').trim() || null;
         const email = String(req.body?.email ?? before.email ?? '').trim() || null;
         const response = String(req.body?.response ?? before.response ?? '').trim() || null;
+        const contactNumber = String(req.body?.contact_number ?? before.contact_number ?? '').trim() || null;
+        const messageNumber = String(req.body?.message_number ?? before.message_number ?? '').trim() || null;
         const status = getAllBusinessStatuses().includes(req.body?.status) ? req.body.status : before.status;
-        db.prepare(`UPDATE campaign_businesses SET name=?, contacted_by=?, phone=?, email=?, response=?, status=?, updated_at=datetime('now','localtime') WHERE id=?`)
-            .run(name, contactedBy, phone, email, response, status, before.id);
+        db.prepare(`UPDATE campaign_businesses SET name=?, contacted_by=?, phone=?, email=?, response=?, status=?, contact_number=?, message_number=?, updated_at=datetime('now','localtime') WHERE id=?`)
+            .run(name, contactedBy, phone, email, response, status, contactNumber, messageNumber, before.id);
         audit(req.user.name, 'campaign.business.update', 'campaign_businesses', before.id,
             { status: before.status }, { name, contacted_by: contactedBy, status, response });
         events?.emit('campaign.update');
@@ -137,10 +141,13 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
         if (!biz) return res.status(404).json({ error: 'העסק לא נמצא' });
         const text = String(req.body?.text ?? '').trim();
         if (!text) return res.status(400).json({ error: 'יש להזין תגובה' });
-        const r = db.prepare(`INSERT INTO campaign_business_notes (business_id, text, created_by, created_at)
-                              VALUES (?, ?, ?, datetime('now','localtime'))`).run(biz.id, text, req.user.name);
-        db.prepare(`UPDATE campaign_businesses SET response=?, updated_at=datetime('now','localtime') WHERE id=?`).run(text, biz.id);
-        audit(req.user.name, 'campaign.business.note_add', 'campaign_businesses', biz.id, null, { text });
+        const contactNumber = String(req.body?.contact_number ?? '').trim() || null;
+        const messageNumber = String(req.body?.message_number ?? '').trim() || null;
+        const r = db.prepare(`INSERT INTO campaign_business_notes (business_id, text, contact_number, message_number, created_by, created_at)
+                              VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))`).run(biz.id, text, contactNumber, messageNumber, req.user.name);
+        db.prepare(`UPDATE campaign_businesses SET response=?, contact_number=COALESCE(?, contact_number), message_number=COALESCE(?, message_number), updated_at=datetime('now','localtime') WHERE id=?`)
+            .run(text, contactNumber, messageNumber, biz.id);
+        audit(req.user.name, 'campaign.business.note_add', 'campaign_businesses', biz.id, null, { text, contact_number: contactNumber, message_number: messageNumber });
         events?.emit('campaign.update');
         res.json({ ok: true, id: r.lastInsertRowid });
     });
@@ -162,10 +169,11 @@ export function campaignApiRouter({ mustLogin, mustManager, requireFeature, even
     });
     // ייצוא רשימת העסקים כאקסל להורדה
     router.get('/businesses/export.xlsx', mustLogin, (req, res) => {
-        const rows = db.prepare('SELECT name, contacted_by, phone, email, status, response, created_at, updated_at FROM campaign_businesses ORDER BY id DESC').all();
+        const rows = db.prepare('SELECT name, contacted_by, phone, email, status, response, contact_number, message_number, created_at, updated_at FROM campaign_businesses ORDER BY id DESC').all();
         const data = rows.map((r) => ({
             'שם העסק': r.name, 'מי פנתה': r.contacted_by || '', 'טלפון': r.phone || '', 'מייל': r.email || '',
-            'סטטוס': r.status, 'תגובה': r.response || '', 'נוצר': r.created_at, 'עודכן': r.updated_at || '',
+            'סטטוס': r.status, 'תגובה': r.response || '', 'מספר פנייה': r.contact_number || '', 'מספר הודעה': r.message_number || '',
+            'נוצר': r.created_at, 'עודכן': r.updated_at || '',
         }));
         const wb = utils.book_new();
         const sheet = utils.json_to_sheet(data);

@@ -555,8 +555,12 @@ async function openBizModal(id) {
         ${biz.contacted_by ? `פנתה: ${biz.contacted_by} · ` : ''}
         ${biz.phone ? `טלפון: ${biz.phone} · ` : ''}
         ${biz.email ? `מייל: ${biz.email} · ` : ''}
+        ${biz.contact_number ? `מס' פנייה: ${biz.contact_number} · ` : ''}
+        ${biz.message_number ? `מס' הודעה: ${biz.message_number} · ` : ''}
         <span class="badge ${BIZ_STATUS_CLASS[biz.status] || ''}">${biz.status}</span>`;
     document.getElementById('bizModalNewNote').value = '';
+    document.getElementById('bizModalNoteContactNum').value = '';
+    document.getElementById('bizModalNoteMessageNum').value = '';
     document.getElementById('bizModalOverlay').classList.remove('hidden');
     await loadBizNotes(id, biz);
 }
@@ -568,7 +572,8 @@ async function loadBizNotes(id, biz) {
         const notes = await api(`/api/campaign/businesses/${id}/notes`);
         if (!notes.length && biz?.response) {
             // תגובה שנשמרה לפני שהיה היסטוריה — מציגים אותה כרשומה הראשונה, בלי אפשרות מחיקה (אין לה ID משלה)
-            box.innerHTML = `<div class="modal-note"><div class="modal-note-num">1</div><div class="modal-note-body"><div class="modal-note-text">${biz.response}</div><div class="modal-note-meta">תגובה קיימת</div></div></div>`;
+            const legacyMeta = ['תגובה קיימת', biz.contact_number ? `מס' פנייה: ${biz.contact_number}` : '', biz.message_number ? `מס' הודעה: ${biz.message_number}` : ''].filter(Boolean).join(' · ');
+            box.innerHTML = `<div class="modal-note"><div class="modal-note-num">1</div><div class="modal-note-body"><div class="modal-note-text">${biz.response}</div><div class="modal-note-meta">${legacyMeta}</div></div></div>`;
             return;
         }
         if (!notes.length) { box.innerHTML = '<div class="empty">אין עדיין תגובות או עדכונים</div>'; return; }
@@ -580,6 +585,7 @@ async function loadBizNotes(id, biz) {
                     <div class="modal-note-text">${n.text}</div>
                     <div class="modal-note-meta">
                         ${i === 0 ? '<span class="badge ok">עדכון אחרון</span> · ' : ''}${n.created_by || ''} · ${fmtDate(n.created_at)}
+                        ${n.contact_number ? ` · מס' פנייה: ${n.contact_number}` : ''}${n.message_number ? ` · מס' הודעה: ${n.message_number}` : ''}
                         <button class="modal-note-del" onclick="deleteBizNote(${n.id})" title="מחיקת רשומה זו">✕</button>
                     </div>
                 </div>
@@ -605,8 +611,14 @@ async function addBizNote() {
     const text = document.getElementById('bizModalNewNote').value.trim();
     if (!text || bizModalId === null) return;
     try {
-        await api(`/api/campaign/businesses/${bizModalId}/notes`, { method: 'POST', body: { text } });
+        await api(`/api/campaign/businesses/${bizModalId}/notes`, { method: 'POST', body: {
+            text,
+            contact_number: document.getElementById('bizModalNoteContactNum').value,
+            message_number: document.getElementById('bizModalNoteMessageNum').value,
+        } });
         document.getElementById('bizModalNewNote').value = '';
+        document.getElementById('bizModalNoteContactNum').value = '';
+        document.getElementById('bizModalNoteMessageNum').value = '';
         const biz = (window.__bizRows || []).find((b) => b.id === bizModalId);
         await loadBizNotes(bizModalId, biz);
         loadBusinesses();
@@ -640,18 +652,22 @@ function renderBusinesses(rows) {
             <td>${b.email || ''}</td>
             <td><span class="badge ${BIZ_STATUS_CLASS[b.status] || ''}">${b.status}</span></td>
             <td>${b.response || '<span class="hint">אין תגובה</span>'}</td>
+            <td>${b.contact_number || ''}</td>
+            <td>${b.message_number || ''}</td>
             <td onclick="event.stopPropagation()">
                 <button class="btn secondary" onclick="toggleBizEdit(${b.id})">עריכה</button>
                 <button class="btn danger" onclick="deleteBusiness(${b.id})">מחיקה</button>
             </td>
         </tr>
         <tr class="hub-edit-row hidden" id="biz-edit-${b.id}" onclick="event.stopPropagation()">
-            <td colspan="7">
+            <td colspan="9">
                 <input id="be-email-${b.id}" placeholder="מייל" value="${b.email || ''}" style="width:180px">
                 <select id="be-status-${b.id}">
                     ${bizStatuses.map((s) => `<option${s === b.status ? ' selected' : ''}>${s}</option>`).join('')}
                 </select>
                 <input id="be-response-${b.id}" placeholder="תגובה" value="${b.response || ''}" style="flex:2">
+                <input id="be-contact-${b.id}" placeholder="מספר פנייה" value="${b.contact_number || ''}" style="width:120px">
+                <input id="be-message-${b.id}" placeholder="מספר הודעה" value="${b.message_number || ''}" style="width:120px">
                 <button class="btn" onclick="saveBizEdit(${b.id})">שמירה</button>
             </td>
         </tr>`).join('');
@@ -668,6 +684,8 @@ async function saveBizEdit(id) {
             email: document.getElementById(`be-email-${id}`).value,
             status: document.getElementById(`be-status-${id}`).value,
             response: document.getElementById(`be-response-${id}`).value,
+            contact_number: document.getElementById(`be-contact-${id}`).value,
+            message_number: document.getElementById(`be-message-${id}`).value,
         } });
         editingBizId = null;
         loadBusinesses();
@@ -691,12 +709,16 @@ document.getElementById('addBizBtn').addEventListener('click', async () => {
             email: document.getElementById('bizEmail').value,
             status: document.getElementById('bizStatus').value,
             response: document.getElementById('bizResponse').value,
+            contact_number: document.getElementById('bizContactNumber').value,
+            message_number: document.getElementById('bizMessageNumber').value,
         } });
         document.getElementById('bizName').value = '';
         document.getElementById('bizContactedBy').value = '';
         document.getElementById('bizPhone').value = '';
         document.getElementById('bizEmail').value = '';
         document.getElementById('bizResponse').value = '';
+        document.getElementById('bizContactNumber').value = '';
+        document.getElementById('bizMessageNumber').value = '';
         loadBusinesses();
     } catch (e) { alert(e.message); }
 });

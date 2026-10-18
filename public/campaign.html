@@ -138,6 +138,10 @@
                 <input id="bizEmail" placeholder="מייל העסק (לא חובה)" style="width:180px">
             </div>
             <div class="row">
+                <input id="bizContactNumber" placeholder="מספר פנייה (לא חובה)" style="width:140px">
+                <input id="bizMessageNumber" placeholder="מספר הודעה (לא חובה)" style="width:140px">
+            </div>
+            <div class="row">
                 <select id="bizStatus" style="width:140px">
                     <option>ממתין</option><option>נוצר קשר</option><option>תרם</option><option>סירב</option>
                 </select>
@@ -155,7 +159,7 @@
                 </div>
             </div>
             <table id="bizTable"><thead><tr>
-                <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>סטטוס</th><th>תגובה</th><th></th>
+                <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>סטטוס</th><th>תגובה</th><th>מס' פנייה</th><th>מס' הודעה</th><th></th>
             </tr></thead><tbody></tbody></table>
             <div class="empty" id="bizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
         </div>
@@ -170,6 +174,10 @@
             <div id="bizModalMeta" class="modal-meta"></div>
             <div class="modal-notes-head">כל התגובות וההיסטוריה</div>
             <div id="bizModalNotes" class="modal-notes-list"></div>
+            <div class="row" style="margin-bottom:6px">
+                <input id="bizModalNoteContactNum" placeholder="מספר פנייה" style="width:120px">
+                <input id="bizModalNoteMessageNum" placeholder="מספר הודעה" style="width:120px">
+            </div>
             <div class="modal-add-note">
                 <textarea id="bizModalNewNote" placeholder="הוספת תגובה / עדכון חדש..." rows="2"></textarea>
                 <button class="btn" id="bizModalAddNoteBtn">הוספה</button>
