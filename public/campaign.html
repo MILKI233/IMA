@@ -33,6 +33,7 @@
     <button data-tab="pending">אישורים ממתינים <span id="pendingCount"></span></button>
     <button data-tab="hubs">מוקדי הפצה</button>
     <button data-tab="businesses">עסקים</button>
+    <button data-tab="recruited">מוצרים שגויסו</button>
     <button data-tab="activity">יומן פעולות</button>
 </nav>
 
@@ -46,6 +47,7 @@
     <button data-tab="hubs" data-target="hd-hublogs">יומן מוקדים</button>
     <button data-tab="businesses" data-target="hd-bizadd" title="טופס להוספת עסק חדש לרשימה">הוספת עסק</button>
     <button data-tab="businesses" data-target="hd-biz">עסקים</button>
+    <button data-tab="recruited" data-target="hd-recruited">מוצרים שגויסו</button>
     <button data-tab="activity" data-target="hd-activity">יומן פעולות</button>
 </nav>
 
@@ -162,6 +164,26 @@
                 <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>סטטוס</th><th>תגובה</th><th>מס' פנייה</th><th>מס' הודעה</th><th></th>
             </tr></thead><tbody></tbody></table>
             <div class="empty" id="bizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
+        </div>
+    </section>
+
+    <section id="recruited" class="c-section">
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-recruited">מוצרים שגויסו — תשובות הטופס</h2>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input id="recruitedSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי מגייסת/עסק/מוצר">
+                    <button class="btn secondary" id="recruitedExportBtn">⬇ הורדה כאקסל</button>
+                </div>
+            </div>
+            <p class="hint">נכנס אוטומטית מתוך טופס "תודה על תרומתך" שמולא על ידי המגייסות אחרי שעסק תרם מוצר. קריאה בלבד.</p>
+            <div style="overflow-x:auto">
+                <table id="recruitedTable"><thead><tr>
+                    <th>תאריך</th><th>מגייסת</th><th>טלפון מגייסת</th><th>עסק</th><th>טלפון עסק</th><th>מייל עסק</th>
+                    <th>תיאור המוצר</th><th>שווי</th><th>איסוף</th><th>תוקף</th><th>לוגו</th><th>הערות</th><th>מי מילא</th>
+                </tr></thead><tbody></tbody></table>
+            </div>
+            <div class="empty" id="recruitedEmpty" style="display:none">אין עדיין מוצרים שגויסו</div>
         </div>
     </section>
 

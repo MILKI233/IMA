@@ -922,6 +922,24 @@ app.get('/api/campaign/sheets-data/kit-recipients.xlsx', mustLogin, requireFeatu
   res.send(buf);
 });
 
+// ייצוא רשימת מוצרים שגויסו בפועל (מתוך טופס "תודה על תרומתך") כאקסל להורדה
+app.get('/api/campaign/sheets-data/recruited-products.xlsx', mustLogin, requireFeature('campaign'), async (req, res) => {
+  const { utils, write } = await import('xlsx');
+  const rows = (getCampaignSheetsCache().recruitedProducts || []).map((p) => ({
+    'תאריך': p.timestamp || '', 'שם המגייסת': p.recruiterName || '', 'טלפון המגייסת': p.recruiterPhone || '',
+    'שם העסק': p.businessName || '', 'טלפון העסק': p.businessPhone || '', 'מייל העסק': p.businessEmail || '',
+    'תיאור המוצר': p.productDescription || '', 'שווי': p.productValue || '', 'איסוף': p.pickup || '',
+    'תוקף': p.validity || '', 'לוגו': p.logoUrl || '', 'הערות': p.notes || '', 'מי מילא': p.filledBy || '',
+  }));
+  const wb = utils.book_new();
+  const sheet = utils.json_to_sheet(rows);
+  utils.book_append_sheet(wb, sheet, 'מוצרים שגויסו');
+  const buf = write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=recruited-products.xlsx; filename*=UTF-8''${encodeURIComponent('מוצרים שגויסו.xlsx')}`);
+  res.send(buf);
+});
+
 app.post('/api/campaign/sheets-write/hub', mustLogin, requireFeature('campaign_hubs'), async (req, res) => {
   try {
     checkSyncPassword(req.body?.syncPassword);

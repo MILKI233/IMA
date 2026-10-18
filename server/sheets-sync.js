@@ -6,8 +6,29 @@ import { getAllCampaignSettings } from './db.js';
 
 export const POINTS_SHEET_ID = '1h-Hj2Wam8UeW6Cn9zg-ovkOc5kf1_evXY9UgBRmmuVA';
 export const HUBS_SHEET_ID = '1DZ4tcEuNA_ZcCEuOTDaDo5FK7EVypNsD-71_3yWX0sM';
+// תשובות לטופס "תודה על תרומתך" — מוצרים שגויסו בפועל, ממולא על ידי המגייסות אחרי שעסק תרם
+export const RECRUITED_PRODUCTS_SHEET_ID = '1qkuii5yPOC5kbQkxX3oxIK6FX37Ok2VbzVWQ-_OdR0o';
 
-let cache = { participants: [], transactions: [], hubs: [], kitRecipients: [], syncedAt: null, error: null };
+let cache = { participants: [], transactions: [], hubs: [], kitRecipients: [], recruitedProducts: [], syncedAt: null, error: null };
+
+// הטופס עצמו (לא רק הגיליון) — כותרת העמודה H ענקית כי התיאור של השאלה מוטמע בה, אז קוראים לפי מיקום ולא לפי שם
+const RECRUITED_PRODUCTS_FIELDS = [
+  'timestamp', 'recruiterName', 'recruiterPhone', 'businessName', 'businessPhone', 'businessEmail',
+  'productDescription', 'productValue', 'pickup', 'validity', 'logoUrl', 'notes', 'filledBy',
+];
+
+async function fetchRecruitedProducts() {
+  const url = `https://docs.google.com/spreadsheets/d/${RECRUITED_PRODUCTS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent('תגובות לטופס 1')}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`שליפת טופס גיוס המוצרים נכשלה (${res.status})`);
+  const csvText = await res.text();
+  const rows = parse(csvText, { columns: false, skip_empty_lines: false, relax_column_count: true });
+  return rows
+    .slice(1) // דילוג על שורת הכותרות
+    .map((cols) => Object.fromEntries(RECRUITED_PRODUCTS_FIELDS.map((f, i) => [f, cols[i] ?? ''])))
+    .filter((r) => Object.values(r).some((v) => String(v).trim() !== ''))
+    .reverse(); // החדש ביותר קודם
+}
 
 async function fetchSheetRows(spreadsheetId, sheetName) {
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
@@ -23,15 +44,16 @@ async function fetchSheetRows(spreadsheetId, sheetName) {
 
 export async function syncCampaignSheets() {
   try {
-    const [participants, transactions, hubs, kitRecipients] = await Promise.all([
+    const [participants, transactions, hubs, kitRecipients, recruitedProducts] = await Promise.all([
       fetchSheetRows(POINTS_SHEET_ID, 'משתתפים'),
       fetchSheetRows(POINTS_SHEET_ID, 'תנועות'),
       fetchSheetRows(HUBS_SHEET_ID, 'מוקדים ומלאי'),
       fetchSheetRows(HUBS_SHEET_ID, 'מקבלי ערכות'),
+      fetchRecruitedProducts(),
     ]);
     transactions.reverse();
     kitRecipients.reverse();
-    cache = { participants, transactions: transactions.slice(0, 100), hubs, kitRecipients, syncedAt: new Date().toISOString(), error: null };
+    cache = { participants, transactions: transactions.slice(0, 100), hubs, kitRecipients, recruitedProducts, syncedAt: new Date().toISOString(), error: null };
   } catch (e) {
     cache = { ...cache, error: e.message, syncedAt: cache.syncedAt };
     console.error('סנכרון גליונות הקמפיין נכשל:', e.message);

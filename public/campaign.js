@@ -49,6 +49,7 @@ let txQuery = '';
 let pendingQuery = '';
 let hubLogsQuery = '';
 let kitRecipientsQuery = '';
+let recruitedQuery = '';
 
 async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -140,6 +141,10 @@ function startApp() {
     });
     document.getElementById('kitRecipientsSearch').addEventListener('input', (e) => {
         kitRecipientsQuery = e.target.value.trim();
+        if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
+    });
+    document.getElementById('recruitedSearch').addEventListener('input', (e) => {
+        recruitedQuery = e.target.value.trim();
         if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
     });
 
@@ -361,6 +366,30 @@ function renderSheetsDashboard(data) {
             <td>${k['שם האחראית'] || ''}</td>
         </tr>`).join('');
     setNavTooltip('hd-kitrecipients', `מקבלי ערכות: ${(data.kitRecipients || []).length}`);
+
+    const rq = recruitedQuery.toLowerCase();
+    const recruited = (data.recruitedProducts || []).filter((p) => !rq
+        || (p.recruiterName || '').toLowerCase().includes(rq)
+        || (p.businessName || '').toLowerCase().includes(rq)
+        || (p.productDescription || '').toLowerCase().includes(rq));
+    document.getElementById('recruitedEmpty').style.display = recruited.length ? 'none' : 'block';
+    document.querySelector('#recruitedTable tbody').innerHTML = recruited.map((p) => `
+        <tr>
+            <td>${p.timestamp || ''}</td>
+            <td>${p.recruiterName || ''}</td>
+            <td>${p.recruiterPhone || ''}</td>
+            <td>${p.businessName || ''}</td>
+            <td>${p.businessPhone || ''}</td>
+            <td>${p.businessEmail || ''}</td>
+            <td>${p.productDescription || ''}</td>
+            <td>${p.productValue || ''}</td>
+            <td>${p.pickup || ''}</td>
+            <td>${p.validity || ''}</td>
+            <td>${p.logoUrl ? `<a href="${p.logoUrl}" target="_blank" rel="noopener">לוגו</a>` : ''}</td>
+            <td>${p.notes || ''}</td>
+            <td>${p.filledBy || ''}</td>
+        </tr>`).join('');
+    setNavTooltip('hd-recruited', `מוצרים שגויסו: ${(data.recruitedProducts || []).length}`);
 }
 
 function openSheetPointsEdit(row) {
@@ -738,5 +767,6 @@ async function downloadFile(endpoint, filename) {
 
 document.getElementById('bizExportBtn').addEventListener('click', () => downloadFile('/api/campaign/businesses/export.xlsx', 'עסקים.xlsx'));
 document.getElementById('kitRecipientsExportBtn').addEventListener('click', () => downloadFile('/api/campaign/sheets-data/kit-recipients.xlsx', 'מקבלי ערכות.xlsx'));
+document.getElementById('recruitedExportBtn').addEventListener('click', () => downloadFile('/api/campaign/sheets-data/recruited-products.xlsx', 'מוצרים שגויסו.xlsx'));
 
 if (USER) startApp(); else initLogin();
