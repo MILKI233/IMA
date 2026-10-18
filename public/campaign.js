@@ -76,6 +76,13 @@ function initLogin() {
     document.getElementById('login-code').focus();
 }
 
+function activateTab(tab) {
+    document.querySelectorAll('nav.c-nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('main.c-main section').forEach((s) => s.classList.toggle('active', s.id === tab));
+    if (tab === 'activity') loadActivity();
+    if (tab === 'businesses') loadBusinesses();
+}
+
 function startApp() {
     if (!USER || !(USER.features || []).includes('campaign')) {
         initLogin();
@@ -85,13 +92,15 @@ function startApp() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.querySelectorAll('nav.c-nav button').forEach((btn) => {
+        btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+    });
+
+    document.querySelectorAll('.side-nav button').forEach((btn) => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('nav.c-nav button').forEach((b) => b.classList.remove('active'));
-            document.querySelectorAll('main.c-main section').forEach((s) => s.classList.remove('active'));
+            activateTab(btn.dataset.tab);
+            document.querySelectorAll('.side-nav button').forEach((b) => b.classList.remove('active'));
             btn.classList.add('active');
-            document.getElementById(btn.dataset.tab).classList.add('active');
-            if (btn.dataset.tab === 'activity') loadActivity();
-            if (btn.dataset.tab === 'businesses') loadBusinesses();
+            document.getElementById(btn.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     });
 
@@ -579,17 +588,20 @@ document.getElementById('addBizBtn').addEventListener('click', async () => {
     } catch (e) { alert(e.message); }
 });
 
-document.getElementById('bizExportBtn').addEventListener('click', async () => {
+async function downloadFile(endpoint, filename) {
     try {
-        const res = await fetch('/api/campaign/businesses/export.xlsx', { headers: { 'x-user-id': USER ? USER.id : '' } });
+        const res = await fetch(endpoint, { headers: { 'x-user-id': USER ? USER.id : '' } });
         if (!res.ok) throw new Error('ההורדה נכשלה');
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = url; link.download = 'עסקים.xlsx';
+        link.href = url; link.download = filename;
         document.body.append(link); link.click(); link.remove();
         URL.revokeObjectURL(url);
     } catch (e) { alert(e.message || 'ההורדה נכשלה'); }
-});
+}
+
+document.getElementById('bizExportBtn').addEventListener('click', () => downloadFile('/api/campaign/businesses/export.xlsx', 'עסקים.xlsx'));
+document.getElementById('kitRecipientsExportBtn').addEventListener('click', () => downloadFile('/api/campaign/sheets-data/kit-recipients.xlsx', 'מקבלי ערכות.xlsx'));
 
 if (USER) startApp(); else initLogin();

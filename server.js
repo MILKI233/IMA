@@ -906,6 +906,22 @@ app.post('/api/campaign/sheets-data/refresh', mustLogin, requireFeature('campaig
   res.json(data);
 });
 
+// ייצוא רשימת מקבלי הערכות (טלפונים) כאקסל להורדה
+app.get('/api/campaign/sheets-data/kit-recipients.xlsx', mustLogin, requireFeature('campaign'), async (req, res) => {
+  const { utils, write } = await import('xlsx');
+  const rows = (getCampaignSheetsCache().kitRecipients || []).map((k) => ({
+    'תאריך ושעה': k['תאריך ושעה'] || '', 'טלפון התושב': k['מספר טלפון של התושב'] || '',
+    'אזור / מוקד': k['אזור / מוקד'] || '', 'שם האחראית': k['שם האחראית'] || '',
+  }));
+  const wb = utils.book_new();
+  const sheet = utils.json_to_sheet(rows);
+  utils.book_append_sheet(wb, sheet, 'מקבלי ערכות');
+  const buf = write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=kit-recipients.xlsx; filename*=UTF-8''${encodeURIComponent('מקבלי ערכות.xlsx')}`);
+  res.send(buf);
+});
+
 app.post('/api/campaign/sheets-write/hub', mustLogin, requireFeature('campaign_hubs'), async (req, res) => {
   try {
     checkSyncPassword(req.body?.syncPassword);

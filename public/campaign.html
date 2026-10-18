@@ -36,6 +36,19 @@
     <button data-tab="activity">יומן פעולות</button>
 </nav>
 
+<nav id="sideNav" class="side-nav">
+    <button data-tab="dashboard" data-target="hd-volunteers">משתתפות</button>
+    <button data-tab="dashboard" data-target="hd-tx">תנועות</button>
+    <button data-tab="dashboard" data-target="hd-kitsstock">מוקדים ומלאי</button>
+    <button data-tab="dashboard" data-target="hd-kitrecipients">מקבלי ערכות</button>
+    <button data-tab="pending" data-target="hd-pending">ממתינים לאישור</button>
+    <button data-tab="hubs" data-target="hd-hubslist">מוקדי הפצה</button>
+    <button data-tab="hubs" data-target="hd-hublogs">יומן מוקדים</button>
+    <button data-tab="businesses" data-target="hd-biz">עסקים</button>
+    <button data-tab="businesses" data-target="hd-bizadd">הוספת עסק</button>
+    <button data-tab="activity" data-target="hd-activity">יומן פעולות</button>
+</nav>
+
 <main class="c-main">
     <section id="dashboard" class="c-section active">
         <div class="card-head-row" style="margin-bottom:6px">
@@ -45,7 +58,7 @@
         <div class="stat-row" id="statRow"></div>
         <div class="card">
             <div class="card-head-row">
-                <h2>משתתפות ונקודות</h2>
+                <h2 id="hd-volunteers">משתתפות ונקודות</h2>
                 <input id="volunteerSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם או טלפון">
             </div>
             <table id="volunteersTable"><thead><tr>
@@ -55,7 +68,7 @@
         </div>
         <div class="card">
             <div class="card-head-row">
-                <h2>תנועות אחרונות</h2>
+                <h2 id="hd-tx">תנועות אחרונות</h2>
                 <input id="txSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/טלפון/פעולה">
             </div>
             <table id="activityTable"><thead><tr>
@@ -64,15 +77,18 @@
             <div class="empty" id="txEmpty" style="display:none">אין עדיין תנועות</div>
         </div>
         <div class="card">
-            <h2>מוקדים ומלאי</h2>
+            <h2 id="hd-kitsstock">מוקדים ומלאי</h2>
             <div class="stat-row" id="kitsSummaryRow" style="margin-bottom:14px"></div>
             <div class="hub-cards" id="sheetHubCards"></div>
             <div class="empty" id="sheetHubsEmpty" style="display:none">אין עדיין מוקדים</div>
         </div>
         <div class="card">
             <div class="card-head-row">
-                <h2>מקבלי ערכות — מספרי טלפון שלקחו ערכה</h2>
-                <input id="kitRecipientsSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי טלפון/מוקד/אחראית">
+                <h2 id="hd-kitrecipients">מקבלי ערכות — מספרי טלפון שלקחו ערכה</h2>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input id="kitRecipientsSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי טלפון/מוקד/אחראית">
+                    <button class="btn secondary" id="kitRecipientsExportBtn">⬇ הורדה כאקסל</button>
+                </div>
             </div>
             <table id="kitRecipientsTable"><thead><tr>
                 <th>תאריך ושעה</th><th>טלפון התושב</th><th>אזור / מוקד</th><th>שם האחראית</th>
@@ -84,7 +100,7 @@
     <section id="pending" class="c-section">
         <div class="card">
             <div class="card-head-row">
-                <h2>דיווחי גיוס מוצר הממתינים לאישור</h2>
+                <h2 id="hd-pending">דיווחי גיוס מוצר הממתינים לאישור</h2>
                 <input id="pendingSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/טלפון">
             </div>
             <div class="pending-list" id="pendingList"></div>
@@ -95,7 +111,7 @@
     <section id="hubs" class="c-section">
         <div class="card">
             <div class="card-head-row">
-                <h2>מוקדי הפצה — מלאי ערכות</h2>
+                <h2 id="hd-hubslist">מוקדי הפצה — מלאי ערכות</h2>
                 <input id="hubSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם מוקד">
             </div>
             <div class="hub-cards" id="hubCards"></div>
@@ -103,7 +119,7 @@
         </div>
         <div class="card">
             <div class="card-head-row">
-                <h2>יומן מוקדים אחרון</h2>
+                <h2 id="hd-hublogs">יומן מוקדים אחרון</h2>
                 <input id="hubLogsSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי מוקד/פרטים">
             </div>
             <table id="hubLogsTable"><thead><tr>
@@ -115,7 +131,7 @@
     <section id="businesses" class="c-section">
         <div class="card">
             <div class="card-head-row">
-                <h2>עסקים — מי פנתה ולמה</h2>
+                <h2 id="hd-biz">עסקים — מי פנתה ולמה</h2>
                 <div style="display:flex;gap:8px;align-items:center">
                     <input id="bizSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם עסק">
                     <button class="btn secondary" id="bizExportBtn">⬇ הורדה כאקסל</button>
@@ -127,7 +143,7 @@
             <div class="empty" id="bizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
         </div>
         <div class="card">
-            <h2>הוספת עסק</h2>
+            <h2 id="hd-bizadd">הוספת עסק</h2>
             <div class="row">
                 <input id="bizName" placeholder="שם העסק" style="width:200px">
                 <input id="bizContactedBy" placeholder="מי פנתה (שם)" style="width:160px">
@@ -147,7 +163,7 @@
     <section id="activity" class="c-section">
         <div class="card">
             <div class="card-head-row">
-                <h2>יומן פעולות — מי עשה מה</h2>
+                <h2 id="hd-activity">יומן פעולות — מי עשה מה</h2>
                 <input id="activitySearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/פעולה">
             </div>
             <p class="hint">כולל פעולות ניהול (אישורים, הוספת מתנות/מוקדים, שינוי הגדרות) ופעולות מתנדבות בטלפון. מציג 200 אחרונות.</p>
