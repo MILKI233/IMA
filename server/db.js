@@ -326,6 +326,18 @@ for (const stmt of [
   `ALTER TABLE campaign_businesses ADD COLUMN message_number TEXT`,
   `ALTER TABLE campaign_business_notes ADD COLUMN contact_number TEXT`,
   `ALTER TABLE campaign_business_notes ADD COLUMN message_number TEXT`,
+  // לשונית "מכירה סינית": הדגשה וצביעה של עסק, ומאיזה מקור הוא נכנס (ידני / טופס / גיליון נוסף)
+  `ALTER TABLE campaign_businesses ADD COLUMN color TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN highlight INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE campaign_businesses ADD COLUMN source TEXT NOT NULL DEFAULT 'ידני'`,
+  // מפתח זיהוי מול המקור החיצוני (מקור|שם מנורמל) — כדי שסנכרון חוזר יעדכן ולא ישכפל
+  `ALTER TABLE campaign_businesses ADD COLUMN external_key TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN product TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN value_nis TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN pickup TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN validity TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN logo_url TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN synced_at TEXT`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------
@@ -835,6 +847,111 @@ CREATE TABLE IF NOT EXISTS campaign_hub_logs (
 );
 `);
 
+// ========================================================================
+// לשונית "מכירה סינית" (נבנה 24/10/2026) — עסקים מסונכרנים מכל הטפסים,
+// שלבי סגירה, שאלות למנהלת עם שלבי מענה, ומענה AI מתוך קבצי וורד.
+// ========================================================================
+db.exec(`
+-- מקורות סנכרון נוספים: כל גיליון/טופס גוגל שהמנהלת מדביקה בעצמה, בלי קוד
+CREATE TABLE IF NOT EXISTS campaign_sync_sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  sheet_id TEXT NOT NULL,
+  sheet_name TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  last_synced_at TEXT,
+  last_rows INTEGER,
+  last_error TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  UNIQUE(sheet_id, sheet_name)
+);
+
+-- הגדרת שלבי הסגירה (אותו מסלול לכל העסקים, בסדר קבוע וניתן לעריכה)
+CREATE TABLE IF NOT EXISTS campaign_close_stages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- איזה שלב סגירה הושלם לאיזה עסק, על ידי מי ומתי
+CREATE TABLE IF NOT EXISTS campaign_business_stages (
+  business_id INTEGER NOT NULL REFERENCES campaign_businesses(id),
+  stage_id INTEGER NOT NULL REFERENCES campaign_close_stages(id),
+  done INTEGER NOT NULL DEFAULT 0,
+  note TEXT,
+  done_by TEXT,
+  done_at TEXT,
+  PRIMARY KEY (business_id, stage_id)
+);
+
+-- שאלות שנשאלו (ידנית או דרך ה-AI) + שלבי המענה על כל שאלה
+CREATE TABLE IF NOT EXISTS campaign_questions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  text TEXT NOT NULL,
+  asked_by TEXT,
+  business_id INTEGER REFERENCES campaign_businesses(id),
+  status TEXT NOT NULL DEFAULT 'נשאלה',
+  answer TEXT,
+  answered_by TEXT,
+  answered_at TEXT,
+  origin TEXT NOT NULL DEFAULT 'ידני',
+  email_sent_at TEXT,
+  email_to TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS campaign_question_steps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  question_id INTEGER NOT NULL REFERENCES campaign_questions(id),
+  text TEXT NOT NULL,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- בסיס הידע של ה-AI: קבצי וורד שהועלו, והטקסט המלא שחולץ מהם
+CREATE TABLE IF NOT EXISTS campaign_kb_docs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  filename TEXT NOT NULL,
+  raw_text TEXT NOT NULL,
+  char_count INTEGER NOT NULL DEFAULT 0,
+  uploaded_by TEXT,
+  uploaded_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- זוגות שאלה-תשובה שחולצו מתוך קובץ הוורד (מה שה-AI שואב ממנו תשובות)
+CREATE TABLE IF NOT EXISTS campaign_kb_pairs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_id INTEGER NOT NULL REFERENCES campaign_kb_docs(id),
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- יומן המענה של ה-AI — מוצג כסטטוס עם כל השאלות והתשובות הקודמות
+CREATE TABLE IF NOT EXISTS campaign_ai_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  question TEXT NOT NULL,
+  answer TEXT,
+  outcome TEXT NOT NULL,
+  source_doc TEXT,
+  asked_by TEXT,
+  question_id INTEGER REFERENCES campaign_questions(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+`);
+
+// שלבי סגירה ברירת מחדל — נזרעים רק בפעם הראשונה, אחר כך המנהלת עורכת בעצמה
+try {
+    const haveStages = db.prepare('SELECT COUNT(*) AS c FROM campaign_close_stages').get().c;
+    if (!haveStages) {
+        const ins = db.prepare('INSERT INTO campaign_close_stages (name, position) VALUES (?, ?)');
+        ['פנייה ראשונה', 'נשלח חומר הסבר', 'ממתין לתשובה', 'אישרו תרומה', 'המוצר התקבל', 'לוגו וחומר פרסומי', 'סגור והושלם']
+            .forEach((name, i) => ins.run(name, i + 1));
+    }
+} catch (e) { console.error('זריעת שלבי הסגירה נכשלה:', e.message); }
+
 // שחזור חד-פעמי של תגובות עסקים שנכתבו לפני שהייתה טבלת היסטוריה נפרדת (campaign_business_notes) —
 // התגובות הקודמות עדיין קיימות ביומן הפעולות (audit_log) בכל עדכון, רק לא הוצגו כרשומות נפרדות.
 try {
@@ -878,7 +995,10 @@ const CAMPAIGN_SETTING_DEFAULTS = {
     campaign_brand_logo: '',
     campaign_sheets_write_url: '',
     campaign_sheets_write_secret: '',
-    campaign_sync_admin_password: ''
+    campaign_sync_admin_password: '',
+    // לשונית "מכירה סינית": לאן נשלחות שאלות למנהלת המערכת (אם ריק — נופלים לכתובת הדוחות report_email)
+    campaign_admin_email: '',
+    campaign_admin_name: 'מנהלת המערכת'
 };
 
 export function getCampaignSetting(key) {

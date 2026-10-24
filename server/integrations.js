@@ -100,6 +100,16 @@ export async function sendUrgentAlert(subject, text) {
   });
 }
 
+// שליחת מייל לכתובת מסוימת — משמש את לשונית "מכירה סינית" לשאלות שנשלחות למנהלת המערכת
+export async function sendMailTo({ to, subject, html }) {
+  if (!to) throw new Error('לא צוינה כתובת מייל ליעד');
+  await mailer().sendMail({
+    from: getSetting('gmail_user'), to, subject,
+    html: `<div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.7">${html}</div>`,
+  });
+  return { to };
+}
+
 // שליחה אוטומטית פעם ביום בשעה שהוגדרה (ברירת מחדל 20:00) — רץ כל עוד השרת פעיל (מתאים לפריסה בענן 24/7)
 let dailyReportTimer = null;
 let lastSentDate = null;

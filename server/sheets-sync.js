@@ -30,7 +30,7 @@ async function fetchRecruitedProducts() {
     .reverse(); // החדש ביותר קודם
 }
 
-async function fetchSheetRows(spreadsheetId, sheetName) {
+export async function fetchSheetRows(spreadsheetId, sheetName) {
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`שליפת הגיליון "${sheetName}" נכשלה (${res.status})`);

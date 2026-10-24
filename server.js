@@ -12,6 +12,7 @@ import { integrationsRouter, scheduleAutoBackup, scheduleDailyReport, sendUrgent
 import { createYemotRouter } from './server/yemot.js';
 import { createCampaignYemotRouter } from './server/campaign-yemot.js';
 import { campaignApiRouter } from './server/campaign-api.js';
+import { sinitApiRouter, syncSinitBusinesses } from './server/sinit-api.js';
 import { scheduleCampaignSheetsSync, getCampaignSheetsCache, syncCampaignSheets, pushSheetUpdate, checkSyncPassword, POINTS_SHEET_ID, HUBS_SHEET_ID } from './server/sheets-sync.js';
 
 const PRIORITIES = ['רגיל', 'דחוף', 'חשוב', 'להמשך'];
@@ -892,6 +893,8 @@ app.use('/api/inv', requireFeature('inventory'), inventoryRouter({ mustLogin, mu
 
 // ---------- קמפיין המכירה הסינית (אמא במשמרת) ----------
 app.use('/api/campaign', requireFeature('campaign'), campaignApiRouter({ mustLogin, mustManager, requireFeature, events }));
+// לשונית "מכירה סינית" — עסקים מכל הטפסים, שלבי סגירה, שאלות למנהלת ומענה AI מקבצי וורד
+app.use('/api/sinit', requireFeature('campaign'), sinitApiRouter({ mustLogin, mustManager, requireFeature, events }));
 app.use('/yemot-campaign', createCampaignYemotRouter({ events }));
 
 // הקמפיין האמיתי ("אוצרותינו") רץ על ימות המשיח ומסונכרן דרך Google Sheets.
@@ -1029,4 +1032,13 @@ ensureInstances();
 scheduleAutoBackup();
 scheduleDailyReport();
 scheduleCampaignSheetsSync();
+
+// רשימת העסקים של לשונית "מכירה סינית" נמשכת מהטפסים והגליונות — דקה אחרי העלייה (כדי שהקאש
+// של הגליונות יהיה מלא) ואחר כך כל 5 דקות. כפתור "סנכרון עכשיו" בלשונית מריץ את אותו תהליך מיידית.
+const runSinitSync = () => syncSinitBusinesses()
+  .then((r) => { if (r.added || r.updated) console.log(`[מכירה סינית] סנכרון עסקים: ${r.added} חדשים, ${r.updated} עודכנו`); })
+  .catch((e) => console.error('[מכירה סינית] סנכרון העסקים נכשל:', e.message));
+setTimeout(runSinitSync, 60 * 1000);
+setInterval(runSinitSync, 5 * 60 * 1000);
+
 app.listen(PORT, () => console.log(`מערכת אמא במשמרת עלתה על http://localhost:${PORT}`));

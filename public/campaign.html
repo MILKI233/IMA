@@ -30,7 +30,7 @@
 
 <nav class="c-nav">
     <button data-tab="dashboard" class="active">לוח בקרה חי</button>
-    <button data-tab="businesses">עסקים</button>
+    <button data-tab="sinit">מכירה סינית</button>
     <button data-tab="recruited">מוצרים שגויסו</button>
     <button data-tab="activity">יומן פעולות</button>
 </nav>
@@ -40,8 +40,11 @@
     <button data-tab="dashboard" data-target="hd-tx">תנועות</button>
     <button data-tab="dashboard" data-target="hd-kitsstock">מוקדים ומלאי</button>
     <button data-tab="dashboard" data-target="hd-kitrecipients">מקבלי ערכות</button>
-    <button data-tab="businesses" data-target="hd-bizadd" title="טופס להוספת עסק חדש לרשימה">הוספת עסק</button>
-    <button data-tab="businesses" data-target="hd-biz">עסקים</button>
+    <button data-tab="sinit" data-target="hd-sbiz" title="כל העסקים מכל הטפסים, שלבי סגירה וצביעה">עסקים</button>
+    <button data-tab="sinit" data-target="hd-squestions" title="שאלות שנשאלו ושלבי המענה על כל שאלה">שאלות ומענה</button>
+    <button data-tab="sinit" data-target="hd-sai" title="מענה אוטומטי מתוך קבצי הוורד שהועלו">מענה AI</button>
+    <button data-tab="sinit" data-target="hd-skb" title="קבצי הוורד שמהם ה-AI שואב שאלות ותשובות">בסיס הידע</button>
+    <button data-tab="sinit" data-target="hd-ssettings" title="כתובת מנהלת המערכת, שלבי סגירה ומקורות סנכרון">הגדרות הלשונית</button>
     <button data-tab="recruited" data-target="hd-recruited">מוצרים שגויסו</button>
     <button data-tab="activity" data-target="hd-activity">יומן פעולות</button>
 </nav>
@@ -94,42 +97,195 @@
         </div>
     </section>
 
-    <section id="businesses" class="c-section">
-        <div class="card">
-            <h2 id="hd-bizadd">הוספת עסק</h2>
-            <div class="row">
-                <input id="bizName" placeholder="שם העסק" style="width:200px">
-                <input id="bizContactedBy" placeholder="מי פנתה (שם)" style="width:160px">
-                <input id="bizPhone" placeholder="טלפון העסק (לא חובה)" style="width:150px">
-                <input id="bizEmail" placeholder="מייל העסק (לא חובה)" style="width:180px">
-            </div>
-            <div class="row">
-                <input id="bizContactNumber" placeholder="מספר פנייה (לא חובה)" style="width:140px">
-                <input id="bizMessageNumber" placeholder="מספר הודעה (לא חובה)" style="width:140px">
-            </div>
-            <div class="row">
-                <select id="bizStatus" style="width:140px">
-                    <option>ממתין</option><option>נוצר קשר</option><option>תרם</option><option>סירב</option>
-                </select>
-                <button class="btn secondary" id="addBizStatusBtn" type="button">➕ סטטוס חדש</button>
-                <input id="bizResponse" placeholder="מה הייתה התגובה (לא חובה)" style="width:300px">
-                <button class="btn" id="addBizBtn">הוספת עסק</button>
-            </div>
-        </div>
+    <section id="sinit" class="c-section">
+        <div class="stat-row" id="sinitStats"></div>
+        <div id="sinitSyncInfo" class="sync-info"></div>
+
+        <!-- ===== עסקים ===== -->
         <div class="card">
             <div class="card-head-row">
-                <h2 id="hd-biz">עסקים — מי פנתה ולמה</h2>
-                <div style="display:flex;gap:8px;align-items:center">
-                    <input id="bizSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם עסק">
-                    <button class="btn secondary" id="bizExportBtn">⬇ הורדה כאקסל</button>
+                <h2 id="hd-sbiz">עסקים — מכל הטפסים והטבלאות</h2>
+                <div class="head-tools">
+                    <input id="sbizSearch" class="search-box" type="search" placeholder="🔍 שם עסק / טלפון / מי פנתה / מוצר">
+                    <button class="btn" id="sbizSyncBtn" title="שליפה מיידית מכל הטפסים והגליונות">⟳ סנכרון עכשיו</button>
+                    <button class="btn secondary" id="sbizAddToggle">➕ הוספת עסק</button>
+                    <button class="btn secondary" id="sbizExportBtn">⬇ אקסל</button>
                 </div>
             </div>
-            <table id="bizTable"><thead><tr>
-                <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>סטטוס</th><th>תגובה</th><th>מס' פנייה</th><th>מס' הודעה</th><th></th>
+
+            <div id="sbizAddBox" class="add-box hidden">
+                <div class="row">
+                    <input id="sbizName" placeholder="שם העסק" style="width:200px">
+                    <input id="sbizContactedBy" placeholder="מי פנתה (שם)" style="width:150px">
+                    <input id="sbizPhone" placeholder="טלפון" style="width:130px">
+                    <input id="sbizEmail" placeholder="מייל" style="width:170px">
+                </div>
+                <div class="row">
+                    <input id="sbizProduct" placeholder="מוצר / תרומה" style="width:200px">
+                    <input id="sbizValue" placeholder="שווי בש״ח" style="width:110px">
+                    <input id="sbizContactNumber" placeholder="מס' פנייה" style="width:110px">
+                    <input id="sbizMessageNumber" placeholder="מס' הודעה" style="width:110px">
+                </div>
+                <div class="row">
+                    <select id="sbizStatus" style="width:150px"></select>
+                    <button class="btn secondary" id="sbizAddStatusBtn" type="button">➕ סטטוס חדש</button>
+                    <input id="sbizResponse" placeholder="התגובה שהתקבלה (לא חובה)" style="flex:1;min-width:220px">
+                    <button class="btn" id="sbizAddBtn">שמירת העסק</button>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <select id="sbizStatusFilter"><option value="">כל הסטטוסים</option></select>
+                <select id="sbizStageFilter"><option value="">כל שלבי הסגירה</option></select>
+                <select id="sbizSourceFilter"><option value="">כל המקורות</option></select>
+                <select id="sbizColorFilter">
+                    <option value="">כל הצבעים</option>
+                    <option value="marked">רק מודגשים ⭐</option>
+                    <option value="colored">רק צבועים</option>
+                    <option value="plain">בלי צבע</option>
+                </select>
+                <span class="hint" id="sbizCount"></span>
+            </div>
+
+            <table id="sbizTable"><thead><tr>
+                <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>מוצר</th>
+                <th>סטטוס</th><th>שלבי סגירה</th><th>תגובה אחרונה</th><th>מקור</th><th>צבע</th><th></th>
             </tr></thead><tbody></tbody></table>
-            <div class="empty" id="bizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
+            <div class="empty" id="sbizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
+        </div>
+
+        <!-- ===== שאלות ושלבי מענה ===== -->
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-squestions">שאלות שנשאלו ושלבי המענה</h2>
+                <input id="squestionSearch" class="search-box" type="search" placeholder="🔍 חיפוש בשאלות">
+            </div>
+            <div class="add-box">
+                <div class="row">
+                    <input id="squestionText" placeholder="מה השאלה למנהלת המערכת?" style="flex:1;min-width:260px">
+                    <select id="squestionBiz" style="width:200px"><option value="">ללא קשר לעסק מסוים</option></select>
+                </div>
+                <div class="row">
+                    <label class="chk"><input type="checkbox" id="squestionMail" checked> לשלוח גם מייל למנהלת המערכת</label>
+                    <button class="btn" id="squestionAddBtn">שליחת השאלה</button>
+                    <span class="hint" id="squestionMailHint"></span>
+                </div>
+            </div>
+            <div id="squestionsList" class="q-list"></div>
+            <div class="empty" id="squestionsEmpty" style="display:none">אין עדיין שאלות</div>
+        </div>
+
+        <!-- ===== מענה AI ===== -->
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-sai">מענה AI — מתוך קבצי הוורד שהועלו</h2>
+                <span class="hint" id="saiReadyHint"></span>
+            </div>
+            <div class="add-box">
+                <div class="row">
+                    <input id="saiQuestion" placeholder="לדוגמה: עד מתי אפשר לגייס מוצרים?" style="flex:1;min-width:260px">
+                    <button class="btn" id="saiAskBtn">שאלי</button>
+                </div>
+            </div>
+            <div id="saiAnswer" class="ai-answer hidden"></div>
+            <div class="modal-notes-head">שאלות ותשובות קודמות</div>
+            <div id="saiFeed" class="ai-feed"></div>
+            <div class="empty" id="saiEmpty" style="display:none">עדיין לא נשאלו שאלות</div>
+        </div>
+
+        <!-- ===== בסיס הידע ===== -->
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-skb">בסיס הידע — קבצי וורד</h2>
+                <div class="head-tools">
+                    <input type="file" id="skbFile" accept=".docx" style="display:none">
+                    <button class="btn" id="skbUploadBtn">⬆ העלאת קובץ וורד</button>
+                </div>
+            </div>
+            <p class="hint">ה-AI שואב את השאלות והתשובות מהקבצים האלה בלבד. נתמכות שלוש צורות כתיבה בקובץ:
+                טבלה של שאלה|תשובה, שורות "שאלה:" / "תשובה:", או שורה שמסתיימת בסימן שאלה והתשובה אחריה.</p>
+            <div id="skbStatus" class="hint"></div>
+            <table id="skbTable"><thead><tr>
+                <th>שם הקובץ</th><th>שאלות שזוהו</th><th>תווים</th><th>מי העלתה</th><th>מתי</th><th></th>
+            </tr></thead><tbody></tbody></table>
+            <div class="empty" id="skbEmpty" style="display:none">עדיין לא הועלו קבצים</div>
+        </div>
+
+        <!-- ===== הגדרות הלשונית ===== -->
+        <div class="card">
+            <h2 id="hd-ssettings">הגדרות הלשונית</h2>
+            <div class="settings-grid">
+                <div class="settingGroup">
+                    <label class="settingLabel">מייל מנהלת המערכת (לשם נשלחות השאלות)</label>
+                    <input id="sAdminEmail" placeholder="name@example.com" style="width:240px">
+                </div>
+                <div class="settingGroup">
+                    <label class="settingLabel">שם מנהלת המערכת</label>
+                    <input id="sAdminName" placeholder="מנהלת המערכת" style="width:180px">
+                </div>
+                <div class="settingGroup" style="align-self:end">
+                    <button class="btn" id="sSettingsSaveBtn">שמירה</button>
+                </div>
+            </div>
+            <div class="sub-head">שלבי הסגירה (אותו מסלול לכל העסקים)</div>
+            <div id="sStagesList" class="chip-list"></div>
+            <div class="row">
+                <input id="sNewStage" placeholder="שם שלב חדש" style="width:200px">
+                <button class="btn secondary" id="sAddStageBtn">➕ הוספת שלב</button>
+            </div>
+            <div class="sub-head">מקורות סנכרון נוספים (גיליון או טופס גוגל)</div>
+            <table id="sSourcesTable"><thead><tr>
+                <th>שם המקור</th><th>לשונית בגיליון</th><th>סונכרן</th><th>שורות</th><th>תקלה</th><th></th>
+            </tr></thead><tbody></tbody></table>
+            <div class="row">
+                <input id="sSourceName" placeholder="שם המקור (למשל: טופס פניות לעסקים)" style="width:230px">
+                <input id="sSourceUrl" placeholder="קישור לגיליון גוגל" style="flex:1;min-width:240px">
+                <input id="sSourceSheet" placeholder="שם הלשונית בגיליון" style="width:180px">
+                <button class="btn secondary" id="sAddSourceBtn">➕ הוספת מקור</button>
+            </div>
+            <p class="hint">הגיליון צריך להיות משותף לצפייה ("כל מי שיש לו הקישור"). עמודות מזוהות לפי הכותרת:
+                שם העסק, טלפון, מייל, מי פנתה, מוצר, שווי, סטטוס, הערה.</p>
         </div>
     </section>
+
+    <!-- חלון עסק: היסטוריה, שלבי סגירה, צביעה ושאלה למנהלת -->
+    <div id="sbizModalOverlay" class="modal-overlay hidden">
+        <div class="modal-box wide">
+            <div class="modal-head">
+                <h3 id="sbizModalTitle"></h3>
+                <button class="modal-close" id="sbizModalClose">✕</button>
+            </div>
+            <div id="sbizModalMeta" class="modal-meta"></div>
+
+            <div class="modal-section-head">הדגשה וצבע</div>
+            <div id="sbizModalColors" class="color-row"></div>
+
+            <div class="modal-section-head">שלבי סגירה</div>
+            <div id="sbizModalStages" class="stage-list"></div>
+
+            <div class="modal-section-head">תגובות והיסטוריה</div>
+            <div id="sbizModalNotes" class="modal-notes-list"></div>
+            <div class="row" style="margin-bottom:6px">
+                <input id="sbizNoteContactNum" placeholder="מס' פנייה" style="width:110px">
+                <input id="sbizNoteMessageNum" placeholder="מס' הודעה" style="width:110px">
+                <select id="sbizModalStatus" style="width:150px"></select>
+            </div>
+            <div class="modal-add-note">
+                <textarea id="sbizNewNote" placeholder="תגובה / עדכון חדש על העסק..." rows="2"></textarea>
+                <button class="btn" id="sbizAddNoteBtn">הוספה</button>
+            </div>
+
+            <div class="modal-section-head">שאלה למנהלת המערכת על העסק הזה</div>
+            <div class="modal-add-note">
+                <textarea id="sbizQuestionText" placeholder="מה לשאול?" rows="2"></textarea>
+                <button class="btn secondary" id="sbizAskBtn">שליחה</button>
+            </div>
+            <div id="sbizModalQuestions" class="q-list compact"></div>
+
+            <div class="modal-section-head">אזכורים בגיליון התנועות (דיווחים בטלפון)</div>
+            <div id="sbizModalMentions" class="mention-list"></div>
+        </div>
+    </div>
 
     <section id="recruited" class="c-section">
         <div class="card">
@@ -151,26 +307,6 @@
         </div>
     </section>
 
-    <div id="bizModalOverlay" class="modal-overlay hidden">
-        <div class="modal-box">
-            <div class="modal-head">
-                <h3 id="bizModalTitle"></h3>
-                <button class="modal-close" id="bizModalClose">✕</button>
-            </div>
-            <div id="bizModalMeta" class="modal-meta"></div>
-            <div class="modal-notes-head">כל התגובות וההיסטוריה</div>
-            <div id="bizModalNotes" class="modal-notes-list"></div>
-            <div class="row" style="margin-bottom:6px">
-                <input id="bizModalNoteContactNum" placeholder="מספר פנייה" style="width:120px">
-                <input id="bizModalNoteMessageNum" placeholder="מספר הודעה" style="width:120px">
-            </div>
-            <div class="modal-add-note">
-                <textarea id="bizModalNewNote" placeholder="הוספת תגובה / עדכון חדש..." rows="2"></textarea>
-                <button class="btn" id="bizModalAddNoteBtn">הוספה</button>
-            </div>
-        </div>
-    </div>
-
     <section id="activity" class="c-section">
         <div class="card">
             <div class="card-head-row">
@@ -187,5 +323,6 @@
 </div>
 
 <script src="campaign.js"></script>
+<script src="sinit.js"></script>
 </body>
 </html>

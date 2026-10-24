@@ -157,3 +157,86 @@ label.settingLabel { font-size: .85rem; color: #6b7a90; display: block; margin-b
 .hub-card .hc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .hub-edit-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .hub-edit-row input { flex: 1; min-width: 90px; }
+
+/* ===================== לשונית "מכירה סינית" ===================== */
+.sync-info { margin: -6px 0 14px; }
+.err-line { color: #c1362f; font-size: .85rem; margin-top: 4px; }
+.head-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.add-box { background: #f6f8fb; border: 1px solid #e3e8f0; border-radius: 14px; padding: 14px 16px 6px; margin-bottom: 14px; }
+.add-box .row:last-child { margin-bottom: 10px; }
+.filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.filter-bar select { min-width: 140px; }
+label.chk { font-size: .88rem; display: flex; align-items: center; gap: 6px; }
+.cell-wrap { max-width: 260px; white-space: normal; }
+.src-tag { font-size: .76rem; background: #eef3fa; color: #5a6b85; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+tr.biz-row.marked td { font-weight: 600; }
+tr.biz-row.marked td:first-child { box-shadow: inset 3px 0 0 var(--c-gold); }
+
+/* צביעה והדגשה בשורת העסק */
+.dot-btn { border: none; background: #eef3fa; border-radius: 999px; padding: 4px 9px; cursor: pointer; font-size: .8rem; }
+.dot-btn.on { background: var(--c-gold); color: #fff; }
+.dot-swatch { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #d7dfea; cursor: pointer; padding: 0; margin-inline-start: 3px; }
+.dot-swatch.on { outline: 2px solid var(--c-dark); outline-offset: 1px; }
+.dot-swatch.clear { background: #fff; font-size: .62rem; line-height: 1; color: #8795a8; }
+.color-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.swatch { width: 30px; height: 30px; border-radius: 9px; border: 1px solid #d7dfea; cursor: pointer; }
+.swatch.on { outline: 2px solid var(--c-dark); outline-offset: 1px; }
+.swatch.clear { width: auto; padding: 0 12px; background: #fff; font-size: .8rem; color: #5a6b85; }
+
+/* פס שלבי סגירה בטבלה */
+.stage-mini { min-width: 150px; }
+.stage-mini-bar { height: 7px; border-radius: 999px; background: #eef2f7; overflow: hidden; margin-bottom: 3px; }
+.stage-mini-fill { height: 100%; background: linear-gradient(90deg, var(--c-rose), var(--c-gold)); }
+.stage-mini-txt { font-size: .76rem; color: #5a6b85; }
+
+/* שלבי סגירה בחלון העסק */
+.modal-box.wide { max-width: 760px; }
+.modal-section-head { font-weight: 700; color: var(--c-dark); margin: 18px 0 8px; font-size: .92rem; border-top: 1px solid #eef2f7; padding-top: 12px; }
+.stage-list { display: flex; flex-direction: column; gap: 6px; }
+.stage-item { display: flex; align-items: center; gap: 8px; background: #f6f8fb; border-radius: 10px; padding: 8px 12px; font-size: .9rem; cursor: pointer; }
+.stage-item.done { background: #e9f6ef; }
+.stage-item .stage-name { font-weight: 600; }
+.stage-note { background: #fff; border-radius: 8px; padding: 2px 8px; font-size: .8rem; color: #5a6b85; }
+.link-btn { border: none; background: none; color: var(--c-raspberry); cursor: pointer; font-size: .78rem; margin-inline-start: auto; }
+
+/* שאלות ושלבי מענה */
+.q-list { display: flex; flex-direction: column; gap: 12px; }
+.q-card { border: 1px solid #e3e8f0; border-radius: 14px; padding: 14px 16px; }
+.q-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.q-text { font-weight: 600; }
+.q-meta { color: #6b7a90; font-size: .78rem; margin: 4px 0 8px; }
+.q-steps { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.q-step { display: flex; gap: 8px; align-items: baseline; font-size: .85rem; }
+.q-step-num { flex-shrink: 0; width: 18px; height: 18px; border-radius: 999px; background: var(--c-rose); color: #fff; font-size: .7rem; display: flex; align-items: center; justify-content: center; }
+.q-answer { background: #e9f6ef; border-radius: 10px; padding: 8px 12px; font-size: .9rem; margin-bottom: 8px; }
+.q-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.q-list.compact .q-mini { background: #f6f8fb; border-radius: 10px; padding: 8px 12px; font-size: .87rem; margin-bottom: 6px; }
+.q-mini-answer { color: #12805c; margin-top: 4px; }
+
+/* מענה AI */
+.ai-answer { background: #eef6f1; border: 1px solid #cfe7da; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
+.ai-feed { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
+.ai-item { border: 1px solid #e3e8f0; border-radius: 12px; padding: 12px 14px; }
+.ai-item-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
+.ai-q { font-weight: 600; }
+.ai-a { white-space: pre-wrap; font-size: .9rem; }
+.ai-meta { color: #6b7a90; font-size: .78rem; margin-top: 6px; }
+.ai-item .btn { margin-top: 8px; }
+.badge.bad { background: #fbe6e4; color: #c1362f; }
+
+/* בסיס ידע והגדרות */
+.kb-pairs { margin: 8px 0 0; padding-inline-start: 20px; font-size: .85rem; }
+.kb-pairs li { margin-bottom: 8px; }
+.settings-grid { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.sub-head { font-weight: 700; color: var(--c-dark); margin: 18px 0 8px; font-size: .9rem; }
+.chip-list { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.chip { background: #eef3fa; border-radius: 999px; padding: 5px 12px; font-size: .84rem; display: inline-flex; align-items: center; gap: 6px; }
+.chip-x { border: none; background: none; color: #c1362f; cursor: pointer; font-size: .72rem; }
+.mention-list { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; }
+.mention { background: #f6f8fb; border-radius: 8px; padding: 6px 10px; }
+
+/* תגובה ארוכה לא מנפחת את כל השורה — שלוש שורות ואז חיתוך (הטקסט המלא בחלון העסק) */
+.cell-wrap { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* עמודת הצבעים נשארת בשורה אחת */
+td.color-cell { white-space: nowrap; }
+td.color-cell .dot-swatch { width: 15px; height: 15px; margin-inline-start: 2px; }

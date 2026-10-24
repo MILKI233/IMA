@@ -22,6 +22,23 @@ const ACTION_LABEL = {
     'campaign.business.create': 'הוספת עסק',
     'campaign.business.update': 'עדכון עסק',
     'campaign.business.delete': 'מחיקת עסק',
+    'campaign.business.note_add': 'תגובה על עסק',
+    'campaign.business.note_delete': 'מחיקת תגובה על עסק',
+    'campaign.business_status.create': 'הוספת סטטוס לעסקים',
+    'campaign.sinit.sync': 'סנכרון עסקים מהטפסים',
+    'campaign.sinit.stage_mark': 'עדכון שלב סגירה',
+    'campaign.sinit.stage_add': 'הוספת שלב סגירה',
+    'campaign.sinit.stage_delete': 'מחיקת שלב סגירה',
+    'campaign.sinit.question_add': 'שאלה למנהלת המערכת',
+    'campaign.sinit.question_step': 'שלב מענה לשאלה',
+    'campaign.sinit.question_update': 'עדכון שאלה',
+    'campaign.sinit.question_delete': 'מחיקת שאלה',
+    'campaign.sinit.ai_escalate': 'שאלה הועברה למנהלת (AI)',
+    'campaign.sinit.kb_upload': 'העלאת קובץ וורד לבסיס הידע',
+    'campaign.sinit.kb_delete': 'מחיקת קובץ מבסיס הידע',
+    'campaign.sinit.source_add': 'הוספת מקור סנכרון',
+    'campaign.sinit.source_delete': 'מחיקת מקור סנכרון',
+    'campaign.sinit.settings': 'עדכון הגדרות מכירה סינית',
     'campaign.phone.outreach': 'דיווח פנייה לעסק (טלפון)',
     'campaign.phone.errand': 'דיווח שליחות (טלפון)',
     'campaign.phone.product': 'דיווח גיוס מוצר (טלפון)',
@@ -38,9 +55,6 @@ const ACTION_LABEL = {
 let activityQuery = '';
 let activityLoaded = false;
 let volunteerQuery = '';
-let bizQuery = '';
-let bizLoaded = false;
-let editingBizId = null;
 let txQuery = '';
 let kitRecipientsQuery = '';
 let recruitedQuery = '';
@@ -81,7 +95,8 @@ function activateTab(tab) {
     document.querySelectorAll('nav.c-nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     document.querySelectorAll('main.c-main section').forEach((s) => s.classList.toggle('active', s.id === tab));
     if (tab === 'activity') loadActivity();
-    if (tab === 'businesses') loadBusinesses();
+    // לשונית "מכירה סינית" מנוהלת בקובץ sinit.js
+    if (tab === 'sinit') window.sinitActivate?.();
 }
 
 function startApp() {
@@ -113,10 +128,6 @@ function startApp() {
         volunteerQuery = e.target.value.trim();
         if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
     });
-    document.getElementById('bizSearch').addEventListener('input', (e) => {
-        bizQuery = e.target.value.trim();
-        if (bizLoaded) renderBusinesses(window.__bizRows || []);
-    });
     document.getElementById('txSearch').addEventListener('input', (e) => {
         txQuery = e.target.value.trim();
         if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
@@ -134,9 +145,9 @@ function startApp() {
     setInterval(loadDashboard, 5000);
     loadSheetsData();
     setInterval(loadSheetsData, 15000);
-    // טוענים גם עסקים/יומן פעולות מראש, כדי שתקציר הריחוף בניווט הצדי יהיה נכון עוד לפני כניסה ללשונית
-    loadBusinessStatuses().then(loadBusinesses);
+    // טוענים את יומן הפעולות מראש, כדי שתקציר הריחוף בניווט הצדי יהיה נכון עוד לפני כניסה ללשונית
     loadActivity();
+    window.sinitInit?.();
 }
 
 async function loadActivity() {
@@ -430,208 +441,6 @@ async function saveSheetHubEdit(row) {
     } catch (e) { alert(e.message || 'השמירה לטבלה נכשלה'); }
 }
 
-/* ---- עסקים: מי פנתה ולמה ---- */
-const BIZ_STATUS_CLASS = { 'ממתין': 'warn', 'נוצר קשר': '', 'תרם': 'ok', 'סירב': '' };
-let bizStatuses = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
-
-async function loadBusinessStatuses() {
-    try {
-        bizStatuses = await api('/api/campaign/business-statuses');
-        const addSelect = document.getElementById('bizStatus');
-        if (addSelect) addSelect.innerHTML = bizStatuses.map((s) => `<option>${s}</option>`).join('');
-    } catch (e) { /* נשארים עם הרשימה הקבועה אם השליפה נכשלה */ }
-}
-
-async function addBizStatus() {
-    const name = prompt('שם הסטטוס החדש:');
-    if (!name || !name.trim()) return;
-    try {
-        await api('/api/campaign/business-statuses', { method: 'POST', body: { name: name.trim() } });
-        await loadBusinessStatuses();
-        if (bizLoaded) renderBusinesses(window.__bizRows || []);
-    } catch (e) { alert(e.message || 'הוספת הסטטוס נכשלה'); }
-}
-
-/* ---- חלון פרטי עסק: כל ההיסטוריה והתגובות ---- */
-let bizModalId = null;
-
-async function openBizModal(id) {
-    const biz = (window.__bizRows || []).find((b) => b.id === id);
-    if (!biz) return;
-    bizModalId = id;
-    document.getElementById('bizModalTitle').textContent = biz.name;
-    document.getElementById('bizModalMeta').innerHTML = `
-        ${biz.contacted_by ? `פנתה: ${biz.contacted_by} · ` : ''}
-        ${biz.phone ? `טלפון: ${biz.phone} · ` : ''}
-        ${biz.email ? `מייל: ${biz.email} · ` : ''}
-        ${biz.contact_number ? `מס' פנייה: ${biz.contact_number} · ` : ''}
-        ${biz.message_number ? `מס' הודעה: ${biz.message_number} · ` : ''}
-        <span class="badge ${BIZ_STATUS_CLASS[biz.status] || ''}">${biz.status}</span>`;
-    document.getElementById('bizModalNewNote').value = '';
-    document.getElementById('bizModalNoteContactNum').value = '';
-    document.getElementById('bizModalNoteMessageNum').value = '';
-    document.getElementById('bizModalOverlay').classList.remove('hidden');
-    await loadBizNotes(id, biz);
-}
-
-async function loadBizNotes(id, biz) {
-    const box = document.getElementById('bizModalNotes');
-    box.innerHTML = '<div class="hint">טוענת...</div>';
-    try {
-        const notes = await api(`/api/campaign/businesses/${id}/notes`);
-        if (!notes.length && biz?.response) {
-            // תגובה שנשמרה לפני שהיה היסטוריה — מציגים אותה כרשומה הראשונה, בלי אפשרות מחיקה (אין לה ID משלה)
-            const legacyMeta = ['תגובה קיימת', biz.contact_number ? `מס' פנייה: ${biz.contact_number}` : '', biz.message_number ? `מס' הודעה: ${biz.message_number}` : ''].filter(Boolean).join(' · ');
-            box.innerHTML = `<div class="modal-note"><div class="modal-note-num">1</div><div class="modal-note-body"><div class="modal-note-text">${biz.response}</div><div class="modal-note-meta">${legacyMeta}</div></div></div>`;
-            return;
-        }
-        if (!notes.length) { box.innerHTML = '<div class="empty">אין עדיין תגובות או עדכונים</div>'; return; }
-        const total = notes.length;
-        box.innerHTML = notes.map((n, i) => `
-            <div class="modal-note${i === 0 ? ' latest' : ''}">
-                <div class="modal-note-num">${total - i}</div>
-                <div class="modal-note-body">
-                    <div class="modal-note-text">${n.text}</div>
-                    <div class="modal-note-meta">
-                        ${i === 0 ? '<span class="badge ok">עדכון אחרון</span> · ' : ''}${n.created_by || ''} · ${fmtDate(n.created_at)}
-                        ${n.contact_number ? ` · מס' פנייה: ${n.contact_number}` : ''}${n.message_number ? ` · מס' הודעה: ${n.message_number}` : ''}
-                        <button class="modal-note-del" onclick="deleteBizNote(${n.id})" title="מחיקת רשומה זו">✕</button>
-                    </div>
-                </div>
-            </div>`).join('');
-    } catch (e) { box.innerHTML = `<div class="hint">${e.message || 'שגיאה בטעינה'}</div>`; }
-}
-
-async function deleteBizNote(noteId) {
-    if (bizModalId === null || !confirm('למחוק את הרשומה הזו?')) return;
-    try {
-        await api(`/api/campaign/businesses/${bizModalId}/notes/${noteId}`, { method: 'DELETE' });
-        const biz = (window.__bizRows || []).find((b) => b.id === bizModalId);
-        await loadBizNotes(bizModalId, biz);
-    } catch (e) { alert(e.message || 'המחיקה נכשלה'); }
-}
-
-function closeBizModal() {
-    bizModalId = null;
-    document.getElementById('bizModalOverlay').classList.add('hidden');
-}
-
-async function addBizNote() {
-    const text = document.getElementById('bizModalNewNote').value.trim();
-    if (!text || bizModalId === null) return;
-    try {
-        await api(`/api/campaign/businesses/${bizModalId}/notes`, { method: 'POST', body: {
-            text,
-            contact_number: document.getElementById('bizModalNoteContactNum').value,
-            message_number: document.getElementById('bizModalNoteMessageNum').value,
-        } });
-        document.getElementById('bizModalNewNote').value = '';
-        document.getElementById('bizModalNoteContactNum').value = '';
-        document.getElementById('bizModalNoteMessageNum').value = '';
-        const biz = (window.__bizRows || []).find((b) => b.id === bizModalId);
-        await loadBizNotes(bizModalId, biz);
-        loadBusinesses();
-    } catch (e) { alert(e.message || 'ההוספה נכשלה'); }
-}
-
-document.getElementById('bizModalClose').addEventListener('click', closeBizModal);
-document.getElementById('bizModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'bizModalOverlay') closeBizModal(); });
-document.getElementById('bizModalAddNoteBtn').addEventListener('click', addBizNote);
-
-async function loadBusinesses() {
-    try {
-        const rows = await api('/api/campaign/businesses');
-        window.__bizRows = rows;
-        bizLoaded = true;
-        renderBusinesses(rows);
-    } catch (e) { alert(e.message); }
-}
-
-function renderBusinesses(rows) {
-    setNavTooltip('hd-biz', `עסקים: ${rows.length}`);
-    if (editingBizId !== null) return;
-    const q = bizQuery.toLowerCase();
-    const filtered = rows.filter((b) => !q || b.name.toLowerCase().includes(q));
-    document.getElementById('bizEmpty').style.display = filtered.length ? 'none' : 'block';
-    document.querySelector('#bizTable tbody').innerHTML = filtered.map((b) => `
-        <tr class="biz-row" onclick="openBizModal(${b.id})">
-            <td>${b.name}</td>
-            <td>${b.contacted_by || '—'}</td>
-            <td>${b.phone || ''}</td>
-            <td>${b.email || ''}</td>
-            <td><span class="badge ${BIZ_STATUS_CLASS[b.status] || ''}">${b.status}</span></td>
-            <td>${b.response || '<span class="hint">אין תגובה</span>'}</td>
-            <td>${b.contact_number || ''}</td>
-            <td>${b.message_number || ''}</td>
-            <td onclick="event.stopPropagation()">
-                <button class="btn secondary" onclick="toggleBizEdit(${b.id})">עריכה</button>
-                <button class="btn danger" onclick="deleteBusiness(${b.id})">מחיקה</button>
-            </td>
-        </tr>
-        <tr class="hub-edit-row hidden" id="biz-edit-${b.id}" onclick="event.stopPropagation()">
-            <td colspan="9">
-                <input id="be-email-${b.id}" placeholder="מייל" value="${b.email || ''}" style="width:180px">
-                <select id="be-status-${b.id}">
-                    ${bizStatuses.map((s) => `<option${s === b.status ? ' selected' : ''}>${s}</option>`).join('')}
-                </select>
-                <input id="be-response-${b.id}" placeholder="תגובה" value="${b.response || ''}" style="flex:2">
-                <input id="be-contact-${b.id}" placeholder="מספר פנייה" value="${b.contact_number || ''}" style="width:120px">
-                <input id="be-message-${b.id}" placeholder="מספר הודעה" value="${b.message_number || ''}" style="width:120px">
-                <button class="btn" onclick="saveBizEdit(${b.id})">שמירה</button>
-            </td>
-        </tr>`).join('');
-}
-
-function toggleBizEdit(id) {
-    const open = document.getElementById(`biz-edit-${id}`).classList.toggle('hidden') === false;
-    editingBizId = open ? id : null;
-}
-
-async function saveBizEdit(id) {
-    try {
-        await api(`/api/campaign/businesses/${id}`, { method: 'PUT', body: {
-            email: document.getElementById(`be-email-${id}`).value,
-            status: document.getElementById(`be-status-${id}`).value,
-            response: document.getElementById(`be-response-${id}`).value,
-            contact_number: document.getElementById(`be-contact-${id}`).value,
-            message_number: document.getElementById(`be-message-${id}`).value,
-        } });
-        editingBizId = null;
-        loadBusinesses();
-    } catch (e) { alert(e.message); }
-}
-
-async function deleteBusiness(id) {
-    if (!confirm('למחוק את העסק מהרשימה?')) return;
-    try { await api(`/api/campaign/businesses/${id}`, { method: 'DELETE' }); loadBusinesses(); }
-    catch (e) { alert(e.message); }
-}
-
-document.getElementById('addBizStatusBtn').addEventListener('click', addBizStatus);
-
-document.getElementById('addBizBtn').addEventListener('click', async () => {
-    try {
-        await api('/api/campaign/businesses', { method: 'POST', body: {
-            name: document.getElementById('bizName').value,
-            contacted_by: document.getElementById('bizContactedBy').value,
-            phone: document.getElementById('bizPhone').value,
-            email: document.getElementById('bizEmail').value,
-            status: document.getElementById('bizStatus').value,
-            response: document.getElementById('bizResponse').value,
-            contact_number: document.getElementById('bizContactNumber').value,
-            message_number: document.getElementById('bizMessageNumber').value,
-        } });
-        document.getElementById('bizName').value = '';
-        document.getElementById('bizContactedBy').value = '';
-        document.getElementById('bizPhone').value = '';
-        document.getElementById('bizEmail').value = '';
-        document.getElementById('bizResponse').value = '';
-        document.getElementById('bizContactNumber').value = '';
-        document.getElementById('bizMessageNumber').value = '';
-        loadBusinesses();
-    } catch (e) { alert(e.message); }
-});
-
 async function downloadFile(endpoint, filename) {
     try {
         const res = await fetch(endpoint, { headers: { 'x-user-id': USER ? USER.id : '' } });
@@ -645,7 +454,6 @@ async function downloadFile(endpoint, filename) {
     } catch (e) { alert(e.message || 'ההורדה נכשלה'); }
 }
 
-document.getElementById('bizExportBtn').addEventListener('click', () => downloadFile('/api/campaign/businesses/export.xlsx', 'עסקים.xlsx'));
 document.getElementById('kitRecipientsExportBtn').addEventListener('click', () => downloadFile('/api/campaign/sheets-data/kit-recipients.xlsx', 'מקבלי ערכות.xlsx'));
 document.getElementById('recruitedExportBtn').addEventListener('click', () => downloadFile('/api/campaign/sheets-data/recruited-products.xlsx', 'מוצרים שגויסו.xlsx'));
 
