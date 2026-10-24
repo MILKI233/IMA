@@ -894,7 +894,11 @@ app.use('/api/inv', requireFeature('inventory'), inventoryRouter({ mustLogin, mu
 // ---------- קמפיין המכירה הסינית (אמא במשמרת) ----------
 app.use('/api/campaign', requireFeature('campaign'), campaignApiRouter({ mustLogin, mustManager, requireFeature, events }));
 // לשונית "מכירה סינית" — עסקים מכל הטפסים, שלבי סגירה, שאלות למנהלת ומענה AI מקבצי וורד
-app.use('/api/sinit', requireFeature('campaign'), sinitApiRouter({ mustLogin, mustManager, requireFeature, events }));
+// מתנדבת שנכנסת בקישור שיתוף אינה משתמשת רשומה, ולכן עוברת כאן בלי הרשאת קמפיין —
+// הראוטר עצמו בודק שהקישור פעיל, שהוא מתאים למקטע המבוקש, ושמותר בו לכתוב.
+const campaignOrShare = (req, res, next) =>
+  (req.header('x-share-token') ? next() : requireFeature('campaign')(req, res, next));
+app.use('/api/sinit', campaignOrShare, sinitApiRouter({ mustLogin, mustManager, requireFeature, events }));
 app.use('/yemot-campaign', createCampaignYemotRouter({ events }));
 
 // הקמפיין האמיתי ("אוצרותינו") רץ על ימות המשיח ומסונכרן דרך Google Sheets.

@@ -597,3 +597,13 @@ button.task-check.disabled { cursor: not-allowed; }
 .task-row.irrelevant button.task-check { background: var(--blue-100); border-color: var(--navy-800); color: var(--navy-800); }
 /* השורה עצמה כבר אינה לחיצה — לא להציג סמן יד שמרמז אחרת */
 .task-row { cursor: default; }
+
+/* ===== לשונית מכירה סינית במסך הניהול: שלבי סגירה, בסיס ידע וקישורים ===== */
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.chip-tag {
+  background: #eef3fa; border-radius: 999px; padding: 5px 12px; font-size: .85rem;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip-tag .chip-x { border: none; background: none; color: #c1362f; cursor: pointer; font-size: .72rem; padding: 0; }
+.kb-pairs { margin: 10px 0 0; padding-inline-start: 20px; font-size: .85rem; }
+.kb-pairs li { margin-bottom: 8px; }

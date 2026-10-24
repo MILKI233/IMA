@@ -240,3 +240,83 @@ tr.biz-row.marked td:first-child { box-shadow: inset 3px 0 0 var(--c-gold); }
 /* עמודת הצבעים נשארת בשורה אחת */
 td.color-cell { white-space: nowrap; }
 td.color-cell .dot-swatch { width: 15px; height: 15px; margin-inline-start: 2px; }
+
+/* ===== מעבר בין תצוגות: טבלה / רשימה / לוח לפי סטטוס ===== */
+.view-switch { display: inline-flex; background: #eef3fa; border-radius: 999px; padding: 3px; gap: 2px; }
+.view-switch button {
+    border: none; background: transparent; color: var(--c-dark); border-radius: 999px;
+    padding: 6px 14px; font-size: .84rem; cursor: pointer; white-space: nowrap;
+}
+.view-switch button.on { background: var(--c-dark); color: #fff; }
+.biz-view table.biz-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+
+/* תצוגת רשימה/ריבועים */
+.biz-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+.biz-card {
+    background: #fff; border: 1px solid #e3e8f0; border-radius: 16px; padding: 14px 16px;
+    cursor: pointer; transition: box-shadow .15s, transform .15s; display: flex; flex-direction: column; gap: 8px;
+}
+.biz-card:hover { box-shadow: 0 8px 20px rgba(11,42,74,.12); transform: translateY(-2px); }
+.biz-card.marked { border-color: var(--c-gold); border-width: 2px; }
+.bc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.bc-name { font-weight: 700; font-size: 1.02rem; }
+.bc-product { font-size: .88rem; color: var(--c-dark); }
+.bc-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: .8rem; color: #5a6b85; }
+.bc-response {
+    font-size: .85rem; color: #44546b; background: rgba(255,255,255,.65); border-radius: 10px; padding: 8px 10px;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.bc-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+.bc-colors { margin-inline-start: auto; white-space: nowrap; }
+.bc-colors .dot-swatch { width: 14px; height: 14px; }
+
+/* לוח לפי סטטוס */
+.biz-board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+.board-col { flex: 1 1 280px; min-width: 260px; max-width: 420px; background: #f4f7fb; border-radius: 16px; padding: 10px; }
+.board-col-head {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    font-weight: 700; font-size: .92rem; padding: 8px 12px; border-radius: 12px; margin-bottom: 10px;
+    background: #e7f0fb; color: var(--c-raspberry);
+}
+.board-col-head.ok { background: #e2f5ee; color: #12805c; }
+.board-col-head.warn { background: #fbf1dc; color: #b7791f; }
+.board-col-head.bad { background: #fbe6e4; color: #c1362f; }
+.board-count { background: rgba(255,255,255,.75); border-radius: 999px; padding: 1px 9px; font-size: .8rem; }
+.board-col-body { display: flex; flex-direction: column; gap: 10px; max-height: 70vh; overflow-y: auto; }
+.board-empty { text-align: center; padding: 14px 0; }
+.stage-mini.big .stage-mini-bar { height: 9px; }
+
+/* ===== צ'אט ה-AI ===== */
+.chat { display: flex; flex-direction: column; gap: 12px; }
+.chat-log {
+    display: flex; flex-direction: column; gap: 10px; min-height: 180px; max-height: 480px;
+    overflow-y: auto; padding: 14px; background: #f4f7fb; border-radius: 16px;
+}
+.chat-hello { color: #5a6b85; font-size: .9rem; text-align: center; padding: 26px 10px; line-height: 1.7; }
+.msg { display: flex; flex-direction: column; max-width: 78%; }
+.msg.me { align-self: flex-start; align-items: flex-start; }
+.msg.bot { align-self: flex-end; align-items: flex-end; }
+.msg .bubble {
+    background: #fff; border-radius: 16px 16px 16px 4px; padding: 11px 15px; font-size: .92rem;
+    line-height: 1.65; white-space: pre-wrap; box-shadow: 0 2px 8px rgba(11,42,74,.07);
+}
+.msg.bot .bubble { background: linear-gradient(135deg, var(--c-rose), var(--c-raspberry)); color: #fff; border-radius: 16px 16px 4px 16px; }
+.msg.bot .bubble.empty { background: #fff; color: #44546b; border: 1px dashed #d7dfea; }
+.msg-meta { font-size: .72rem; color: #8795a8; margin: 3px 6px 0; }
+.bubble-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: .78rem; opacity: .95; }
+.msg.bot .bubble .hint { color: rgba(255,255,255,.85); }
+.msg.bot .bubble.empty .hint { color: #6b7a90; }
+.chat-escalate { display: inline-block; margin-top: 10px; background: #fff; color: var(--c-raspberry); font-size: .82rem; }
+.bubble.typing { display: flex; gap: 5px; align-items: center; padding: 14px 18px; }
+.bubble.typing span { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.85); animation: typing 1.1s infinite; }
+.bubble.typing span:nth-child(2) { animation-delay: .18s; }
+.bubble.typing span:nth-child(3) { animation-delay: .36s; }
+@keyframes typing { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+.chat-input { display: flex; gap: 8px; }
+.chat-input input { flex: 1; padding: 12px 16px; border-radius: 999px; border: 1px solid #e3e8f0; font-size: .95rem; }
+.chat-input .btn { padding: 11px 22px; }
+
+/* ===== דף הקישור למתנדבת ===== */
+.share-body main.share-main { max-width: 1200px; padding: 18px 16px 60px; }
+.share-section { display: block; }
+.share-body header.c-header h1 { font-size: 1.35rem; }

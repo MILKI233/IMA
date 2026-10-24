@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>קמפיין המכירה הסינית — אמא במשמרת</title>
+<link rel="stylesheet" href="campaign.css">
+</head>
+<body class="share-body">
+
+<!-- מסך פתיחה: שם המתנדבת, כדי שכל מה שתכתוב יירשם על שמה -->
+<div id="share-gate" class="login-wrap">
+    <div class="login-card">
+        <div class="login-crest">🎗</div>
+        <div class="login-title">אמא במשמרת</div>
+        <div class="login-sub" id="gateSub">קמפיין המכירה הסינית</div>
+        <input id="shareName" placeholder="איך קוראים לך?" autocomplete="name">
+        <button id="shareEnter" class="btn btn-block">כניסה</button>
+        <div id="shareError" class="login-error"></div>
+    </div>
+</div>
+
+<div id="share-app" class="hidden">
+<header class="c-header">
+    <h1 id="shareTitle">קמפיין המכירה הסינית</h1>
+    <p id="shareSub"></p>
+</header>
+
+<main class="c-main share-main">
+    <div class="stat-row" id="sinitStats"></div>
+    <div id="sinitSyncInfo" class="sync-info"></div>
+
+    <!-- ===== עסקים ===== -->
+    <section id="share-businesses" class="share-section hidden">
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-sbiz">עסקים</h2>
+                <div class="head-tools">
+                    <input id="sbizSearch" class="search-box" type="search" placeholder="🔍 שם עסק / טלפון / מוצר">
+                    <button class="btn secondary write-only" id="sbizAddToggle">➕ הוספת עסק</button>
+                </div>
+            </div>
+
+            <div id="sbizAddBox" class="add-box hidden write-only">
+                <div class="row">
+                    <input id="sbizName" placeholder="שם העסק" style="width:200px">
+                    <input id="sbizContactedBy" placeholder="מי פנתה (שם)" style="width:150px">
+                    <input id="sbizPhone" placeholder="טלפון" style="width:130px">
+                    <input id="sbizEmail" placeholder="מייל" style="width:170px">
+                </div>
+                <div class="row">
+                    <input id="sbizProduct" placeholder="מוצר / תרומה" style="width:200px">
+                    <input id="sbizValue" placeholder="שווי בש״ח" style="width:110px">
+                    <input id="sbizContactNumber" placeholder="מספר פנייה" style="width:110px">
+                    <input id="sbizMessageNumber" placeholder="מספר הודעה" style="width:110px">
+                </div>
+                <div class="row">
+                    <select id="sbizStatus" style="width:150px"></select>
+                    <input id="sbizResponse" placeholder="התגובה שהתקבלה (לא חובה)" style="flex:1;min-width:200px">
+                    <button class="btn" id="sbizAddBtn">שמירת העסק</button>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="view-switch">
+                    <button data-view="table" class="on">▦ טבלה</button>
+                    <button data-view="cards">☰ רשימה</button>
+                    <button data-view="board">▥ לפי סטטוס</button>
+                </div>
+                <select id="sbizStatusFilter"><option value="">כל הסטטוסים</option></select>
+                <select id="sbizStageFilter"><option value="">כל שלבי הסגירה</option></select>
+                <select id="sbizColorFilter">
+                    <option value="">כל הצבעים</option>
+                    <option value="marked">רק מודגשים ⭐</option>
+                    <option value="colored">רק צבועים</option>
+                    <option value="plain">בלי צבע</option>
+                </select>
+                <span class="hint" id="sbizCount"></span>
+            </div>
+
+            <div id="sbizView" class="biz-view view-table"></div>
+            <div class="empty" id="sbizEmpty" style="display:none">אין עדיין עסקים ברשימה</div>
+        </div>
+    </section>
+
+    <!-- ===== שאלות ושלבי מענה ===== -->
+    <section id="share-questions" class="share-section hidden">
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-squestions">שאלות שנשאלו ושלבי המענה</h2>
+                <input id="squestionSearch" class="search-box" type="search" placeholder="🔍 חיפוש בשאלות">
+            </div>
+            <div class="add-box write-only">
+                <div class="row">
+                    <input id="squestionText" placeholder="מה השאלה למנהלת המערכת?" style="flex:1;min-width:240px">
+                    <select id="squestionBiz" style="width:190px"><option value="">ללא קשר לעסק מסוים</option></select>
+                </div>
+                <div class="row">
+                    <label class="chk"><input type="checkbox" id="squestionMail" checked> לשלוח גם מייל למנהלת</label>
+                    <button class="btn" id="squestionAddBtn">שליחת השאלה</button>
+                    <span class="hint" id="squestionMailHint"></span>
+                </div>
+            </div>
+            <div id="squestionsList" class="q-list"></div>
+            <div class="empty" id="squestionsEmpty" style="display:none">אין עדיין שאלות</div>
+        </div>
+    </section>
+
+    <!-- ===== צאט AI ===== -->
+    <section id="share-ai" class="share-section hidden">
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-sai">מענה AI</h2>
+                <span class="hint" id="saiReadyHint"></span>
+            </div>
+            <div class="chat">
+                <div class="chat-log" id="saiChat"></div>
+                <div class="chat-input write-only">
+                    <input id="saiQuestion" placeholder="מה רצית לשאול?" autocomplete="off">
+                    <button class="btn" id="saiAskBtn">שליחה ⬅</button>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- חלון עסק -->
+<div id="sbizModalOverlay" class="modal-overlay hidden">
+    <div class="modal-box wide">
+        <div class="modal-head">
+            <h3 id="sbizModalTitle"></h3>
+            <button class="modal-close" id="sbizModalClose">✕</button>
+        </div>
+        <div id="sbizModalMeta" class="modal-meta"></div>
+
+        <div class="modal-section-head">הדגשה וצבע</div>
+        <div id="sbizModalColors" class="color-row"></div>
+
+        <div class="modal-section-head">שלבי סגירה</div>
+        <div id="sbizModalStages" class="stage-list"></div>
+
+        <div class="modal-section-head">תגובות והיסטוריה</div>
+        <div id="sbizModalNotes" class="modal-notes-list"></div>
+        <div class="row write-only" style="margin-bottom:6px">
+            <input id="sbizNoteContactNum" placeholder="מספר פנייה" style="width:110px">
+            <input id="sbizNoteMessageNum" placeholder="מספר הודעה" style="width:110px">
+            <select id="sbizModalStatus" style="width:150px"></select>
+        </div>
+        <div class="modal-add-note write-only">
+            <textarea id="sbizNewNote" placeholder="תגובה / עדכון חדש על העסק..." rows="2"></textarea>
+            <button class="btn" id="sbizAddNoteBtn">הוספה</button>
+        </div>
+    </div>
+</div>
+</div>
+
+<script src="share-boot.js"></script>
+<script src="sinit.js"></script>
+</body>
+</html>

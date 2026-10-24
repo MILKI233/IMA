@@ -1,16 +1,24 @@
-/* לשונית "מכירה סינית" — עסקים מכל הטפסים, שלבי סגירה, צביעה, שאלות למנהלת ומענה AI.
-   נשענת על api()/fmtDate()/downloadFile()/USER מתוך campaign.js שנטען לפניה. */
+/* לשונית "מכירה סינית" — עסקים (טבלה / רשימה / לוח לפי סטטוס), שאלות ושלבי מענה, וצ'אט AI.
+   אותו קובץ משרת שני דפים: campaign.html (צוות מחובר) ו-share.html (קישור למתנדבת למקטע אחד).
+   כל מקטע מרונדר רק אם המיכל שלו קיים בדף — כך דף השיתוף מקבל בדיוק את מה שהותר לו. */
 
 const S = {
-    businesses: [], stages: [], statuses: [], sources: [], questions: [], kb: [], aiLog: [],
-    overview: null, modalId: null, wired: false,
+    businesses: [], stages: [], statuses: [], questions: [], aiLog: [],
+    overview: null, modalId: null, wired: false, asking: false,
+    view: localStorage.getItem('sinit_view') || 'table',
     f: { q: '', status: '', stage: '', source: '', color: '', question: '' },
 };
+
+// מצב שיתוף נקבע ב-share-boot.js רק אחרי שהמתנדבת מזינה את שמה — לכן נקרא בכל פעם מחדש
+// ולא נשמר בקבוע בזמן הטעינה (באג שנתפס בבדיקה: הדף הוצג כאילו הוא המסך המלא).
+const shareMode = () => (typeof window !== 'undefined' ? (window.SINIT_SHARE || null) : null);
+const canWrite = () => { const s = shareMode(); return s ? !!s.canWrite : true; };
+const showsSection = (name) => { const s = shareMode(); return !s || s.section === name; };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const el = (id) => document.getElementById(id);
-const canSettings = () => (USER?.features || []).includes('campaign_settings');
+const on = (id, ev, fn) => el(id)?.addEventListener(ev, fn);
 
 const STATUS_CLASS = { 'ממתין': 'warn', 'תרם': 'ok', 'סירב': 'bad', 'נוצר קשר': '' };
 const Q_STATUS_CLASS = { 'נשאלה': 'warn', 'נשלחה למנהלת': 'warn', 'בטיפול': '', 'נענתה': 'ok', 'נסגרה': 'ok' };
@@ -23,97 +31,122 @@ async function sinitLoadOverview() {
     S.businesses = o.businesses;
     S.stages = o.stages;
     S.statuses = o.statuses;
-    S.sources = o.sources;
     renderStats();
     renderSyncInfo();
     fillSelects();
     renderBusinesses();
-    renderStageEditor();
-    renderSources();
-    el('sAdminEmail').value = o.adminEmail || '';
-    el('sAdminName').value = o.adminName || '';
-    el('squestionMailHint').textContent = o.adminEmail
-        ? `המייל יישלח ל${o.adminEmail}${o.mailReady ? '' : ' — אך חיבור ה-Gmail לא מוגדר עדיין'}`
-        : 'לא הוגדרה כתובת מייל למנהלת — אפשר להגדיר בהגדרות הלשונית למטה';
-    el('saiReadyHint').textContent = o.kbDocs
-        ? `${o.kbDocs} קבצים · ${o.kbPairs} שאלות בחומר${o.aiReady ? '' : ' · מפתח AI לא מוגדר, עונה רק מהתאמה ישירה'}`
-        : 'עדיין לא הועלו קבצי וורד — ה-AI יציע לשלוח מייל למנהלת';
+    if (el('saiReadyHint')) {
+        el('saiReadyHint').textContent = o.kbDocs
+            ? `עונה מתוך ${o.kbDocs} קבצים · ${o.kbPairs} שאלות${o.aiReady ? '' : ' · ללא מפתח AI — רק התאמה ישירה'}`
+            : 'עדיין לא הועלו קבצי וורד — אפשר לשלוח כל שאלה למנהלת המערכת';
+    }
+    if (el('squestionMailHint')) {
+        el('squestionMailHint').textContent = o.adminEmail
+            ? `המייל יישלח ל${o.adminEmail}${o.mailReady ? '' : ' — אך חיבור ה-Gmail עדיין לא מוגדר'}`
+            : 'לא הוגדרה כתובת מייל למנהלת — ההגדרה נמצאת במסך הניהול';
+    }
 }
 
 async function sinitLoadQuestions() {
+    if (!el('squestionsList')) return;
     S.questions = await api('/api/sinit/questions');
     renderQuestions();
 }
 
 async function sinitLoadAi() {
+    if (!el('saiChat')) return;
     S.aiLog = await api('/api/sinit/ai/log');
-    renderAiFeed();
+    renderAiChat();
 }
 
-async function sinitLoadKb() {
-    S.kb = await api('/api/sinit/kb');
-    renderKb();
+// הסתרת כל אזורי הכתיבה בקישור "צפייה בלבד". נקרא בכל טעינה ולא רק בחיווט הראשוני,
+// כי בדף השיתוף מצב ההרשאה ידוע רק אחרי שהמתנדבת נכנסה.
+function applyWriteMode() {
+    const readOnly = !canWrite();
+    document.querySelectorAll('.write-only').forEach((n) => {
+        if (readOnly) { n.dataset.wasHidden = n.classList.contains('hidden') ? '1' : '0'; n.classList.add('hidden'); }
+        else if (n.dataset.wasHidden === '1') n.classList.add('hidden');
+    });
 }
 
 async function sinitLoadAll() {
-    try {
-        await Promise.all([sinitLoadOverview(), sinitLoadQuestions(), sinitLoadAi(), sinitLoadKb()]);
-    } catch (e) {
-        if (e.status === 403) el('sinitSyncInfo').innerHTML = '<span class="hint">אין לך הרשאת גישה ללשונית הזו</span>';
-        else console.error('טעינת לשונית מכירה סינית נכשלה:', e.message);
+    applyWriteMode();
+    const jobs = [sinitLoadOverview()];
+    if (showsSection('questions')) jobs.push(sinitLoadQuestions());
+    if (showsSection('ai')) jobs.push(sinitLoadAi());
+    try { await Promise.all(jobs); }
+    catch (e) {
+        if (e.status === 403 || e.status === 401) {
+            const box = el('sinitSyncInfo') || el('sbizCount');
+            if (box) box.innerHTML = `<span class="err-line">${esc(e.message)}</span>`;
+        } else console.error('טעינת מכירה סינית נכשלה:', e.message);
     }
 }
 
-/* ---------- סטטיסטיקה וסנכרון ---------- */
+/* ---------- סטטיסטיקה ---------- */
 function renderStats() {
+    if (!el('sinitStats')) return;
     const o = S.overview || {};
     const biz = S.businesses;
     const donated = biz.filter((b) => b.status === 'תרם').length;
     const closed = biz.filter((b) => b.stages_total && b.stages_done === b.stages_total).length;
-    el('sinitStats').innerHTML = `
-        <div class="stat-card"><div class="stat-num">${biz.length}</div><div class="stat-label">עסקים</div></div>
-        <div class="stat-card"><div class="stat-num">${donated}</div><div class="stat-label">תרמו</div></div>
-        <div class="stat-card"><div class="stat-num">${closed}</div><div class="stat-label">סגורים לגמרי</div></div>
-        <div class="stat-card${o.questionsOpen ? ' alert' : ''}"><div class="stat-num">${o.questionsOpen || 0}</div><div class="stat-label">שאלות פתוחות</div></div>
-        <div class="stat-card"><div class="stat-num">${o.kbPairs || 0}</div><div class="stat-label">שאלות בבסיס הידע</div></div>`;
-    setNavTooltip('hd-sbiz', `${biz.length} עסקים · ${donated} תרמו · ${closed} סגורים`);
-    setNavTooltip('hd-squestions', `${o.questionsOpen || 0} שאלות פתוחות`);
-    setNavTooltip('hd-skb', `${o.kbDocs || 0} קבצי וורד · ${o.kbPairs || 0} שאלות`);
+    const cards = [
+        `<div class="stat-card"><div class="stat-num">${biz.length}</div><div class="stat-label">עסקים</div></div>`,
+        `<div class="stat-card"><div class="stat-num">${donated}</div><div class="stat-label">תרמו</div></div>`,
+        `<div class="stat-card"><div class="stat-num">${closed}</div><div class="stat-label">סגורים לגמרי</div></div>`,
+    ];
+    if (showsSection('questions')) {
+        cards.push(`<div class="stat-card${o.questionsOpen ? ' alert' : ''}"><div class="stat-num">${o.questionsOpen || 0}</div><div class="stat-label">שאלות פתוחות</div></div>`);
+    }
+    if (showsSection('ai')) {
+        cards.push(`<div class="stat-card"><div class="stat-num">${o.kbPairs || 0}</div><div class="stat-label">שאלות בבסיס הידע</div></div>`);
+    }
+    el('sinitStats').innerHTML = cards.join('');
+    if (typeof setNavTooltip === 'function') {
+        setNavTooltip('hd-sbiz', `${biz.length} עסקים · ${donated} תרמו · ${closed} סגורים`);
+        setNavTooltip('hd-squestions', `${o.questionsOpen || 0} שאלות פתוחות`);
+    }
 }
 
 function renderSyncInfo() {
+    if (!el('sinitSyncInfo')) return;
     const o = S.overview || {};
     const parts = [];
     if (o.sheetsSyncedAt) parts.push(`הטפסים סונכרנו: ${fmtDate(o.sheetsSyncedAt)}`);
     parts.push(`${o.recruitedRows || 0} שורות בטופס התרומות`);
-    if (S.sources.length) parts.push(`${S.sources.length} מקורות נוספים`);
-    const synced = S.businesses.filter((b) => b.source && b.source !== 'ידני').length;
-    parts.push(`${synced} עסקים נכנסו מהטפסים`);
-    el('sinitSyncInfo').innerHTML = `<span class="hint">⟳ ${parts.join(' · ')}</span>` +
-        (o.sheetsError ? `<div class="err-line">שגיאת סנכרון: ${esc(o.sheetsError)}</div>` : '');
+    parts.push(`${S.businesses.filter((b) => b.source && b.source !== 'ידני').length} עסקים נכנסו מהטפסים`);
+    el('sinitSyncInfo').innerHTML = `<span class="hint">⟳ ${parts.join(' · ')}</span>`
+        + (o.sheetsError ? `<div class="err-line">שגיאת סנכרון: ${esc(o.sheetsError)}</div>` : '');
 }
 
 function fillSelects() {
     const statusOpts = S.statuses.map((s) => `<option>${esc(s)}</option>`).join('');
-    el('sbizStatus').innerHTML = statusOpts;
-    el('sbizModalStatus').innerHTML = statusOpts;
-    el('sbizStatusFilter').innerHTML = '<option value="">כל הסטטוסים</option>' + statusOpts;
-    el('sbizStageFilter').innerHTML = '<option value="">כל שלבי הסגירה</option>'
-        + S.stages.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')
-        + '<option value="none">לא התחילו שלבים</option><option value="all">סיימו את כל השלבים</option>';
-    const sources = [...new Set(S.businesses.map((b) => b.source || 'ידני'))];
-    el('sbizSourceFilter').innerHTML = '<option value="">כל המקורות</option>'
-        + sources.map((s) => `<option>${esc(s)}</option>`).join('');
-    el('squestionBiz').innerHTML = '<option value="">ללא קשר לעסק מסוים</option>'
-        + S.businesses.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
-    // שומרים את הבחירות הקיימות אחרי רענון
-    el('sbizStatusFilter').value = S.f.status;
-    el('sbizStageFilter').value = S.f.stage;
-    el('sbizSourceFilter').value = S.f.source;
-    el('sbizColorFilter').value = S.f.color;
+    if (el('sbizStatus')) el('sbizStatus').innerHTML = statusOpts;
+    if (el('sbizModalStatus')) el('sbizModalStatus').innerHTML = statusOpts;
+    if (el('sbizStatusFilter')) {
+        el('sbizStatusFilter').innerHTML = '<option value="">כל הסטטוסים</option>' + statusOpts;
+        el('sbizStatusFilter').value = S.f.status;
+    }
+    if (el('sbizStageFilter')) {
+        el('sbizStageFilter').innerHTML = '<option value="">כל שלבי הסגירה</option>'
+            + S.stages.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')
+            + '<option value="none">לא התחילו שלבים</option><option value="all">סיימו את כל השלבים</option>';
+        el('sbizStageFilter').value = S.f.stage;
+    }
+    if (el('sbizSourceFilter')) {
+        const sources = [...new Set(S.businesses.map((b) => b.source || 'ידני'))];
+        el('sbizSourceFilter').innerHTML = '<option value="">כל המקורות</option>'
+            + sources.map((s) => `<option>${esc(s)}</option>`).join('');
+        el('sbizSourceFilter').value = S.f.source;
+    }
+    if (el('sbizColorFilter')) el('sbizColorFilter').value = S.f.color;
+    if (el('squestionBiz')) {
+        el('squestionBiz').innerHTML = '<option value="">ללא קשר לעסק מסוים</option>'
+            + S.businesses.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+    }
 }
 
-/* ---------- עסקים ---------- */
+/* ---------- עסקים: סינון ושלוש תצוגות ---------- */
 function filteredBusinesses() {
     const q = S.f.q.toLowerCase();
     return S.businesses.filter((b) => {
@@ -131,22 +164,42 @@ function filteredBusinesses() {
     });
 }
 
-function stageBar(b) {
+function stageBar(b, big = false) {
     if (!b.stages_total) return '<span class="hint">אין שלבים</span>';
     const pct = Math.round((b.stages_done / b.stages_total) * 100);
-    return `<div class="stage-mini" title="${esc(b.current_stage || 'טרם התחיל')}">
+    return `<div class="stage-mini${big ? ' big' : ''}" title="${esc(b.current_stage || 'טרם התחיל')}">
         <div class="stage-mini-bar"><div class="stage-mini-fill" style="width:${pct}%"></div></div>
-        <span class="stage-mini-txt">${b.stages_done}/${b.stages_total}${b.current_stage ? ` · ${esc(b.current_stage)}` : ''}</span>
+        <span class="stage-mini-txt">${b.stages_done}/${b.stages_total}${b.current_stage ? ` · ${esc(b.current_stage)}` : ' · טרם התחיל'}</span>
     </div>`;
 }
 
+function colorButtons(b) {
+    if (!canWrite()) return '';
+    return `<button class="dot-btn${b.highlight ? ' on' : ''}" title="הדגשה" onclick="event.stopPropagation();sinitToggleHighlight(${b.id})">⭐</button>`
+        + (S.overview?.colors || []).map((c) => `<button class="dot-swatch${b.color === c ? ' on' : ''}" style="background:${c}"
+            title="צביעה" onclick="event.stopPropagation();sinitSetColor(${b.id},'${c}')"></button>`).join('')
+        + `<button class="dot-swatch clear" title="ביטול צבע" onclick="event.stopPropagation();sinitSetColor(${b.id},'')">✕</button>`;
+}
+
 function renderBusinesses() {
+    const host = el('sbizView');
+    if (!host) return;
     const rows = filteredBusinesses();
-    el('sbizCount').textContent = `מוצגים ${rows.length} מתוך ${S.businesses.length}`;
-    el('sbizEmpty').style.display = rows.length ? 'none' : 'block';
-    el('sbizTable').querySelector('tbody').innerHTML = rows.map((b) => `
-        <tr class="biz-row${b.highlight ? ' marked' : ''}" style="${b.color ? `background:${esc(b.color)}` : ''}"
-            onclick="sinitOpenBiz(${b.id})">
+    if (el('sbizCount')) el('sbizCount').textContent = `מוצגים ${rows.length} מתוך ${S.businesses.length}`;
+    if (el('sbizEmpty')) el('sbizEmpty').style.display = rows.length ? 'none' : 'block';
+    document.querySelectorAll('.view-switch button').forEach((b) => b.classList.toggle('on', b.dataset.view === S.view));
+    host.className = `biz-view view-${S.view}`;
+    if (S.view === 'board') host.innerHTML = boardHtml(rows);
+    else if (S.view === 'cards') host.innerHTML = cardsHtml(rows);
+    else host.innerHTML = tableHtml(rows);
+}
+
+function tableHtml(rows) {
+    return `<table class="biz-table"><thead><tr>
+        <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>מוצר</th>
+        <th>סטטוס</th><th>שלבי סגירה</th><th>תגובה אחרונה</th><th>מקור</th>${canWrite() ? '<th>צבע</th>' : ''}
+    </tr></thead><tbody>${rows.map((b) => `
+        <tr class="biz-row${b.highlight ? ' marked' : ''}" style="${b.color ? `background:${esc(b.color)}` : ''}" onclick="sinitOpenBiz(${b.id})">
             <td>${b.highlight ? '⭐ ' : ''}${esc(b.name)}</td>
             <td>${esc(b.contacted_by || '—')}</td>
             <td>${esc(b.phone || '')}</td>
@@ -154,19 +207,59 @@ function renderBusinesses() {
             <td>${esc(b.product || '')}${b.value_nis ? ` <span class="hint">(${esc(b.value_nis)} ₪)</span>` : ''}</td>
             <td><span class="badge ${STATUS_CLASS[b.status] || ''}">${esc(b.status)}</span></td>
             <td>${stageBar(b)}</td>
-            <td class="cell-wrap">${b.response ? esc(b.response) : '<span class="hint">אין תגובה</span>'}
-                ${b.notes_count > 1 ? `<span class="hint"> · ${b.notes_count} רשומות</span>` : ''}</td>
+            <td class="cell-wrap">${b.response ? esc(b.response) : '<span class="hint">אין תגובה</span>'}</td>
             <td><span class="src-tag">${esc(b.source || 'ידני')}</span></td>
-            <td class="color-cell" onclick="event.stopPropagation()">
-                <button class="dot-btn${b.highlight ? ' on' : ''}" title="הדגשה" onclick="sinitToggleHighlight(${b.id})">⭐</button>
-                ${(S.overview?.colors || []).map((c) => `<button class="dot-swatch${b.color === c ? ' on' : ''}"
-                    style="background:${c}" title="צביעה" onclick="sinitSetColor(${b.id},'${c}')"></button>`).join('')}
-                <button class="dot-swatch clear" title="ביטול צבע" onclick="sinitSetColor(${b.id},'')">✕</button>
-            </td>
-            <td onclick="event.stopPropagation()">
-                ${S.overview?.isManager ? `<button class="btn danger" onclick="sinitDeleteBiz(${b.id})">מחיקה</button>` : ''}
-            </td>
-        </tr>`).join('');
+            ${canWrite() ? `<td class="color-cell">${colorButtons(b)}</td>` : ''}
+        </tr>`).join('')}</tbody></table>`;
+}
+
+function bizCard(b) {
+    return `<article class="biz-card${b.highlight ? ' marked' : ''}" style="${b.color ? `background:${esc(b.color)}` : ''}"
+             onclick="sinitOpenBiz(${b.id})">
+        <header class="bc-head">
+            <span class="bc-name">${b.highlight ? '⭐ ' : ''}${esc(b.name)}</span>
+            <span class="badge ${STATUS_CLASS[b.status] || ''}">${esc(b.status)}</span>
+        </header>
+        ${b.product ? `<div class="bc-product">${esc(b.product)}${b.value_nis ? ` · ${esc(b.value_nis)} ₪` : ''}</div>` : ''}
+        <div class="bc-meta">
+            ${b.contacted_by ? `<span>👤 ${esc(b.contacted_by)}</span>` : ''}
+            ${b.phone ? `<span>📞 ${esc(b.phone)}</span>` : ''}
+            ${b.email ? `<span>✉ ${esc(b.email)}</span>` : ''}
+        </div>
+        ${stageBar(b, true)}
+        <div class="bc-response">${b.response ? esc(b.response) : '<span class="hint">אין עדיין תגובה</span>'}</div>
+        <footer class="bc-foot">
+            <span class="src-tag">${esc(b.source || 'ידני')}</span>
+            ${b.notes_count ? `<span class="hint">${b.notes_count} רשומות</span>` : ''}
+            <span class="bc-colors">${colorButtons(b)}</span>
+        </footer>
+    </article>`;
+}
+
+function cardsHtml(rows) {
+    return `<div class="biz-cards">${rows.map(bizCard).join('')}</div>`;
+}
+
+// "ריבועים מסודרים לפי סטטוס" — עמודה לכל סטטוס, כמו לוח קנבן
+function boardHtml(rows) {
+    // מציגים את כל הסטטוסים — גם ריקים — כדי שרואים את כל המסלול, לא רק את מה שכבר קרה
+    return `<div class="biz-board">${S.statuses.map((st) => {
+        const inCol = rows.filter((b) => b.status === st);
+        return `<section class="board-col">
+            <header class="board-col-head ${STATUS_CLASS[st] || ''}">
+                <span>${esc(st)}</span><span class="board-count">${inCol.length}</span>
+            </header>
+            <div class="board-col-body">
+                ${inCol.map(bizCard).join('') || '<div class="hint board-empty">אין עסקים בסטטוס הזה</div>'}
+            </div>
+        </section>`;
+    }).join('')}</div>`;
+}
+
+function setView(view) {
+    S.view = view;
+    localStorage.setItem('sinit_view', view);
+    renderBusinesses();
 }
 
 async function sinitSetColor(id, color) {
@@ -196,13 +289,12 @@ async function sinitDeleteBiz(id) {
 
 /* ---------- חלון עסק ---------- */
 async function sinitOpenBiz(id) {
+    if (!el('sbizModalOverlay')) return;
     S.modalId = id;
     el('sbizModalOverlay').classList.remove('hidden');
     el('sbizModalTitle').textContent = 'טוענת...';
-    try {
-        const d = await api(`/api/sinit/businesses/${id}/detail`);
-        renderBizModal(d);
-    } catch (e) { el('sbizModalTitle').textContent = e.message || 'שגיאה'; }
+    try { renderBizModal(await api(`/api/sinit/businesses/${id}/detail`)); }
+    catch (e) { el('sbizModalTitle').textContent = e.message || 'שגיאה'; }
 }
 
 function renderBizModal(d) {
@@ -224,21 +316,26 @@ function renderBizModal(d) {
         + ` <span class="badge ${STATUS_CLASS[b.status] || ''}">${esc(b.status)}</span>`
         + (b.logo_url ? ` · <a href="${esc(b.logo_url)}" target="_blank" rel="noopener">לוגו</a>` : '');
 
-    el('sbizModalStatus').value = b.status;
+    if (el('sbizModalStatus')) {
+        el('sbizModalStatus').value = b.status;
+        el('sbizModalStatus').disabled = !canWrite();
+    }
 
-    el('sbizModalColors').innerHTML = `
+    el('sbizModalColors').innerHTML = canWrite() ? `
         <button class="dot-btn${b.highlight ? ' on' : ''}" onclick="sinitModalHighlight()">⭐ ${b.highlight ? 'מודגש' : 'הדגשה'}</button>
         ${(d.colors || []).map((c) => `<button class="swatch${b.color === c ? ' on' : ''}" style="background:${c}"
             onclick="sinitModalColor('${c}')"></button>`).join('')}
-        <button class="swatch clear" onclick="sinitModalColor('')">בלי צבע</button>`;
+        <button class="swatch clear" onclick="sinitModalColor('')">בלי צבע</button>`
+        : '<span class="hint">הקישור שלך הוא לצפייה בלבד</span>';
 
     el('sbizModalStages').innerHTML = d.stages.map((s) => `
         <label class="stage-item${s.done ? ' done' : ''}">
-            <input type="checkbox" ${s.done ? 'checked' : ''} onchange="sinitToggleStage(${s.id}, this.checked)">
+            <input type="checkbox" ${s.done ? 'checked' : ''} ${canWrite() ? '' : 'disabled'}
+                   onchange="sinitToggleStage(${s.id}, this.checked)">
             <span class="stage-name">${esc(s.name)}</span>
             ${s.done ? `<span class="hint">${esc(s.done_by || '')} · ${fmtDate(s.done_at)}</span>` : ''}
             ${s.note ? `<span class="stage-note">${esc(s.note)}</span>` : ''}
-            <button class="link-btn" onclick="event.preventDefault();sinitStageNote(${s.id})">הערה</button>
+            ${canWrite() ? `<button class="link-btn" onclick="event.preventDefault();sinitStageNote(${s.id})">הערה</button>` : ''}
         </label>`).join('') || '<div class="hint">לא הוגדרו שלבי סגירה</div>';
 
     const notes = d.notes;
@@ -250,40 +347,50 @@ function renderBizModal(d) {
                 <div class="modal-note-meta">
                     ${i === 0 ? '<span class="badge ok">עדכון אחרון</span> · ' : ''}${esc(n.created_by || '')} · ${fmtDate(n.created_at)}
                     ${n.contact_number ? ` · מס' פנייה: ${esc(n.contact_number)}` : ''}${n.message_number ? ` · מס' הודעה: ${esc(n.message_number)}` : ''}
-                    <button class="modal-note-del" onclick="sinitDeleteNote(${n.id})" title="מחיקת רשומה">✕</button>
+                    ${canWrite() ? `<button class="modal-note-del" onclick="sinitDeleteNote(${n.id})" title="מחיקת רשומה">✕</button>` : ''}
                 </div>
             </div>
         </div>`).join('') : '<div class="empty">אין עדיין תגובות</div>';
 
-    el('sbizModalQuestions').innerHTML = d.questions.length
-        ? d.questions.map((q) => `<div class="q-mini"><span class="badge ${Q_STATUS_CLASS[q.status] || ''}">${esc(q.status)}</span>
-            ${esc(q.text)}${q.answer ? `<div class="q-mini-answer">${esc(q.answer)}</div>` : ''}</div>`).join('')
-        : '<div class="hint">לא נשאלו שאלות על העסק הזה</div>';
+    applyWriteMode();
 
-    el('sbizModalMentions').innerHTML = d.mentions.length
-        ? d.mentions.map((m) => `<div class="mention">${esc(m.at)} · ${esc(m.who)} · ${esc(m.action)}
-            ${m.points ? `<span class="hint">(${esc(m.points)} נק')</span>` : ''}</div>`).join('')
-        : '<div class="hint">אין אזכורים בגיליון התנועות</div>';
+    if (el('sbizModalQuestions')) {
+        el('sbizModalQuestions').innerHTML = d.questions.length
+            ? d.questions.map((q) => `<div class="q-mini"><span class="badge ${Q_STATUS_CLASS[q.status] || ''}">${esc(q.status)}</span>
+                ${esc(q.text)}${q.answer ? `<div class="q-mini-answer">${esc(q.answer)}</div>` : ''}</div>`).join('')
+            : '<div class="hint">לא נשאלו שאלות על העסק הזה</div>';
+    }
+    if (el('sbizModalMentions')) {
+        el('sbizModalMentions').innerHTML = d.mentions.length
+            ? d.mentions.map((m) => `<div class="mention">${esc(m.at)} · ${esc(m.who)} · ${esc(m.action)}
+                ${m.points ? `<span class="hint">(${esc(m.points)} נק')</span>` : ''}</div>`).join('')
+            : '<div class="hint">אין אזכורים בגיליון התנועות</div>';
+    }
+    if (el('sbizDeleteWrap')) {
+        el('sbizDeleteWrap').innerHTML = S.overview?.isManager
+            ? `<button class="btn danger" onclick="sinitDeleteBiz(${b.id})">מחיקת העסק</button>` : '';
+    }
 }
 
-// רענון החלון תוך שמירה על מה שהוקלד ועדיין לא נשמר (תגובה/שאלה באמצע כתיבה)
+// רענון החלון תוך שמירה על מה שהוקלד ועדיין לא נשמר
 const DRAFT_FIELDS = ['sbizNewNote', 'sbizNoteContactNum', 'sbizNoteMessageNum', 'sbizQuestionText'];
 const refreshModal = async () => {
     if (!S.modalId) return;
-    const draft = DRAFT_FIELDS.map((id) => [id, el(id).value]);
+    const draft = DRAFT_FIELDS.map((id) => [id, el(id)?.value]);
     await sinitOpenBiz(S.modalId);
     draft.forEach(([id, v]) => { if (v && el(id)) el(id).value = v; });
 };
 
 async function sinitModalColor(color) {
-    await api(`/api/sinit/businesses/${S.modalId}`, { method: 'PUT', body: { color } }).catch((e) => alert(e.message));
+    try { await api(`/api/sinit/businesses/${S.modalId}`, { method: 'PUT', body: { color } }); }
+    catch (e) { return alert(e.message); }
     await sinitLoadOverview(); await refreshModal();
 }
 
 async function sinitModalHighlight() {
     const b = S.businesses.find((x) => x.id === S.modalId);
-    await api(`/api/sinit/businesses/${S.modalId}`, { method: 'PUT', body: { highlight: b?.highlight ? 0 : 1 } })
-        .catch((e) => alert(e.message));
+    try { await api(`/api/sinit/businesses/${S.modalId}`, { method: 'PUT', body: { highlight: b?.highlight ? 0 : 1 } }); }
+    catch (e) { return alert(e.message); }
     await sinitLoadOverview(); await refreshModal();
 }
 
@@ -314,12 +421,13 @@ async function sinitDeleteNote(noteId) {
 
 /* ---------- שאלות ושלבי מענה ---------- */
 function renderQuestions() {
+    if (!el('squestionsList')) return;
     const q = S.f.question.toLowerCase();
     const rows = S.questions.filter((x) => !q
         || (x.text || '').toLowerCase().includes(q)
         || (x.answer || '').toLowerCase().includes(q)
         || (x.asked_by || '').toLowerCase().includes(q));
-    el('squestionsEmpty').style.display = rows.length ? 'none' : 'block';
+    if (el('squestionsEmpty')) el('squestionsEmpty').style.display = rows.length ? 'none' : 'block';
     el('squestionsList').innerHTML = rows.map((x) => `
         <div class="q-card">
             <div class="q-head">
@@ -336,12 +444,12 @@ function renderQuestions() {
             </div>
             ${x.answer ? `<div class="q-answer"><b>התשובה:</b> ${esc(x.answer)}
                 <span class="hint">${esc(x.answered_by || '')} · ${fmtDate(x.answered_at)}</span></div>` : ''}
-            <div class="q-actions">
+            ${canWrite() ? `<div class="q-actions">
                 <button class="btn secondary" onclick="sinitAddStep(${x.id})">➕ שלב מענה</button>
                 <button class="btn" onclick="sinitAnswer(${x.id})">✍ ${x.answer ? 'עדכון התשובה' : 'כתיבת תשובה'}</button>
                 ${x.status !== 'נסגרה' ? `<button class="btn secondary" onclick="sinitCloseQuestion(${x.id})">סגירה</button>` : ''}
                 ${S.overview?.isManager ? `<button class="btn danger" onclick="sinitDeleteQuestion(${x.id})">מחיקה</button>` : ''}
-            </div>
+            </div>` : ''}
         </div>`).join('');
 }
 
@@ -350,10 +458,10 @@ async function sinitAddQuestion() {
     if (!text) return;
     try {
         const r = await api('/api/sinit/questions', { method: 'POST', body: {
-            text, business_id: el('squestionBiz').value || null, send_email: el('squestionMail').checked,
+            text, business_id: el('squestionBiz')?.value || null, send_email: el('squestionMail')?.checked ?? true,
         } });
         el('squestionText').value = '';
-        if (el('squestionMail').checked) {
+        if (el('squestionMail')?.checked ?? true) {
             alert(r.mail?.sent ? `השאלה נרשמה ונשלח מייל ל${r.mail.to}` : `השאלה נרשמה, אבל המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`);
         }
         await Promise.all([sinitLoadQuestions(), sinitLoadOverview()]);
@@ -390,41 +498,52 @@ async function sinitDeleteQuestion(id) {
     catch (e) { alert(e.message); }
 }
 
-/* ---------- מענה AI ---------- */
-function renderAiFeed() {
-    el('saiEmpty').style.display = S.aiLog.length ? 'none' : 'block';
-    el('saiFeed').innerHTML = S.aiLog.map((a) => `
-        <div class="ai-item">
-            <div class="ai-item-head">
-                <span class="badge ${AI_OUTCOME_CLASS[a.outcome] || ''}">${esc(a.outcome)}</span>
-                <span class="ai-q">${esc(a.question)}</span>
+/* ---------- צ'אט AI ---------- */
+function bubbleHtml(a) {
+    const noAnswer = !a.answer;
+    return `
+        <div class="msg me"><div class="bubble">${esc(a.question)}</div>
+            <div class="msg-meta">${esc(a.asked_by || '')} · ${fmtDate(a.created_at)}</div></div>
+        <div class="msg bot">
+            <div class="bubble${noAnswer ? ' empty' : ''}">
+                ${noAnswer ? 'לא מצאתי תשובה לשאלה הזו בחומר שהועלה למערכת.' : esc(a.answer)}
+                <div class="bubble-foot">
+                    <span class="badge ${AI_OUTCOME_CLASS[a.outcome] || ''}">${esc(a.outcome)}</span>
+                    ${a.source_doc ? `<span class="hint">מתוך "${esc(a.source_doc)}"</span>` : ''}
+                    ${a.question_id ? `<span class="hint">✓ נשלחה למנהלת${a.question_status ? ` · ${esc(a.question_status)}` : ''}</span>` : ''}
+                </div>
+                ${(noAnswer && !a.question_id && canWrite())
+                    ? `<button class="btn chat-escalate" onclick="sinitEscalate(${a.id})">✉ שליחת השאלה למנהלת המערכת</button>` : ''}
             </div>
-            ${a.answer ? `<div class="ai-a">${esc(a.answer)}</div>` : '<div class="ai-a hint">לא נמצאה תשובה בחומר</div>'}
-            <div class="ai-meta">${esc(a.asked_by || '')} · ${fmtDate(a.created_at)}
-                ${a.source_doc ? ` · מתוך "${esc(a.source_doc)}"` : ''}
-                ${a.question_id ? ` · נשלחה למנהלת (${esc(a.question_status || '')})` : ''}</div>
-            ${(!a.answer && !a.question_id) ? `<button class="btn secondary" onclick="sinitEscalate(${a.id})">✉ שליחת השאלה למנהלת המערכת</button>` : ''}
-        </div>`).join('');
+        </div>`;
+}
+
+function renderAiChat(extra = '') {
+    const log = el('saiChat');
+    if (!log) return;
+    const items = [...S.aiLog].reverse(); // הישן למעלה, החדש למטה — כמו בצ'אט
+    log.innerHTML = (items.length
+        ? items.map(bubbleHtml).join('')
+        : '<div class="chat-hello">אפשר לשאול אותי כל שאלה על הקמפיין. אני עונה מתוך קבצי הוורד שהמנהלת העלתה, ואם אין לי תשובה — אציע לשלוח את השאלה אליה.</div>')
+        + extra;
+    log.scrollTop = log.scrollHeight;
 }
 
 async function sinitAsk() {
-    const question = el('saiQuestion').value.trim();
-    if (!question) return;
-    const box = el('saiAnswer');
-    box.classList.remove('hidden');
-    box.innerHTML = '<div class="hint">בודקת בחומר שהועלה...</div>';
+    const input = el('saiQuestion');
+    const question = input.value.trim();
+    if (!question || S.asking) return;
+    S.asking = true;
+    input.value = '';
+    renderAiChat(`
+        <div class="msg me"><div class="bubble">${esc(question)}</div></div>
+        <div class="msg bot"><div class="bubble typing"><span></span><span></span><span></span></div></div>`);
     try {
-        const r = await api('/api/sinit/ai/ask', { method: 'POST', body: { question } });
-        box.innerHTML = `
-            <div class="ai-item-head"><span class="badge ${AI_OUTCOME_CLASS[r.outcome] || ''}">${esc(r.outcome)}</span>
-                <span class="ai-q">${esc(question)}</span></div>
-            <div class="ai-a">${esc(r.answer)}</div>
-            ${r.matched_question ? `<div class="ai-meta">נמצאה שאלה זהה בחומר: "${esc(r.matched_question)}"</div>` : ''}
-            ${r.source_doc ? `<div class="ai-meta">מתוך הקובץ "${esc(r.source_doc)}"</div>` : ''}
-            ${r.needsAdmin ? `<button class="btn" onclick="sinitEscalate(${r.id})">✉ שליחת השאלה למנהלת המערכת</button>` : ''}`;
-        el('saiQuestion').value = '';
+        await api('/api/sinit/ai/ask', { method: 'POST', body: { question } });
         await sinitLoadAi();
-    } catch (e) { box.innerHTML = `<div class="err-line">${esc(e.message)}</div>`; }
+    } catch (e) {
+        renderAiChat(`<div class="msg bot"><div class="bubble empty">${esc(e.message)}</div></div>`);
+    } finally { S.asking = false; }
 }
 
 async function sinitEscalate(logId) {
@@ -432,90 +551,9 @@ async function sinitEscalate(logId) {
         const r = await api(`/api/sinit/ai/escalate/${logId}`, { method: 'POST' });
         alert(r.mail?.sent
             ? `השאלה נרשמה ונשלח מייל ל${r.mail.to}`
-            : `השאלה נרשמה בלשונית השאלות, אבל המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`);
+            : `השאלה נרשמה אצל המנהלת, אבל המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`);
         await Promise.all([sinitLoadAi(), sinitLoadQuestions(), sinitLoadOverview()]);
     } catch (e) { alert(e.message); }
-}
-
-/* ---------- בסיס הידע ---------- */
-function renderKb() {
-    el('skbEmpty').style.display = S.kb.length ? 'none' : 'block';
-    el('skbTable').querySelector('tbody').innerHTML = S.kb.map((d) => `
-        <tr>
-            <td>${esc(d.filename)}</td>
-            <td>${d.pairs}</td>
-            <td>${d.char_count}</td>
-            <td>${esc(d.uploaded_by || '')}</td>
-            <td>${fmtDate(d.uploaded_at)}</td>
-            <td>
-                <button class="btn secondary" onclick="sinitShowPairs(${d.id})">הצגת השאלות</button>
-                ${canSettings() ? `<button class="btn danger" onclick="sinitDeleteDoc(${d.id})">מחיקה</button>` : ''}
-            </td>
-        </tr>`).join('');
-}
-
-async function sinitShowPairs(id) {
-    try {
-        const pairs = await api(`/api/sinit/kb/${id}/pairs`);
-        const doc = S.kb.find((d) => d.id === id);
-        el('skbStatus').innerHTML = pairs.length
-            ? `<b>${esc(doc?.filename || '')}</b> — ${pairs.length} שאלות שזוהו:<ol class="kb-pairs">`
-                + pairs.map((p) => `<li><b>${esc(p.question)}</b><br>${esc(p.answer)}</li>`).join('') + '</ol>'
-            : `<b>${esc(doc?.filename || '')}</b> — לא זוהו זוגות שאלה-תשובה, אבל הטקסט המלא נשמר וה-AI יחפש בו.`;
-    } catch (e) { alert(e.message); }
-}
-
-async function sinitUploadDoc(file) {
-    if (!file) return;
-    el('skbStatus').textContent = `מעלה את ${file.name}...`;
-    const reader = new FileReader();
-    reader.onload = async () => {
-        const base64 = String(reader.result).split(',')[1] || '';
-        try {
-            const r = await api('/api/sinit/kb', { method: 'POST', body: { filename: file.name, data: base64 } });
-            el('skbStatus').textContent = `${file.name} נטען: ${r.pairs} שאלות זוהו, ${r.chars} תווים נשמרו.`;
-            await Promise.all([sinitLoadKb(), sinitLoadOverview()]);
-        } catch (e) { el('skbStatus').innerHTML = `<span class="err-line">${esc(e.message)}</span>`; }
-    };
-    reader.readAsDataURL(file);
-}
-
-async function sinitDeleteDoc(id) {
-    if (!confirm('למחוק את הקובץ מבסיס הידע? ה-AI יפסיק לשאוב ממנו תשובות.')) return;
-    try { await api(`/api/sinit/kb/${id}`, { method: 'DELETE' }); await Promise.all([sinitLoadKb(), sinitLoadOverview()]); }
-    catch (e) { alert(e.message); }
-}
-
-/* ---------- הגדרות: שלבים ומקורות ---------- */
-function renderStageEditor() {
-    el('sStagesList').innerHTML = S.stages.map((s) => `
-        <span class="chip">${esc(s.name)}
-            ${canSettings() ? `<button class="chip-x" title="מחיקת השלב" onclick="sinitDeleteStage(${s.id})">✕</button>` : ''}
-        </span>`).join('') || '<span class="hint">אין שלבים</span>';
-}
-
-async function sinitDeleteStage(id) {
-    if (!confirm('למחוק את השלב? הסימונים של השלב הזה בכל העסקים יימחקו.')) return;
-    try { await api(`/api/sinit/stages/${id}`, { method: 'DELETE' }); await sinitLoadOverview(); }
-    catch (e) { alert(e.message); }
-}
-
-function renderSources() {
-    el('sSourcesTable').querySelector('tbody').innerHTML = S.sources.map((s) => `
-        <tr>
-            <td>${esc(s.name)}</td>
-            <td>${esc(s.sheet_name)}</td>
-            <td>${s.last_synced_at ? fmtDate(s.last_synced_at) : '<span class="hint">טרם</span>'}</td>
-            <td>${s.last_rows ?? ''}</td>
-            <td>${s.last_error ? `<span class="err-line">${esc(s.last_error)}</span>` : ''}</td>
-            <td>${canSettings() ? `<button class="btn danger" onclick="sinitDeleteSource(${s.id})">מחיקה</button>` : ''}</td>
-        </tr>`).join('');
-}
-
-async function sinitDeleteSource(id) {
-    if (!confirm('למחוק את מקור הסנכרון? העסקים שכבר נכנסו יישארו.')) return;
-    try { await api(`/api/sinit/sources/${id}`, { method: 'DELETE' }); await sinitLoadOverview(); }
-    catch (e) { alert(e.message); }
 }
 
 /* ---------- חיווט ---------- */
@@ -523,18 +561,17 @@ function wireSinit() {
     if (S.wired) return;
     S.wired = true;
 
-    el('sbizSearch').addEventListener('input', (e) => { S.f.q = e.target.value.trim(); renderBusinesses(); });
-    ['sbizStatusFilter', 'sbizStageFilter', 'sbizSourceFilter', 'sbizColorFilter'].forEach((id) => {
-        el(id).addEventListener('change', (e) => {
-            S.f[{ sbizStatusFilter: 'status', sbizStageFilter: 'stage', sbizSourceFilter: 'source', sbizColorFilter: 'color' }[id]]
-                = e.target.value;
-            renderBusinesses();
-        });
+    document.querySelectorAll('.view-switch button').forEach((btn) => {
+        btn.addEventListener('click', () => setView(btn.dataset.view));
     });
-    el('squestionSearch').addEventListener('input', (e) => { S.f.question = e.target.value.trim(); renderQuestions(); });
 
-    el('sbizAddToggle').addEventListener('click', () => el('sbizAddBox').classList.toggle('hidden'));
-    el('sbizAddBtn').addEventListener('click', async () => {
+    on('sbizSearch', 'input', (e) => { S.f.q = e.target.value.trim(); renderBusinesses(); });
+    const filterMap = { sbizStatusFilter: 'status', sbizStageFilter: 'stage', sbizSourceFilter: 'source', sbizColorFilter: 'color' };
+    Object.keys(filterMap).forEach((id) => on(id, 'change', (e) => { S.f[filterMap[id]] = e.target.value; renderBusinesses(); }));
+    on('squestionSearch', 'input', (e) => { S.f.question = e.target.value.trim(); renderQuestions(); });
+
+    on('sbizAddToggle', 'click', () => el('sbizAddBox').classList.toggle('hidden'));
+    on('sbizAddBtn', 'click', async () => {
         const name = el('sbizName').value.trim();
         if (!name) return alert('יש להזין שם עסק');
         try {
@@ -550,44 +587,38 @@ function wireSinit() {
         } catch (e) { alert(e.message); }
     });
 
-    el('sbizAddStatusBtn').addEventListener('click', async () => {
+    on('sbizAddStatusBtn', 'click', async () => {
         const name = prompt('שם הסטטוס החדש:');
         if (!name || !name.trim()) return;
         try { await api('/api/sinit/statuses', { method: 'POST', body: { name: name.trim() } }); await sinitLoadOverview(); }
         catch (e) { alert(e.message); }
     });
 
-    el('sbizSyncBtn').addEventListener('click', async () => {
+    on('sbizSyncBtn', 'click', async () => {
         const btn = el('sbizSyncBtn');
         btn.disabled = true; btn.textContent = '⟳ מסנכרנת...';
         try {
             const r = await api('/api/sinit/sync', { method: 'POST' });
             await sinitLoadOverview();
-            const lines = r.sources.map((s) => s.error
+            alert('הסנכרון הסתיים:\n' + r.sources.map((s) => s.error
                 ? `${s.name}: שגיאה — ${s.error}`
-                : `${s.name}: ${s.rows} שורות, ${s.added} חדשים, ${s.updated} עודכנו`);
-            alert(`הסנכרון הסתיים:\n${lines.join('\n')}`);
+                : `${s.name}: ${s.rows} שורות, ${s.added} חדשים, ${s.updated} עודכנו`).join('\n'));
         } catch (e) { alert(e.message); }
         finally { btn.disabled = false; btn.textContent = '⟳ סנכרון עכשיו'; }
     });
 
-    el('sbizExportBtn').addEventListener('click',
-        () => downloadFile('/api/sinit/businesses/export.xlsx', 'עסקים — מכירה סינית.xlsx'));
+    on('sbizExportBtn', 'click', () => downloadFile('/api/sinit/businesses/export.xlsx', 'עסקים — מכירה סינית.xlsx'));
 
-    el('sbizModalClose').addEventListener('click', () => {
-        S.modalId = null;
-        el('sbizModalOverlay').classList.add('hidden');
-    });
-    el('sbizModalOverlay').addEventListener('click', (e) => {
-        if (e.target.id === 'sbizModalOverlay') { S.modalId = null; el('sbizModalOverlay').classList.add('hidden'); }
-    });
-    el('sbizModalStatus').addEventListener('change', async (e) => {
+    const closeModal = () => { S.modalId = null; el('sbizModalOverlay').classList.add('hidden'); };
+    on('sbizModalClose', 'click', closeModal);
+    on('sbizModalOverlay', 'click', (e) => { if (e.target.id === 'sbizModalOverlay') closeModal(); });
+    on('sbizModalStatus', 'change', async (e) => {
         try {
             await api(`/api/sinit/businesses/${S.modalId}`, { method: 'PUT', body: { status: e.target.value } });
             await sinitLoadOverview(); await refreshModal();
         } catch (err) { alert(err.message); }
     });
-    el('sbizAddNoteBtn').addEventListener('click', async () => {
+    on('sbizAddNoteBtn', 'click', async () => {
         const text = el('sbizNewNote').value.trim();
         if (!text || !S.modalId) return;
         try {
@@ -598,13 +629,11 @@ function wireSinit() {
             await sinitLoadOverview(); await refreshModal();
         } catch (e) { alert(e.message); }
     });
-    el('sbizAskBtn').addEventListener('click', async () => {
+    on('sbizAskBtn', 'click', async () => {
         const text = el('sbizQuestionText').value.trim();
         if (!text || !S.modalId) return;
         try {
-            const r = await api('/api/sinit/questions', { method: 'POST', body: {
-                text, business_id: S.modalId, send_email: true,
-            } });
+            const r = await api('/api/sinit/questions', { method: 'POST', body: { text, business_id: S.modalId, send_email: true } });
             el('sbizQuestionText').value = '';
             alert(r.mail?.sent ? `השאלה נרשמה ונשלח מייל ל${r.mail.to}` : `השאלה נרשמה, המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`);
             await Promise.all([sinitLoadQuestions(), sinitLoadOverview()]);
@@ -612,54 +641,21 @@ function wireSinit() {
         } catch (e) { alert(e.message); }
     });
 
-    el('squestionAddBtn').addEventListener('click', sinitAddQuestion);
-    el('squestionText').addEventListener('keydown', (e) => { if (e.key === 'Enter') sinitAddQuestion(); });
+    on('squestionAddBtn', 'click', sinitAddQuestion);
+    on('squestionText', 'keydown', (e) => { if (e.key === 'Enter') sinitAddQuestion(); });
 
-    el('saiAskBtn').addEventListener('click', sinitAsk);
-    el('saiQuestion').addEventListener('keydown', (e) => { if (e.key === 'Enter') sinitAsk(); });
+    on('saiAskBtn', 'click', sinitAsk);
+    on('saiQuestion', 'keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sinitAsk(); } });
 
-    el('skbUploadBtn').addEventListener('click', () => el('skbFile').click());
-    el('skbFile').addEventListener('change', (e) => {
-        sinitUploadDoc(e.target.files[0]);
-        e.target.value = '';
-    });
-
-    el('sSettingsSaveBtn').addEventListener('click', async () => {
-        try {
-            await api('/api/sinit/settings', { method: 'PUT', body: {
-                campaign_admin_email: el('sAdminEmail').value, campaign_admin_name: el('sAdminName').value,
-            } });
-            await sinitLoadOverview();
-            alert('ההגדרות נשמרו');
-        } catch (e) { alert(e.message); }
-    });
-    el('sAddStageBtn').addEventListener('click', async () => {
-        const name = el('sNewStage').value.trim();
-        if (!name) return;
-        try { await api('/api/sinit/stages', { method: 'POST', body: { name } }); el('sNewStage').value = ''; await sinitLoadOverview(); }
-        catch (e) { alert(e.message); }
-    });
-    el('sAddSourceBtn').addEventListener('click', async () => {
-        try {
-            await api('/api/sinit/sources', { method: 'POST', body: {
-                name: el('sSourceName').value, sheet_url: el('sSourceUrl').value, sheet_name: el('sSourceSheet').value,
-            } });
-            el('sSourceName').value = ''; el('sSourceUrl').value = ''; el('sSourceSheet').value = '';
-            await sinitLoadOverview();
-            alert('המקור נוסף. לחצי "סנכרון עכשיו" כדי לשלוף ממנו עסקים.');
-        } catch (e) { alert(e.message); }
-    });
+    applyWriteMode();
 }
 
 window.sinitInit = function sinitInit() {
-    if (!USER || !(USER.features || []).includes('campaign')) return;
+    if (!shareMode() && (!USER || !(USER.features || []).includes('campaign'))) return;
     wireSinit();
     sinitLoadAll();
 };
-window.sinitActivate = function sinitActivate() {
-    wireSinit();
-    sinitLoadAll();
-};
+window.sinitActivate = window.sinitInit;
 
-// campaign.js מריץ את startApp לפני שהקובץ הזה נטען, ולכן מאתחלים גם כאן אם המערכת כבר פתוחה
-if (USER && !el('app').classList.contains('hidden')) window.sinitInit();
+// campaign.js מריץ את startApp לפני שהקובץ הזה נטען, ולכן מאתחלים גם כאן אם המסך כבר פתוח
+if (!el('share-gate') && typeof USER !== 'undefined' && USER && !el('app')?.classList.contains('hidden')) window.sinitInit();

@@ -929,6 +929,20 @@ CREATE TABLE IF NOT EXISTS campaign_kb_pairs (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+-- קישורי שיתוף למתנדבות: כל קישור פותח מקטע אחד בלבד מתוך הלשונית, בלי כניסה למערכת
+CREATE TABLE IF NOT EXISTS campaign_share_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT UNIQUE NOT NULL,
+  section TEXT NOT NULL,
+  label TEXT NOT NULL,
+  can_write INTEGER NOT NULL DEFAULT 1,
+  active INTEGER NOT NULL DEFAULT 1,
+  uses INTEGER NOT NULL DEFAULT 0,
+  last_used_at TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 -- יומן המענה של ה-AI — מוצג כסטטוס עם כל השאלות והתשובות הקודמות
 CREATE TABLE IF NOT EXISTS campaign_ai_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

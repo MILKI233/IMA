@@ -2400,6 +2400,202 @@ async function renderCampaignAdminCards(main) {
       } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
     });
   }
+
+  await renderSinitAdminCards(main);
+}
+
+/* ---- לשונית "מכירה סינית": הגדרות, בסיס הידע וקישורים למתנדבות — הכול כאן במסך הניהול ---- */
+async function renderSinitAdminCards(main) {
+  if (!(USER.features || []).includes('campaign_settings')) return;
+
+  let ov, kb, shares;
+  try {
+    [ov, kb, shares] = await Promise.all([
+      api('/api/sinit/overview'),
+      api('/api/sinit/kb'),
+      api('/api/sinit/share-links'),
+    ]);
+  } catch { return; }
+
+  main.append(el('div', 'section-title', '🧾 לשונית מכירה סינית — הגדרות וקישורים'));
+
+  /* --- הגדרות: מייל המנהלת, שלבי סגירה, מקורות סנכרון --- */
+  const setCard = el('div', 'card');
+  setCard.innerHTML = `
+    <div class="section-title" style="margin-top:0">שאלות למנהלת המערכת</div>
+    <p class="sub muted">לכתובת הזו נשלחות השאלות מהלשונית ומה-AI. אם נשאיר ריק — נשלח לכתובת הדוח היומי.</p>
+    <div class="row">
+      <div><label class="sub muted">כתובת מייל</label><br><input class="in" id="si-mail" style="min-width:240px" value="${esc(ov.adminEmail || '')}"></div>
+      <div><label class="sub muted">שם המנהלת</label><br><input class="in" id="si-mail-name" value="${esc(ov.adminName || '')}"></div>
+      <div style="align-self:end"><button class="btn-secondary" id="si-save-mail">שמירה</button></div>
+    </div>
+
+    <div class="section-title">שלבי הסגירה של כל עסק</div>
+    <div class="chip-row" id="si-stages">${ov.stages.map((s) => `
+      <span class="chip-tag">${esc(s.name)}<button class="chip-x" data-stage="${s.id}" title="מחיקת השלב">✕</button></span>`).join('')
+      || '<span class="sub muted">אין שלבים</span>'}</div>
+    <div class="row" style="margin-top:8px">
+      <input class="in" id="si-new-stage" placeholder="שם שלב חדש" style="max-width:220px">
+      <button class="btn-secondary" id="si-add-stage">הוספת שלב</button>
+    </div>
+
+    <div class="section-title">מקורות סנכרון נוספים</div>
+    <p class="sub muted">כל גיליון או טופס גוגל שמשותף לצפייה. העמודות מזוהות לפי הכותרת: שם העסק, טלפון, מייל, מי פנתה, מוצר, שווי, סטטוס, הערה.</p>
+    <table class="data" id="si-sources"><tr><th>שם</th><th>לשונית</th><th>סונכרן</th><th>שורות</th><th>תקלה</th><th></th></tr>${
+      ov.sources.map((s) => `<tr>
+        <td>${esc(s.name)}</td><td>${esc(s.sheet_name)}</td>
+        <td>${esc(s.last_synced_at || '—')}</td><td>${s.last_rows ?? ''}</td>
+        <td>${s.last_error ? `<span style="color:#c1362f">${esc(s.last_error)}</span>` : ''}</td>
+        <td><button class="btn-danger btn-sm" data-src="${s.id}">מחיקה</button></td></tr>`).join('')
+    }</table>
+    ${!ov.sources.length ? '<div class="empty-state">אין עדיין מקורות נוספים</div>' : ''}
+    <div class="row" style="margin-top:8px">
+      <input class="in" id="si-src-name" placeholder="שם המקור" style="max-width:190px">
+      <input class="in" id="si-src-url" placeholder="קישור לגיליון גוגל" style="flex:1;min-width:220px">
+      <input class="in" id="si-src-sheet" placeholder="שם הלשונית בגיליון" style="max-width:180px">
+      <button class="btn-secondary" id="si-add-src">הוספת מקור</button>
+    </div>`;
+  main.append(setCard);
+
+  $('#si-save-mail').addEventListener('click', async () => {
+    try {
+      await api('/api/sinit/settings', { method: 'PUT', body: {
+        campaign_admin_email: $('#si-mail').value.trim(), campaign_admin_name: $('#si-mail-name').value.trim(),
+      } });
+      toast('נשמר', 'ok');
+    } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+  });
+  $('#si-add-stage').addEventListener('click', async () => {
+    const name = $('#si-new-stage').value.trim();
+    if (!name) return;
+    try { await api('/api/sinit/stages', { method: 'POST', body: { name } }); toast('השלב נוסף', 'ok'); render(); }
+    catch (e) { toast(e.message || 'ההוספה נכשלה', 'err'); }
+  });
+  setCard.querySelectorAll('[data-stage]').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!confirm('למחוק את השלב? הסימונים שלו בכל העסקים יימחקו.')) return;
+    try { await api(`/api/sinit/stages/${btn.dataset.stage}`, { method: 'DELETE' }); toast('נמחק', 'ok'); render(); }
+    catch (e) { toast(e.message || 'המחיקה נכשלה', 'err'); }
+  }));
+  $('#si-add-src').addEventListener('click', async () => {
+    try {
+      await api('/api/sinit/sources', { method: 'POST', body: {
+        name: $('#si-src-name').value, sheet_url: $('#si-src-url').value, sheet_name: $('#si-src-sheet').value,
+      } });
+      toast('המקור נוסף — בלשונית אפשר ללחוץ "סנכרון עכשיו"', 'ok');
+      render();
+    } catch (e) { toast(e.message || 'ההוספה נכשלה', 'err'); }
+  });
+  setCard.querySelectorAll('[data-src]').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!confirm('למחוק את מקור הסנכרון? העסקים שכבר נכנסו יישארו.')) return;
+    try { await api(`/api/sinit/sources/${btn.dataset.src}`, { method: 'DELETE' }); toast('נמחק', 'ok'); render(); }
+    catch (e) { toast(e.message || 'המחיקה נכשלה', 'err'); }
+  }));
+
+  /* --- בסיס הידע: קבצי וורד ל-AI --- */
+  const kbCard = el('div', 'card');
+  kbCard.innerHTML = `
+    <div class="section-title" style="margin-top:0">בסיס הידע של ה-AI — קבצי וורד</div>
+    <p class="sub muted">ה-AI עונה רק ממה שכתוב בקבצים האלה. שלוש צורות כתיבה נתמכות: טבלה של שאלה|תשובה,
+      שורות "שאלה:" / "תשובה:", או שורה שמסתיימת בסימן שאלה והתשובה אחריה.</p>
+    <table class="data" id="si-kb"><tr><th>קובץ</th><th>שאלות שזוהו</th><th>תווים</th><th>מי העלתה</th><th>מתי</th><th></th></tr>${
+      kb.map((d) => `<tr>
+        <td>${esc(d.filename)}</td><td>${d.pairs}</td><td>${d.char_count}</td>
+        <td>${esc(d.uploaded_by || '')}</td><td>${esc(d.uploaded_at)}</td>
+        <td><button class="btn-secondary btn-sm" data-kb-show="${d.id}">הצגת השאלות</button>
+            <button class="btn-danger btn-sm" data-kb-del="${d.id}">מחיקה</button></td></tr>`).join('')
+    }</table>
+    ${!kb.length ? '<div class="empty-state">עדיין לא הועלו קבצים</div>' : ''}
+    <div class="row" style="margin-top:12px">
+      <label class="btn-secondary" style="cursor:pointer">⬆ העלאת קובץ וורד<input type="file" id="si-kb-file" accept=".docx" class="hidden"></label>
+      <span class="sub muted">קובץ .docx בלבד</span>
+    </div>
+    <div id="si-kb-result" class="sub muted"></div>`;
+  main.append(kbCard);
+
+  $('#si-kb-file').addEventListener('change', async () => {
+    const file = $('#si-kb-file').files[0];
+    if (!file) return;
+    const box = $('#si-kb-result');
+    box.textContent = `מעלה את ${file.name}...`;
+    try {
+      const data = await new Promise((res, rej) => {
+        const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file);
+      });
+      const r = await api('/api/sinit/kb', { method: 'POST', body: { filename: file.name, data } });
+      box.textContent = `${file.name}: ${r.pairs} שאלות זוהו, ${r.chars} תווים נשמרו`;
+      render();
+    } catch (e) { box.textContent = e.message || 'ההעלאה נכשלה'; }
+  });
+  kbCard.querySelectorAll('[data-kb-show]').forEach((btn) => btn.addEventListener('click', async () => {
+    try {
+      const pairs = await api(`/api/sinit/kb/${btn.dataset.kbShow}/pairs`);
+      $('#si-kb-result').innerHTML = pairs.length
+        ? `<ol class="kb-pairs">${pairs.map((p) => `<li><b>${esc(p.question)}</b><br>${esc(p.answer)}</li>`).join('')}</ol>`
+        : 'לא זוהו זוגות שאלה-תשובה בקובץ, אבל הטקסט המלא נשמר וה-AI מחפש בו.';
+    } catch (e) { toast(e.message, 'err'); }
+  }));
+  kbCard.querySelectorAll('[data-kb-del]').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!confirm('למחוק את הקובץ מבסיס הידע?')) return;
+    try { await api(`/api/sinit/kb/${btn.dataset.kbDel}`, { method: 'DELETE' }); toast('נמחק', 'ok'); render(); }
+    catch (e) { toast(e.message || 'המחיקה נכשלה', 'err'); }
+  }));
+
+  /* --- קישורים למתנדבות --- */
+  const linkCard = el('div', 'card');
+  const sectionOpts = Object.entries(shares.sections).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+  linkCard.innerHTML = `
+    <div class="section-title" style="margin-top:0">קישורים למתנדבות</div>
+    <p class="sub muted">כל קישור פותח <b>מקטע אחד בלבד</b> מהלשונית, בלי קוד עובדת ובלי גישה לשאר המערכת.
+      המתנדבת מקלידה את שמה פעם אחת, וכל מה שתכתוב יירשם על שמה. אפשר לכבות קישור בכל רגע.</p>
+    <table class="data" id="si-links"><tr><th>שם הקישור</th><th>מה נפתח</th><th>הרשאה</th><th>שימושים</th><th>הקישור</th><th></th></tr>${
+      shares.links.map((l) => `<tr${l.active ? '' : ' style="opacity:.5"'}>
+        <td>${esc(l.label)}</td>
+        <td>${esc(shares.sections[l.section] || l.section)}</td>
+        <td>${l.can_write ? 'צפייה וכתיבה' : 'צפייה בלבד'}</td>
+        <td>${l.uses}${l.last_used_at ? ` · ${esc(l.last_used_at)}` : ''}</td>
+        <td><input class="in" style="min-width:230px" readonly value="${location.origin}/share.html?t=${esc(l.token)}"></td>
+        <td>
+          <button class="btn-secondary btn-sm" data-copy="${esc(l.token)}">העתקה</button>
+          <button class="btn-secondary btn-sm" data-toggle="${l.id}" data-active="${l.active}">${l.active ? 'כיבוי' : 'הפעלה'}</button>
+          <button class="btn-danger btn-sm" data-link-del="${l.id}">מחיקה</button>
+        </td></tr>`).join('')
+    }</table>
+    ${!shares.links.length ? '<div class="empty-state">עדיין לא נוצרו קישורים</div>' : ''}
+    <div class="row" style="margin-top:12px">
+      <input class="in" id="si-link-label" placeholder="שם הקישור (למשל: מתנדבות אזור צפון)" style="min-width:230px">
+      <select class="in" id="si-link-section">${sectionOpts}</select>
+      <label class="sub"><input type="checkbox" id="si-link-write" checked> מותר גם לכתוב</label>
+      <button class="btn-secondary" id="si-add-link">יצירת קישור</button>
+    </div>`;
+  main.append(linkCard);
+
+  $('#si-add-link').addEventListener('click', async () => {
+    try {
+      const r = await api('/api/sinit/share-links', { method: 'POST', body: {
+        label: $('#si-link-label').value, section: $('#si-link-section').value, can_write: $('#si-link-write').checked,
+      } });
+      const url = `${location.origin}${r.url}`;
+      try { await navigator.clipboard.writeText(url); toast('הקישור נוצר והועתק', 'ok'); }
+      catch { toast('הקישור נוצר', 'ok'); }
+      render();
+    } catch (e) { toast(e.message || 'היצירה נכשלה', 'err'); }
+  });
+  linkCard.querySelectorAll('[data-copy]').forEach((btn) => btn.addEventListener('click', async () => {
+    const url = `${location.origin}/share.html?t=${btn.dataset.copy}`;
+    try { await navigator.clipboard.writeText(url); toast('הקישור הועתק', 'ok'); }
+    catch { prompt('הקישור להעתקה:', url); }
+  }));
+  linkCard.querySelectorAll('[data-toggle]').forEach((btn) => btn.addEventListener('click', async () => {
+    try {
+      await api(`/api/sinit/share-links/${btn.dataset.toggle}`, { method: 'PUT', body: { active: btn.dataset.active !== '1' } });
+      toast('עודכן', 'ok'); render();
+    } catch (e) { toast(e.message || 'העדכון נכשל', 'err'); }
+  }));
+  linkCard.querySelectorAll('[data-link-del]').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!confirm('למחוק את הקישור? מי שיש לו אותו לא יוכל להיכנס יותר.')) return;
+    try { await api(`/api/sinit/share-links/${btn.dataset.linkDel}`, { method: 'DELETE' }); toast('נמחק', 'ok'); render(); }
+    catch (e) { toast(e.message || 'המחיקה נכשלה', 'err'); }
+  }));
 }
 
 function campaignFileImport(inputId, endpoint, resultId) {

@@ -1,6 +1,7 @@
 // לשונית "מכירה סינית" — עסקים מסונכרנים מכל הטפסים והטבלאות, שלבי סגירה,
 // שאלות למנהלת עם שלבי מענה, ומענה AI שנשען על קבצי וורד שהועלו למערכת.
 import express from 'express';
+import { randomBytes } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { utils, write } from 'xlsx';
 import { db, audit, getSetting, getAllCampaignSettings, setCampaignSettings, isManagerOrAbove, hasFeature } from './db.js';
@@ -272,13 +273,55 @@ async function askClaude(apiKey, question, context, history) {
 }
 
 // ---------- הראוטר ----------
+// המקטעים שאפשר לשתף עם מתנדבת בקישור — כל קישור פותח מקטע אחד בלבד
+export const SHARE_SECTIONS = {
+    businesses: 'עסקים',
+    questions: 'שאלות ושלבי מענה',
+    ai: 'מענה AI',
+};
+
 export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events }) {
     const router = express.Router();
     const touch = () => events?.emit('campaign.update');
 
+    // ---- גישה: משתמשת מחוברת, או מתנדבת שנכנסה בקישור שיתוף למקטע הזה בלבד ----
+    function shareLink(req) {
+        const token = clean(req.header('x-share-token'));
+        if (!token) return null;
+        return db.prepare('SELECT * FROM campaign_share_links WHERE token = ? AND active = 1').get(token) || null;
+    }
+
+    // שם המתנדבת מגיע מהכותרת מקודד ב-URI — עברית גולמית בכותרת HTTP מתפרקת
+    function shareName(req) {
+        try { return clean(decodeURIComponent(req.header('x-share-name') || '')); }
+        catch { return ''; }
+    }
+
+    function gate(section, mode = 'read') {
+        return (req, res, next) => {
+            if (req.user) return next();
+            const link = shareLink(req);
+            if (!link) return res.status(401).json({ error: 'נדרשת כניסה' });
+            if (section !== 'any' && link.section !== section) {
+                return res.status(403).json({ error: `הקישור שלך פותח רק את "${SHARE_SECTIONS[link.section] || link.section}"` });
+            }
+            if (mode === 'write' && !link.can_write) {
+                return res.status(403).json({ error: 'הקישור שלך הוא לצפייה בלבד' });
+            }
+            req.share = link;
+            db.prepare("UPDATE campaign_share_links SET uses = uses + 1, last_used_at = datetime('now','localtime') WHERE id = ?")
+                .run(link.id);
+            next();
+        };
+    }
+
+    // מי ביצע את הפעולה — שם המשתמשת, או שם המתנדבת שהקלידה בקישור
+    const actor = (req) => req.user?.name
+        || (shareName(req) ? `${shareName(req)} (קישור ${req.share?.label || ''})`.trim() : `קישור ${req.share?.label || 'שיתוף'}`);
+
     const adminEmail = () => getAllCampaignSettings().campaign_admin_email || getSetting('report_email') || '';
 
-    router.get('/overview', mustLogin, (req, res) => {
+    router.get('/overview', gate('any'), (req, res) => {
         const businesses = businessesWithStages();
         const stages = stageList();
         const questions = db.prepare('SELECT * FROM campaign_questions ORDER BY id DESC').all();
@@ -299,16 +342,16 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             sheetsSyncedAt: cache.syncedAt,
             sheetsError: cache.error,
             recruitedRows: (cache.recruitedProducts || []).length,
-            isManager: isManagerOrAbove(req.user.role),
-            canManageSettings: hasFeature(req.user.role, 'campaign_settings'),
+            isManager: !!req.user && isManagerOrAbove(req.user.role),
+            canManageSettings: !!req.user && hasFeature(req.user.role, 'campaign_settings'),
         });
     });
 
     // ----- סנכרון -----
-    router.post('/sync', mustLogin, async (req, res) => {
+    router.post('/sync', gate('businesses', 'write'), async (req, res) => {
         try {
             const result = await syncSinitBusinesses();
-            audit(req.user.name, 'campaign.sinit.sync', 'campaign_businesses', null, null,
+            audit(actor(req), 'campaign.sinit.sync', 'campaign_businesses', null, null,
                 { added: result.added, updated: result.updated, sources: result.sources.length });
             touch();
             res.json(result);
@@ -328,8 +371,8 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         if (!m) return res.status(400).json({ error: 'יש להדביק קישור לגיליון גוגל (או את מזהה הגיליון עצמו)' });
         try {
             const r = db.prepare('INSERT INTO campaign_sync_sources (name, sheet_id, sheet_name, created_by) VALUES (?, ?, ?, ?)')
-                .run(name, m[1], sheetName, req.user.name);
-            audit(req.user.name, 'campaign.sinit.source_add', 'campaign_sync_sources', r.lastInsertRowid, null, { name, sheet_name: sheetName });
+                .run(name, m[1], sheetName, actor(req));
+            audit(actor(req), 'campaign.sinit.source_add', 'campaign_sync_sources', r.lastInsertRowid, null, { name, sheet_name: sheetName });
             touch();
             res.json({ ok: true, id: r.lastInsertRowid });
         } catch { res.status(400).json({ error: 'המקור הזה (אותו גיליון ואותה לשונית) כבר מוגדר' }); }
@@ -339,35 +382,35 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const before = db.prepare('SELECT * FROM campaign_sync_sources WHERE id = ?').get(req.params.id);
         if (!before) return res.status(404).json({ error: 'המקור לא נמצא' });
         db.prepare('DELETE FROM campaign_sync_sources WHERE id = ?').run(before.id);
-        audit(req.user.name, 'campaign.sinit.source_delete', 'campaign_sync_sources', before.id, before, null);
+        audit(actor(req), 'campaign.sinit.source_delete', 'campaign_sync_sources', before.id, before, null);
         touch();
         res.json({ ok: true });
     });
 
     // ----- עסקים -----
-    router.get('/businesses', mustLogin, (req, res) => res.json(businessesWithStages()));
+    router.get('/businesses', gate('businesses'), (req, res) => res.json(businessesWithStages()));
 
-    router.post('/businesses', mustLogin, (req, res) => {
+    router.post('/businesses', gate('businesses', 'write'), (req, res) => {
         const name = clean(req.body?.name);
         if (!name) return res.status(400).json({ error: 'יש להזין שם עסק' });
         const status = allStatuses().includes(req.body?.status) ? req.body.status : 'ממתין';
         const r = db.prepare(`INSERT INTO campaign_businesses
             (name, contacted_by, phone, email, response, status, contact_number, message_number, product, value_nis, source, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ידני', datetime('now','localtime'))`)
-            .run(name, clean(req.body?.contacted_by) || req.user.name, clean(req.body?.phone) || null,
+            .run(name, clean(req.body?.contacted_by) || actor(req), clean(req.body?.phone) || null,
                 clean(req.body?.email) || null, clean(req.body?.response) || null, status,
                 clean(req.body?.contact_number) || null, clean(req.body?.message_number) || null,
                 clean(req.body?.product) || null, clean(req.body?.value_nis) || null);
         if (clean(req.body?.response)) {
             db.prepare('INSERT INTO campaign_business_notes (business_id, text, created_by) VALUES (?, ?, ?)')
-                .run(r.lastInsertRowid, clean(req.body.response), req.user.name);
+                .run(r.lastInsertRowid, clean(req.body.response), actor(req));
         }
-        audit(req.user.name, 'campaign.business.create', 'campaign_businesses', r.lastInsertRowid, null, { name, status });
+        audit(actor(req), 'campaign.business.create', 'campaign_businesses', r.lastInsertRowid, null, { name, status });
         touch();
         res.json({ ok: true, id: r.lastInsertRowid });
     });
 
-    router.put('/businesses/:id', mustLogin, (req, res) => {
+    router.put('/businesses/:id', gate('businesses', 'write'), (req, res) => {
         const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
         if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });
         const b = req.body || {};
@@ -382,7 +425,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                 pick('email', before.email), pick('response', before.response), status,
                 pick('contact_number', before.contact_number), pick('message_number', before.message_number),
                 pick('product', before.product), pick('value_nis', before.value_nis), color, highlight, before.id);
-        audit(req.user.name, 'campaign.business.update', 'campaign_businesses', before.id,
+        audit(actor(req), 'campaign.business.update', 'campaign_businesses', before.id,
             { status: before.status, color: before.color, highlight: before.highlight },
             { status, color, highlight, response: pick('response', before.response) });
         touch();
@@ -395,13 +438,13 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         db.prepare('DELETE FROM campaign_business_stages WHERE business_id = ?').run(before.id);
         db.prepare('DELETE FROM campaign_business_notes WHERE business_id = ?').run(before.id);
         db.prepare('DELETE FROM campaign_businesses WHERE id = ?').run(before.id);
-        audit(req.user.name, 'campaign.business.delete', 'campaign_businesses', before.id, before, null);
+        audit(actor(req), 'campaign.business.delete', 'campaign_businesses', before.id, before, null);
         touch();
         res.json({ ok: true });
     });
 
     // כל מה שידוע על עסק אחד: פרטים, תגובות, שלבי סגירה, שאלות עליו ואזכורים בגיליון התנועות
-    router.get('/businesses/:id/detail', mustLogin, (req, res) => {
+    router.get('/businesses/:id/detail', gate('businesses'), (req, res) => {
         const biz = businessesWithStages().find((b) => b.id === Number(req.params.id));
         if (!biz) return res.status(404).json({ error: 'העסק לא נמצא' });
         const stages = stageList();
@@ -418,7 +461,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         });
     });
 
-    router.post('/businesses/:id/notes', mustLogin, (req, res) => {
+    router.post('/businesses/:id/notes', gate('businesses', 'write'), (req, res) => {
         const biz = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
         if (!biz) return res.status(404).json({ error: 'העסק לא נמצא' });
         const text = clean(req.body?.text);
@@ -426,27 +469,27 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const contactNumber = clean(req.body?.contact_number) || null;
         const messageNumber = clean(req.body?.message_number) || null;
         const r = db.prepare(`INSERT INTO campaign_business_notes (business_id, text, contact_number, message_number, created_by)
-                              VALUES (?, ?, ?, ?, ?)`).run(biz.id, text, contactNumber, messageNumber, req.user.name);
+                              VALUES (?, ?, ?, ?, ?)`).run(biz.id, text, contactNumber, messageNumber, actor(req));
         db.prepare(`UPDATE campaign_businesses SET response=?, contact_number=COALESCE(?, contact_number),
                     message_number=COALESCE(?, message_number), updated_at=datetime('now','localtime') WHERE id=?`)
             .run(text, contactNumber, messageNumber, biz.id);
-        audit(req.user.name, 'campaign.business.note_add', 'campaign_businesses', biz.id, null, { text });
+        audit(actor(req), 'campaign.business.note_add', 'campaign_businesses', biz.id, null, { text });
         touch();
         res.json({ ok: true, id: r.lastInsertRowid });
     });
 
-    router.delete('/businesses/:id/notes/:noteId', mustLogin, (req, res) => {
+    router.delete('/businesses/:id/notes/:noteId', gate('businesses', 'write'), (req, res) => {
         const note = db.prepare('SELECT * FROM campaign_business_notes WHERE id = ? AND business_id = ?')
             .get(req.params.noteId, req.params.id);
         if (!note) return res.status(404).json({ error: 'הרשומה לא נמצאה' });
         db.prepare('DELETE FROM campaign_business_notes WHERE id = ?').run(note.id);
-        audit(req.user.name, 'campaign.business.note_delete', 'campaign_businesses', note.business_id, note, null);
+        audit(actor(req), 'campaign.business.note_delete', 'campaign_businesses', note.business_id, note, null);
         touch();
         res.json({ ok: true });
     });
 
     // ----- שלבי סגירה -----
-    router.get('/stages', mustLogin, (req, res) => res.json(stageList()));
+    router.get('/stages', gate('any'), (req, res) => res.json(stageList()));
 
     router.post('/stages', mustLogin, requireFeature('campaign_settings'), (req, res) => {
         const name = clean(req.body?.name);
@@ -454,7 +497,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const max = db.prepare('SELECT COALESCE(MAX(position),0) AS m FROM campaign_close_stages').get().m;
         try {
             const r = db.prepare('INSERT INTO campaign_close_stages (name, position) VALUES (?, ?)').run(name, max + 1);
-            audit(req.user.name, 'campaign.sinit.stage_add', 'campaign_close_stages', r.lastInsertRowid, null, { name });
+            audit(actor(req), 'campaign.sinit.stage_add', 'campaign_close_stages', r.lastInsertRowid, null, { name });
             touch();
             res.json({ ok: true, stages: stageList() });
         } catch { res.status(400).json({ error: 'שלב בשם הזה כבר קיים' }); }
@@ -465,12 +508,12 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         if (!before) return res.status(404).json({ error: 'השלב לא נמצא' });
         db.prepare('DELETE FROM campaign_business_stages WHERE stage_id = ?').run(before.id);
         db.prepare('DELETE FROM campaign_close_stages WHERE id = ?').run(before.id);
-        audit(req.user.name, 'campaign.sinit.stage_delete', 'campaign_close_stages', before.id, before, null);
+        audit(actor(req), 'campaign.sinit.stage_delete', 'campaign_close_stages', before.id, before, null);
         touch();
         res.json({ ok: true, stages: stageList() });
     });
 
-    router.post('/businesses/:id/stages/:stageId', mustLogin, (req, res) => {
+    router.post('/businesses/:id/stages/:stageId', gate('businesses', 'write'), (req, res) => {
         const biz = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
         const stage = db.prepare('SELECT * FROM campaign_close_stages WHERE id = ?').get(req.params.stageId);
         if (!biz || !stage) return res.status(404).json({ error: 'העסק או השלב לא נמצאו' });
@@ -481,21 +524,21 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                     ON CONFLICT(business_id, stage_id) DO UPDATE SET
                       done = excluded.done, note = COALESCE(excluded.note, campaign_business_stages.note),
                       done_by = excluded.done_by, done_at = excluded.done_at`)
-            .run(biz.id, stage.id, done, note, req.user.name, done);
-        audit(req.user.name, 'campaign.sinit.stage_mark', 'campaign_businesses', biz.id, null,
+            .run(biz.id, stage.id, done, note, actor(req), done);
+        audit(actor(req), 'campaign.sinit.stage_mark', 'campaign_businesses', biz.id, null,
             { business: biz.name, stage: stage.name, done: !!done });
         touch();
         res.json({ ok: true });
     });
 
     // ----- סטטוסים -----
-    router.get('/statuses', mustLogin, (req, res) => res.json(allStatuses()));
-    router.post('/statuses', mustLogin, (req, res) => {
+    router.get('/statuses', gate('any'), (req, res) => res.json(allStatuses()));
+    router.post('/statuses', gate('businesses', 'write'), (req, res) => {
         const name = clean(req.body?.name);
         if (!name) return res.status(400).json({ error: 'יש להזין שם לסטטוס' });
         if (allStatuses().includes(name)) return res.status(400).json({ error: 'הסטטוס הזה כבר קיים' });
         db.prepare('INSERT INTO campaign_business_statuses (name) VALUES (?)').run(name);
-        audit(req.user.name, 'campaign.business_status.create', 'campaign_business_statuses', null, null, { name });
+        audit(actor(req), 'campaign.business_status.create', 'campaign_business_statuses', null, null, { name });
         touch();
         res.json({ ok: true, statuses: allStatuses() });
     });
@@ -509,18 +552,18 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         return rows.map((q) => ({ ...q, steps: steps.filter((s) => s.question_id === q.id) }));
     }
 
-    router.get('/questions', mustLogin, (req, res) => res.json(questionsWithSteps()));
+    router.get('/questions', gate('questions'), (req, res) => res.json(questionsWithSteps()));
 
-    router.post('/questions', mustLogin, async (req, res) => {
+    router.post('/questions', gate('questions', 'write'), async (req, res) => {
         const text = clean(req.body?.text);
         if (!text) return res.status(400).json({ error: 'יש להזין את השאלה' });
         const businessId = Number(req.body?.business_id) || null;
         const origin = req.body?.origin === 'AI' ? 'AI' : 'ידני';
         const r = db.prepare('INSERT INTO campaign_questions (text, asked_by, business_id, origin) VALUES (?, ?, ?, ?)')
-            .run(text, req.user.name, businessId, origin);
+            .run(text, actor(req), businessId, origin);
         const id = r.lastInsertRowid;
         db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-            .run(id, 'השאלה נרשמה במערכת', req.user.name);
+            .run(id, 'השאלה נרשמה במערכת', actor(req));
 
         let mail = { sent: false, to: adminEmail(), error: null };
         if (req.body?.send_email) {
@@ -529,8 +572,8 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                 if (!mail.to) throw new Error('לא הוגדרה כתובת מייל למנהלת המערכת (בהגדרות הלשונית)');
                 await sendMailTo({
                     to: mail.to,
-                    subject: `שאלה חדשה מ${req.user.name} — קמפיין המכירה הסינית`,
-                    html: `<p>${req.user.name} שאלה:</p><blockquote>${text}</blockquote>
+                    subject: `שאלה חדשה מ${actor(req)} — קמפיין המכירה הסינית`,
+                    html: `<p>${actor(req)} שאלה:</p><blockquote>${text}</blockquote>
                            ${biz ? `<p>בהקשר של העסק: <b>${biz.name}</b></p>` : ''}
                            ${origin === 'AI' ? '<p>השאלה נשאלה קודם את המענה האוטומטי ולא נמצאה לה תשובה בחומר שהועלה למערכת.</p>' : ''}
                            <p>אפשר לענות ישירות במערכת, בלשונית "מכירה סינית" ← שאלות ושלבי מענה.</p>`,
@@ -539,32 +582,32 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                 db.prepare("UPDATE campaign_questions SET email_sent_at = datetime('now','localtime'), email_to = ?, status = 'נשלחה למנהלת' WHERE id = ?")
                     .run(mail.to, id);
                 db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-                    .run(id, `נשלח מייל למנהלת המערכת (${mail.to})`, req.user.name);
+                    .run(id, `נשלח מייל למנהלת המערכת (${mail.to})`, actor(req));
             } catch (e) {
                 mail.error = e.message;
                 db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-                    .run(id, `שליחת המייל נכשלה: ${e.message}`, req.user.name);
+                    .run(id, `שליחת המייל נכשלה: ${e.message}`, actor(req));
             }
         }
-        audit(req.user.name, 'campaign.sinit.question_add', 'campaign_questions', id, null, { text, origin, mail: mail.sent });
+        audit(actor(req), 'campaign.sinit.question_add', 'campaign_questions', id, null, { text, origin, mail: mail.sent });
         touch();
         res.json({ ok: true, id, mail });
     });
 
-    router.post('/questions/:id/steps', mustLogin, (req, res) => {
+    router.post('/questions/:id/steps', gate('questions', 'write'), (req, res) => {
         const q = db.prepare('SELECT * FROM campaign_questions WHERE id = ?').get(req.params.id);
         if (!q) return res.status(404).json({ error: 'השאלה לא נמצאה' });
         const text = clean(req.body?.text);
         if (!text) return res.status(400).json({ error: 'יש להזין את שלב המענה' });
         db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-            .run(q.id, text, req.user.name);
+            .run(q.id, text, actor(req));
         if (q.status === 'נשאלה') db.prepare("UPDATE campaign_questions SET status = 'בטיפול' WHERE id = ?").run(q.id);
-        audit(req.user.name, 'campaign.sinit.question_step', 'campaign_questions', q.id, null, { text });
+        audit(actor(req), 'campaign.sinit.question_step', 'campaign_questions', q.id, null, { text });
         touch();
         res.json({ ok: true });
     });
 
-    router.put('/questions/:id', mustLogin, (req, res) => {
+    router.put('/questions/:id', gate('questions', 'write'), (req, res) => {
         const q = db.prepare('SELECT * FROM campaign_questions WHERE id = ?').get(req.params.id);
         if (!q) return res.status(404).json({ error: 'השאלה לא נמצאה' });
         const answer = req.body?.answer === undefined ? q.answer : (clean(req.body.answer) || null);
@@ -574,12 +617,12 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                     answered_by = CASE WHEN ? IS NOT NULL THEN ? ELSE answered_by END,
                     answered_at = CASE WHEN ? IS NOT NULL THEN datetime('now','localtime') ELSE answered_at END
                     WHERE id = ?`)
-            .run(answer, status, answer, req.user.name, answer, q.id);
+            .run(answer, status, answer, actor(req), answer, q.id);
         if (answer && answer !== q.answer) {
             db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-                .run(q.id, `נכתבה תשובה: ${answer}`, req.user.name);
+                .run(q.id, `נכתבה תשובה: ${answer}`, actor(req));
         }
-        audit(req.user.name, 'campaign.sinit.question_update', 'campaign_questions', q.id, { status: q.status }, { status, answer });
+        audit(actor(req), 'campaign.sinit.question_update', 'campaign_questions', q.id, { status: q.status }, { status, answer });
         touch();
         res.json({ ok: true });
     });
@@ -590,7 +633,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         db.prepare('DELETE FROM campaign_question_steps WHERE question_id = ?').run(before.id);
         db.prepare('UPDATE campaign_ai_log SET question_id = NULL WHERE question_id = ?').run(before.id);
         db.prepare('DELETE FROM campaign_questions WHERE id = ?').run(before.id);
-        audit(req.user.name, 'campaign.sinit.question_delete', 'campaign_questions', before.id, before, null);
+        audit(actor(req), 'campaign.sinit.question_delete', 'campaign_questions', before.id, before, null);
         touch();
         res.json({ ok: true });
     });
@@ -618,10 +661,10 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         if (!parsed.text.trim()) return res.status(400).json({ error: 'לא נמצא טקסט בקובץ' });
 
         const r = db.prepare('INSERT INTO campaign_kb_docs (filename, raw_text, char_count, uploaded_by) VALUES (?, ?, ?, ?)')
-            .run(filename, parsed.text, parsed.text.length, req.user.name);
+            .run(filename, parsed.text, parsed.text.length, actor(req));
         const ins = db.prepare('INSERT INTO campaign_kb_pairs (doc_id, question, answer) VALUES (?, ?, ?)');
         for (const p of parsed.pairs) ins.run(r.lastInsertRowid, p.question, p.answer);
-        audit(req.user.name, 'campaign.sinit.kb_upload', 'campaign_kb_docs', r.lastInsertRowid, null,
+        audit(actor(req), 'campaign.sinit.kb_upload', 'campaign_kb_docs', r.lastInsertRowid, null,
             { filename, pairs: parsed.pairs.length, chars: parsed.text.length });
         touch();
         res.json({ ok: true, id: r.lastInsertRowid, pairs: parsed.pairs.length, chars: parsed.text.length });
@@ -632,26 +675,26 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         if (!before) return res.status(404).json({ error: 'המסמך לא נמצא' });
         db.prepare('DELETE FROM campaign_kb_pairs WHERE doc_id = ?').run(before.id);
         db.prepare('DELETE FROM campaign_kb_docs WHERE id = ?').run(before.id);
-        audit(req.user.name, 'campaign.sinit.kb_delete', 'campaign_kb_docs', before.id, before, null);
+        audit(actor(req), 'campaign.sinit.kb_delete', 'campaign_kb_docs', before.id, before, null);
         touch();
         res.json({ ok: true });
     });
 
     // ----- מענה AI -----
-    router.get('/ai/log', mustLogin, (req, res) => {
+    router.get('/ai/log', gate('ai'), (req, res) => {
         res.json(db.prepare(`SELECT a.*, q.status AS question_status FROM campaign_ai_log a
                              LEFT JOIN campaign_questions q ON q.id = a.question_id
                              ORDER BY a.id DESC LIMIT 60`).all());
     });
 
-    router.post('/ai/ask', mustLogin, async (req, res) => {
+    router.post('/ai/ask', gate('ai', 'write'), async (req, res) => {
         const question = clean(req.body?.question);
         if (!question) return res.status(400).json({ error: 'יש להזין שאלה' });
 
         const { pairs, chunks, hasDocs } = retrieve(question);
         const log = (outcome, answer, sourceDoc) => db.prepare(
             'INSERT INTO campaign_ai_log (question, answer, outcome, source_doc, asked_by) VALUES (?, ?, ?, ?, ?)')
-            .run(question, answer || null, outcome, sourceDoc || null, req.user.name).lastInsertRowid;
+            .run(question, answer || null, outcome, sourceDoc || null, actor(req)).lastInsertRowid;
 
         if (!hasDocs) {
             const id = log('אין מענה', null, null);
@@ -716,16 +759,16 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
     });
 
     // שליחת שאלה שה-AI לא ידע לענות עליה — נרשמת כשאלה רגילה עם שלבי מענה
-    router.post('/ai/escalate/:id', mustLogin, async (req, res) => {
+    router.post('/ai/escalate/:id', gate('ai', 'write'), async (req, res) => {
         const entry = db.prepare('SELECT * FROM campaign_ai_log WHERE id = ?').get(req.params.id);
         if (!entry) return res.status(404).json({ error: 'השאלה לא נמצאה ביומן' });
         if (entry.question_id) return res.status(400).json({ error: 'השאלה הזו כבר נשלחה למנהלת' });
 
         const r = db.prepare("INSERT INTO campaign_questions (text, asked_by, origin) VALUES (?, ?, 'AI')")
-            .run(entry.question, req.user.name);
+            .run(entry.question, actor(req));
         const qid = r.lastInsertRowid;
         db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-            .run(qid, 'השאלה נשאלה את המענה האוטומטי ולא נמצאה לה תשובה בחומר', req.user.name);
+            .run(qid, 'השאלה נשאלה את המענה האוטומטי ולא נמצאה לה תשובה בחומר', actor(req));
         db.prepare('UPDATE campaign_ai_log SET question_id = ? WHERE id = ?').run(qid, entry.id);
 
         const to = adminEmail();
@@ -734,8 +777,8 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             if (!to) throw new Error('לא הוגדרה כתובת מייל למנהלת המערכת (בהגדרות הלשונית)');
             await sendMailTo({
                 to,
-                subject: `שאלה שה-AI לא ידע לענות — ${req.user.name}`,
-                html: `<p>${req.user.name} שאלה את המענה האוטומטי של לשונית "מכירה סינית":</p>
+                subject: `שאלה שה-AI לא ידע לענות — ${actor(req)}`,
+                html: `<p>${actor(req)} שאלה את המענה האוטומטי של לשונית "מכירה סינית":</p>
                        <blockquote>${entry.question}</blockquote>
                        <p>לא נמצאה תשובה בחומר שהועלה למערכת, ולכן השאלה מועברת אליך.</p>
                        <p>לתשובה: מערכת אמא במשמרת ← קמפיין ← מכירה סינית ← שאלות ושלבי מענה.</p>`,
@@ -744,13 +787,13 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             db.prepare("UPDATE campaign_questions SET email_sent_at = datetime('now','localtime'), email_to = ?, status = 'נשלחה למנהלת' WHERE id = ?")
                 .run(to, qid);
             db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-                .run(qid, `נשלח מייל למנהלת המערכת (${to})`, req.user.name);
+                .run(qid, `נשלח מייל למנהלת המערכת (${to})`, actor(req));
         } catch (e) {
             mail.error = e.message;
             db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-                .run(qid, `שליחת המייל נכשלה: ${e.message}`, req.user.name);
+                .run(qid, `שליחת המייל נכשלה: ${e.message}`, actor(req));
         }
-        audit(req.user.name, 'campaign.sinit.ai_escalate', 'campaign_questions', qid, null, { question: entry.question, mail: mail.sent });
+        audit(actor(req), 'campaign.sinit.ai_escalate', 'campaign_questions', qid, null, { question: entry.question, mail: mail.sent });
         touch();
         res.json({ ok: true, question_id: qid, mail });
     });
@@ -765,9 +808,64 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             campaign_admin_email: email,
             campaign_admin_name: clean(req.body?.campaign_admin_name) || 'מנהלת המערכת',
         });
-        audit(req.user.name, 'campaign.sinit.settings', 'campaign_settings', null, null, { campaign_admin_email: email });
+        audit(actor(req), 'campaign.sinit.settings', 'campaign_settings', null, null, { campaign_admin_email: email });
         touch();
         res.json({ ok: true, adminEmail: adminEmail() });
+    });
+
+    // ----- קישורי שיתוף למתנדבות -----
+    // כל קישור פותח מקטע אחד בלבד, בלי קוד עובדת ובלי גישה לשאר המערכת.
+    router.get('/share-links', mustLogin, requireFeature('campaign_settings'), (req, res) => {
+        res.json({
+            sections: SHARE_SECTIONS,
+            links: db.prepare('SELECT * FROM campaign_share_links ORDER BY id DESC').all(),
+        });
+    });
+
+    router.post('/share-links', mustLogin, requireFeature('campaign_settings'), (req, res) => {
+        const section = clean(req.body?.section);
+        const label = clean(req.body?.label);
+        if (!SHARE_SECTIONS[section]) return res.status(400).json({ error: 'יש לבחור מקטע לשיתוף' });
+        if (!label) return res.status(400).json({ error: 'יש לתת שם לקישור (למשל: מתנדבות אזור צפון)' });
+        const token = randomBytes(12).toString('base64url');
+        const r = db.prepare('INSERT INTO campaign_share_links (token, section, label, can_write, created_by) VALUES (?, ?, ?, ?, ?)')
+            .run(token, section, label, req.body?.can_write === false ? 0 : 1, actor(req));
+        audit(actor(req), 'campaign.sinit.share_create', 'campaign_share_links', r.lastInsertRowid, null, { section, label });
+        touch();
+        res.json({ ok: true, id: r.lastInsertRowid, token, url: `/share.html?t=${token}` });
+    });
+
+    router.put('/share-links/:id', mustLogin, requireFeature('campaign_settings'), (req, res) => {
+        const link = db.prepare('SELECT * FROM campaign_share_links WHERE id = ?').get(req.params.id);
+        if (!link) return res.status(404).json({ error: 'הקישור לא נמצא' });
+        const active = req.body?.active === undefined ? link.active : (req.body.active ? 1 : 0);
+        const canWrite = req.body?.can_write === undefined ? link.can_write : (req.body.can_write ? 1 : 0);
+        db.prepare('UPDATE campaign_share_links SET active = ?, can_write = ? WHERE id = ?').run(active, canWrite, link.id);
+        audit(actor(req), 'campaign.sinit.share_update', 'campaign_share_links', link.id,
+            { active: link.active, can_write: link.can_write }, { active, can_write: canWrite });
+        touch();
+        res.json({ ok: true });
+    });
+
+    router.delete('/share-links/:id', mustLogin, requireFeature('campaign_settings'), (req, res) => {
+        const link = db.prepare('SELECT * FROM campaign_share_links WHERE id = ?').get(req.params.id);
+        if (!link) return res.status(404).json({ error: 'הקישור לא נמצא' });
+        db.prepare('DELETE FROM campaign_share_links WHERE id = ?').run(link.id);
+        audit(actor(req), 'campaign.sinit.share_delete', 'campaign_share_links', link.id, link, null);
+        touch();
+        res.json({ ok: true });
+    });
+
+    // מה הקישור הזה פותח — נקרא מדף השיתוף עצמו לפני שמציגים משהו
+    router.get('/share/info', (req, res) => {
+        const link = shareLink(req);
+        if (!link) return res.status(404).json({ error: 'הקישור אינו פעיל יותר. אפשר לבקש קישור חדש ממנהלת המערכת.' });
+        res.json({
+            section: link.section,
+            sectionLabel: SHARE_SECTIONS[link.section] || link.section,
+            label: link.label,
+            canWrite: !!link.can_write,
+        });
     });
 
     // ----- ייצוא לאקסל -----
