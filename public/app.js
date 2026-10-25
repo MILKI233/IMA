@@ -2428,7 +2428,18 @@ async function renderSinitAdminCards(main) {
       <div><label class="sub muted">כתובת מייל</label><br><input class="in" id="si-mail" style="min-width:240px" value="${esc(ov.adminEmail || '')}"></div>
       <div><label class="sub muted">שם המנהלת</label><br><input class="in" id="si-mail-name" value="${esc(ov.adminName || '')}"></div>
       <div style="align-self:end"><button class="btn-secondary" id="si-save-mail">שמירה</button></div>
+      <div style="align-self:end"><button class="btn-secondary" id="si-test-mail">✉ שליחת מייל בדיקה</button></div>
     </div>
+    <div class="sub" style="margin-top:8px">
+      ${ov.adminEmail
+        ? `<span style="color:#12805c">✔</span> הכתובת מוגדרת: ${esc(ov.adminEmail)}`
+        : '<span style="color:#c1362f">✕</span> אין כתובת מייל — השאלות לא יישלחו לאף אחד'}
+      &nbsp;·&nbsp;
+      ${ov.mailReady
+        ? '<span style="color:#12805c">✔</span> חיבור Gmail פעיל'
+        : '<span style="color:#c1362f">✕</span> חיבור Gmail חסר — בלעדיו <b>שום מייל לא יוצא</b> (לשונית "חיבורים" ← כתובת Gmail + סיסמת אפליקציה)'}
+    </div>
+    <div id="si-test-mail-result" class="sub muted" style="margin-top:6px"></div>
 
     <div class="section-title">שלבי הסגירה של כל עסק</div>
     <div class="chip-row" id="si-stages">${ov.stages.map((s) => `
@@ -2464,6 +2475,16 @@ async function renderSinitAdminCards(main) {
       } });
       toast('נשמר', 'ok');
     } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+  });
+  $('#si-test-mail').addEventListener('click', async () => {
+    const box = $('#si-test-mail-result');
+    box.textContent = 'שולחת מייל בדיקה...';
+    try {
+      const r = await api('/api/sinit/settings/test-mail', { method: 'POST' });
+      box.innerHTML = r.ok
+        ? `<span style="color:#12805c">✔ נשלח ל${esc(r.to)} — אם ההודעה הגיעה, גם השאלות יגיעו לשם. כדאי לבדוק גם בספאם.</span>`
+        : `<span style="color:#c1362f">✕ ${esc(r.error)}</span>`;
+    } catch (e) { box.innerHTML = `<span style="color:#c1362f">✕ ${esc(e.message || 'הבדיקה נכשלה')}</span>`; }
   });
   $('#si-add-stage').addEventListener('click', async () => {
     const name = $('#si-new-stage').value.trim();

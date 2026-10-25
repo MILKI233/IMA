@@ -265,6 +265,20 @@ const AI_SYSTEM = `את עונה לצוות של ארגון "אמא במשמרת
 
 const NO_ANSWER = 'אין לי מענה';
 
+// תרגום שגיאות שליחת מייל — רובן מצביעות על סיסמת אפליקציה שגויה, לא על באג
+function mailErrorText(e) {
+    const raw = String(e?.message || '');
+    if (/חסרים פרטי Gmail/.test(raw)) return raw;
+    if (/Invalid login|535|BadCredentials|Username and Password not accepted/i.test(raw)) {
+        return 'ג\'ימייל דחה את ההתחברות. כמעט תמיד הסיבה היא סיסמת אפליקציה שגויה או סיסמה רגילה במקום סיסמת אפליקציה (16 תווים, בלי רווחים) — יש להנפיק מחדש בחשבון גוגל ← אבטחה ← סיסמאות אפליקציה.';
+    }
+    if (/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|network|getaddrinfo/i.test(raw)) {
+        return 'השרת לא הצליח להתחבר לשרת המייל של גוגל. אם זה חוזר — ייתכן שהחיבור היוצא חסום.';
+    }
+    if (/Invalid recipient|no recipients|553|550/i.test(raw)) return 'כתובת היעד נדחתה — כדאי לבדוק שאין בה שגיאת כתיב.';
+    return `שליחת המייל נכשלה: ${raw}`;
+}
+
 // תרגום שגיאות ה-API להסבר שאומר למנהלת מה לעשות, במקום להדפיס JSON גולמי בצ'אט
 function aiErrorText(e) {
     const raw = String(e?.message || '');
@@ -856,6 +870,30 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         audit(actor(req), 'campaign.sinit.settings', 'campaign_settings', null, null, { campaign_admin_email: email });
         touch();
         res.json({ ok: true, adminEmail: adminEmail() });
+    });
+
+    // בדיקת מייל: שולחת מייל אמיתי לכתובת המנהלת ומחזירה בדיוק מה נכשל, כדי שלא
+    // צריך לגלות שהמייל לא מוגדר רק אחרי ששאלה אמיתית נשלחה ולא הגיעה.
+    router.post('/settings/test-mail', mustLogin, requireFeature('campaign_settings'), async (req, res) => {
+        const to = adminEmail();
+        if (!to) {
+            return res.json({ ok: false, error: 'לא הוגדרה כתובת מייל למנהלת המערכת, וגם לא כתובת לדוח היומי. יש למלא את השדה כאן ולשמור.' });
+        }
+        if (!getSetting('gmail_user') || !getSetting('gmail_app_password')) {
+            return res.json({ ok: false, to, error: 'כתובת המייל מוגדרת, אבל חיבור ה-Gmail לא. בלעדיו המערכת לא יכולה לשלוח כלום — יש למלא כתובת Gmail וסיסמת אפליקציה בלשונית "חיבורים".' });
+        }
+        try {
+            await sendMailTo({
+                to,
+                subject: 'בדיקת מייל — לשונית מכירה סינית',
+                html: `<p>זו הודעת בדיקה ממערכת אמא במשמרת.</p>
+                       <p>אם הגיעה אליך — שאלות שנשלחות מלשונית "מכירה סינית" יגיעו לכאן.</p>`,
+            });
+            audit(actor(req), 'campaign.sinit.test_mail', 'campaign_settings', null, null, { to });
+            res.json({ ok: true, to });
+        } catch (e) {
+            res.json({ ok: false, to, error: mailErrorText(e) });
+        }
     });
 
     // ----- קישורי שיתוף למתנדבות -----
