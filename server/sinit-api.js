@@ -7,7 +7,7 @@ import { utils, write } from 'xlsx';
 import { db, audit, getSetting, getAllCampaignSettings, setCampaignSettings, isManagerOrAbove, hasFeature } from './db.js';
 import { getCampaignSheetsCache, fetchSheetRows } from './sheets-sync.js';
 import { parseDocx } from './docx.js';
-import { sendMailTo } from './integrations.js';
+import { sendMailTo, mailProvider, mailReady, mailFrom } from './integrations.js';
 
 const BUILTIN_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
 // הפלטה להדגשת עסק — צבעים רכים שנקראים טוב מתחת לטקסט שחור
@@ -269,6 +269,18 @@ const NO_ANSWER = 'אין לי מענה';
 function mailErrorText(e) {
     const raw = String(e?.message || '');
     if (/חסרים פרטי Gmail/.test(raw)) return raw;
+    // שגיאות Resend — המפתח או כתובת השולח, כמעט תמיד
+    if (/^resend:401/.test(raw)) {
+        return 'מפתח ה-Resend אינו תקף. יש להעתיק אותו מחדש מ-resend.com ← API Keys ולהדביק בלשונית "חיבורים".';
+    }
+    if (/^resend:403/.test(raw) || /domain is not verified|not verified/i.test(raw)) {
+        return 'כתובת השולח אינה מאושרת ב-Resend. אפשר להשאיר את שדה "כתובת השולח" ריק (אז נשלח מ-onboarding@resend.dev, שמגיע רק לכתובת שאיתה נרשמת ל-Resend), או לאמת דומיין משלך ב-Resend ← Domains.';
+    }
+    if (/^resend:422/.test(raw)) {
+        return 'Resend דחה את הבקשה — בדרך כלל כתובת שולח בפורמט לא תקין, או שליחה לכתובת אחרת בזמן שימוש ב-onboarding@resend.dev. פרטים: ' + raw.replace(/^resend:\d+:\s*/, '');
+    }
+    if (/^resend:429/.test(raw)) return 'נשלחו יותר מדי מיילים דרך Resend בזמן קצר — כדאי לנסות שוב בעוד דקה.';
+    if (/^resend:/.test(raw)) return 'שליחה דרך Resend נכשלה: ' + raw.replace(/^resend:\d+:\s*/, '');
     if (/Invalid login|535|BadCredentials|Username and Password not accepted/i.test(raw)) {
         return 'ג\'ימייל דחה את ההתחברות. כמעט תמיד הסיבה היא סיסמת אפליקציה שגויה או סיסמה רגילה במקום סיסמת אפליקציה (16 תווים, בלי רווחים) — יש להנפיק מחדש בחשבון גוגל ← אבטחה ← סיסמאות אפליקציה.';
     }
@@ -390,7 +402,11 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             adminEmail: adminEmail(),
             adminName: getAllCampaignSettings().campaign_admin_name,
             aiReady: !!getSetting('anthropic_api_key'),
-            mailReady: !!(getSetting('gmail_user') && getSetting('gmail_app_password')),
+            mailReady: mailReady(),
+            mailProvider: mailProvider(),
+            mailFrom: mailFrom() || null,
+            resendKeySet: !!getSetting('resend_api_key'),
+            resendFrom: getSetting('resend_from') || '',
             sheetsSyncedAt: cache.syncedAt,
             sheetsError: cache.error,
             recruitedRows: (cache.recruitedProducts || []).length,
@@ -879,8 +895,8 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         if (!to) {
             return res.json({ ok: false, error: 'לא הוגדרה כתובת מייל למנהלת המערכת, וגם לא כתובת לדוח היומי. יש למלא את השדה כאן ולשמור.' });
         }
-        if (!getSetting('gmail_user') || !getSetting('gmail_app_password')) {
-            return res.json({ ok: false, to, error: 'כתובת המייל מוגדרת, אבל חיבור ה-Gmail לא. בלעדיו המערכת לא יכולה לשלוח כלום — יש למלא כתובת Gmail וסיסמת אפליקציה בלשונית "חיבורים".' });
+        if (!mailReady()) {
+            return res.json({ ok: false, to, error: 'כתובת המייל מוגדרת, אבל אין ערוץ שליחה. יש להגדיר מפתח Resend (הדרך הפשוטה — מפתח אחד, בלי חשבון Gmail) או כתובת Gmail עם סיסמת אפליקציה, בלשונית "חיבורים".' });
         }
         try {
             await sendMailTo({
@@ -889,8 +905,8 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                 html: `<p>זו הודעת בדיקה ממערכת אמא במשמרת.</p>
                        <p>אם הגיעה אליך — שאלות שנשלחות מלשונית "מכירה סינית" יגיעו לכאן.</p>`,
             });
-            audit(actor(req), 'campaign.sinit.test_mail', 'campaign_settings', null, null, { to });
-            res.json({ ok: true, to });
+            audit(actor(req), 'campaign.sinit.test_mail', 'campaign_settings', null, null, { to, via: mailProvider() });
+            res.json({ ok: true, to, via: mailProvider(), from: mailFrom() });
         } catch (e) {
             res.json({ ok: false, to, error: mailErrorText(e) });
         }

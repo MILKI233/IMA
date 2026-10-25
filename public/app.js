@@ -2436,10 +2436,21 @@ async function renderSinitAdminCards(main) {
         : '<span style="color:#c1362f">✕</span> אין כתובת מייל — השאלות לא יישלחו לאף אחד'}
       &nbsp;·&nbsp;
       ${ov.mailReady
-        ? '<span style="color:#12805c">✔</span> חיבור Gmail פעיל'
-        : '<span style="color:#c1362f">✕</span> חיבור Gmail חסר — בלעדיו <b>שום מייל לא יוצא</b> (לשונית "חיבורים" ← כתובת Gmail + סיסמת אפליקציה)'}
+        ? `<span style="color:#12805c">✔</span> ערוץ שליחה: <b>${ov.mailProvider === 'resend' ? 'Resend' : 'Gmail'}</b>${ov.mailFrom ? ` (נשלח מ-${esc(ov.mailFrom)})` : ''}`
+        : '<span style="color:#c1362f">✕</span> אין ערוץ שליחה — בלעדיו <b>שום מייל לא יוצא</b>. הדרך הפשוטה: מפתח Resend למטה'}
     </div>
     <div id="si-test-mail-result" class="sub muted" style="margin-top:6px"></div>
+
+    <div class="section-title">שליחה דרך Resend (במקום Gmail)</div>
+    <p class="sub muted">כשאין גישה להגדרות חשבון הגוגל, זו הדרך הפשוטה: נרשמים ב-resend.com (חינם עד 3,000 מיילים בחודש),
+      יוצרים מפתח ב-<b>API Keys</b> ומדביקים כאן. אין סיסמאות ואין אימות דו-שלבי.
+      <b>כתובת השולח:</b> אם משאירים ריק, נשלח מ-onboarding@resend.dev — וזה מגיע <b>רק</b> לכתובת שאיתה נרשמת ל-Resend.
+      לשליחה לכל כתובת צריך לאמת דומיין ב-Resend ← Domains ולכתוב כאן כתובת על אותו דומיין.</p>
+    <div class="row">
+      <div style="flex:2"><label class="sub muted">מפתח Resend</label><br><input class="in" id="si-resend-key" type="password" style="width:100%" placeholder="re_..." value="${esc(ov.resendKeySet ? '••••••••' : '')}"></div>
+      <div><label class="sub muted">כתובת השולח (לא חובה)</label><br><input class="in" id="si-resend-from" placeholder="onboarding@resend.dev" value="${esc(ov.resendFrom || '')}"></div>
+      <div style="align-self:end"><button class="btn-secondary" id="si-save-resend">שמירת Resend</button></div>
+    </div>
 
     <div class="section-title">שלבי הסגירה של כל עסק</div>
     <div class="chip-row" id="si-stages">${ov.stages.map((s) => `
@@ -2474,6 +2485,17 @@ async function renderSinitAdminCards(main) {
         campaign_admin_email: $('#si-mail').value.trim(), campaign_admin_name: $('#si-mail-name').value.trim(),
       } });
       toast('נשמר', 'ok');
+    } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+  });
+  $('#si-save-resend').addEventListener('click', async () => {
+    const key = $('#si-resend-key').value.trim();
+    const payload = { resend_from: $('#si-resend-from').value.trim() };
+    // '••••••••' = הערך הקיים לא שונה; שולחים רק מפתח חדש שהוקלד בפועל
+    if (key && !/^•+$/.test(key)) payload.resend_api_key = key;
+    try {
+      await api('/api/integrations/settings', { method: 'PUT', body: payload });
+      toast('הגדרות Resend נשמרו', 'ok');
+      render();
     } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
   });
   $('#si-test-mail').addEventListener('click', async () => {

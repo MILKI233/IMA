@@ -15,6 +15,9 @@ const SETTING_KEYS = [
   { key: 'daily_report_auto', secret: false },  // '1' = שליחת דוח יומי אוטומטית
   { key: 'daily_report_hour', secret: false },  // שעה לשליחה (0-23), ברירת מחדל 20
   { key: 'anthropic_api_key', secret: true },
+  // שליחת מייל דרך Resend — חלופה ל-Gmail כשאין גישה להגדרות החשבון או לסיסמאות אפליקציה
+  { key: 'resend_api_key', secret: true },
+  { key: 'resend_from', secret: false },     // כתובת השולח (דומיין מאומת ב-Resend, או onboarding@resend.dev לבדיקה)
   { key: 'backup_dir', secret: false },
   { key: 'backup_auto', secret: false },        // '1' = גיבוי יומי אוטומטי
   { key: 'update_source', secret: false },      // תיקייה או URL לעדכוני גרסה
@@ -26,11 +29,54 @@ const SETTING_KEYS = [
 const MASK = '••••••••';
 
 // ---------- מייל ----------
+// שני ערוצי שליחה. Resend עובד עם מפתח API בלבד (בלי חשבון Gmail ובלי סיסמת אפליקציה),
+// ולכן הוא מקבל עדיפות כשהוא מוגדר. Gmail נשאר כפי שהיה עבור מי שכבר מחוברת דרכו.
 function mailer() {
   const user = getSetting('gmail_user');
   const pass = getSetting('gmail_app_password');
   if (!user || !pass) throw new Error('חסרים פרטי Gmail: כתובת + סיסמת אפליקציה (בלשונית חיבורים)');
   return nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
+}
+
+export function mailProvider() {
+  if (getSetting('resend_api_key')) return 'resend';
+  if (getSetting('gmail_user') && getSetting('gmail_app_password')) return 'gmail';
+  return null;
+}
+
+export const mailReady = () => mailProvider() !== null;
+
+// כתובת השולח: ב-Resend חייבת להיות על דומיין מאומת, או onboarding@resend.dev לבדיקות
+export const mailFrom = () => (mailProvider() === 'resend'
+  ? (getSetting('resend_from') || 'onboarding@resend.dev')
+  : getSetting('gmail_user'));
+
+async function sendViaResend({ to, subject, html }) {
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getSetting('resend_api_key')}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: mailFrom(), to: [to], subject, html }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = data?.message || data?.error?.message || `שגיאה ${res.status}`;
+    const err = new Error(`resend:${res.status}: ${detail}`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// נקודת השליחה היחידה במערכת — כל מי ששולח מייל עובר דרך כאן
+export async function deliverMail({ to, subject, html }) {
+  if (!to) throw new Error('לא צוינה כתובת מייל ליעד');
+  const body = `<div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.7">${html}</div>`;
+  if (mailProvider() === 'resend') return sendViaResend({ to, subject, html: body });
+  await mailer().sendMail({ from: getSetting('gmail_user'), to, subject, html: body });
+  return { to };
 }
 
 // תקציר יומי: ביצוע משימות + פעילות קמפיין המכירה הסינית (מתנדבות חדשות, נקודות, אישורים ממתינים, מלאי מוקדים)
@@ -82,10 +128,7 @@ export async function sendDailyReport(toOverride) {
       ${campaignHtml}
       <p style="color:#888">נשלח אוטומטית ממערכת אמא במשמרת</p>
     </div>`;
-  await mailer().sendMail({
-    from: getSetting('gmail_user'), to,
-    subject: `דוח יומי אמא במשמרת – ${s.today}`, html,
-  });
+  await deliverMail({ to, subject: `דוח יומי אמא במשמרת – ${s.today}`, html });
   return { to };
 }
 
@@ -93,21 +136,12 @@ export async function sendDailyReport(toOverride) {
 export async function sendUrgentAlert(subject, text) {
   const to = getSetting('report_email');
   if (!to) return; // אין כתובת מוגדרת — לא קריטי, הפנייה עדיין מופיעה באתר
-  await mailer().sendMail({
-    from: getSetting('gmail_user'), to,
-    subject: `דחוף — ${subject}`,
-    html: `<div dir="rtl" style="font-family:Arial,sans-serif">${text}</div>`,
-  });
+  await deliverMail({ to, subject: `דחוף — ${subject}`, html: text });
 }
 
 // שליחת מייל לכתובת מסוימת — משמש את לשונית "מכירה סינית" לשאלות שנשלחות למנהלת המערכת
 export async function sendMailTo({ to, subject, html }) {
-  if (!to) throw new Error('לא צוינה כתובת מייל ליעד');
-  await mailer().sendMail({
-    from: getSetting('gmail_user'), to, subject,
-    html: `<div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.7">${html}</div>`,
-  });
-  return { to };
+  return deliverMail({ to, subject, html });
 }
 
 // שליחה אוטומטית פעם ביום בשעה שהוגדרה (ברירת מחדל 20:00) — רץ כל עוד השרת פעיל (מתאים לפריסה בענן 24/7)
@@ -243,11 +277,10 @@ export function integrationsRouter({ mustLogin, mustManager, requireFeature }) {
 
   r.post('/email/test', mustLogin, requireFeature('integrations'), async (req, res) => {
     try {
-      await mailer().sendMail({
-        from: getSetting('gmail_user'),
-        to: req.body?.to || getSetting('gmail_user'),
-        subject: 'בדיקת חיבור – מערכת הגמ"ח',
-        html: '<div dir="rtl">✅ החיבור למייל עובד! נשלח ממערכת ניהול הגמ"ח.</div>',
+      await deliverMail({
+        to: req.body?.to || mailFrom(),
+        subject: 'בדיקת חיבור – מערכת אמא במשמרת',
+        html: `✅ החיבור למייל עובד! נשלח דרך ${mailProvider() === 'resend' ? 'Resend' : 'Gmail'}.`,
       });
       res.json({ ok: true });
     } catch (e) { res.status(400).json({ error: e.message }); }
