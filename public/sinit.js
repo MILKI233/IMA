@@ -83,6 +83,78 @@ async function sinitLoadAll() {
     }
 }
 
+// הודעת אישור צפה, במקום alert שחוסם את הדף
+function sinitToast(msg, kind = 'ok') {
+    let t = el('sinitToast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'sinitToast';
+        document.body.append(t);
+    }
+    t.className = `sinit-toast ${kind}`;
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), kind === 'err' ? 7000 : 4000);
+}
+
+/* ---------- חלונית הקלדה ---------- */
+// מחליפה את prompt() של הדפדפן: נפתחת במרכז המסך, רחבה, עם שדה טקסט גדול.
+// נבנית פעם אחת ומוזרקת ל-DOM, כדי שתעבוד גם בדף הקמפיין וגם בדף המתנדבות.
+function sinitPrompt({ title, hint = '', value = '', placeholder = '', okLabel = 'שמירה', rows = 6 }) {
+    return new Promise((resolve) => {
+        let box = el('sinitPromptOverlay');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'sinitPromptOverlay';
+            box.className = 'modal-overlay hidden';
+            box.innerHTML = `
+                <div class="modal-box prompt-box">
+                    <div class="modal-head">
+                        <h3 id="sinitPromptTitle"></h3>
+                        <button class="modal-close" id="sinitPromptClose">✕</button>
+                    </div>
+                    <div class="modal-meta" id="sinitPromptHint"></div>
+                    <textarea id="sinitPromptInput" class="prompt-input"></textarea>
+                    <div class="prompt-actions">
+                        <button class="btn" id="sinitPromptOk"></button>
+                        <button class="btn secondary" id="sinitPromptCancel">ביטול</button>
+                        <span class="hint">Ctrl+Enter לשמירה מהירה</span>
+                    </div>
+                </div>`;
+            document.body.append(box);
+        }
+        const input = el('sinitPromptInput');
+        el('sinitPromptTitle').textContent = title;
+        el('sinitPromptHint').textContent = hint;
+        el('sinitPromptHint').style.display = hint ? '' : 'none';
+        el('sinitPromptOk').textContent = okLabel;
+        input.value = value;
+        input.placeholder = placeholder;
+        input.rows = rows;
+        box.classList.remove('hidden');
+        setTimeout(() => { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }, 30);
+
+        const close = (result) => {
+            box.classList.add('hidden');
+            el('sinitPromptOk').onclick = null;
+            el('sinitPromptCancel').onclick = null;
+            el('sinitPromptClose').onclick = null;
+            box.onclick = null;
+            input.onkeydown = null;
+            resolve(result);
+        };
+        el('sinitPromptOk').onclick = () => close(input.value);
+        el('sinitPromptCancel').onclick = () => close(null);
+        el('sinitPromptClose').onclick = () => close(null);
+        box.onclick = (e) => { if (e.target === box) close(null); };
+        input.onkeydown = (e) => {
+            if (e.key === 'Escape') close(null);
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) close(input.value);
+        };
+    });
+}
+
 /* ---------- סטטיסטיקה ---------- */
 function renderStats() {
     if (!el('sinitStats')) return;
@@ -311,8 +383,12 @@ async function sinitDeleteBiz(id) {
 async function sinitMoveToQuestions(id) {
     const b = S.businesses.find((x) => x.id === id);
     if (!b) return;
-    const text = prompt(`מה צריך לטפל בעסק "${b.name}"?\nהטקסט ייפתח כשאלה בלשונית "שאלות ומענה", מקושרת לעסק.`,
-        `לטפל בעסק ${b.name}${b.status ? ` (סטטוס: ${b.status})` : ''}`);
+    const text = await sinitPrompt({
+        title: `העברה לטיפול — ${b.name}`,
+        hint: 'הטקסט ייפתח כשאלה בלשונית "שאלות ומענה", מקושרת לעסק הזה.',
+        value: `לטפל בעסק ${b.name}${b.status ? ` (סטטוס: ${b.status})` : ''}`,
+        okLabel: 'העברה לשאלות', rows: 5,
+    });
     if (text === null || !text.trim()) return;
     try {
         const r = await api('/api/sinit/questions', { method: 'POST', body: {
@@ -322,7 +398,7 @@ async function sinitMoveToQuestions(id) {
         if (S.modalId === id) await refreshModal();
         // גלילה ישירה לרשומה החדשה, כדי שרואים לאן זה הלך
         el('hd-squestions')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        alert(r.ok ? `העסק הועבר לטיפול בלשונית "שאלות ומענה".` : 'ההעברה נכשלה');
+        sinitToast(r.ok ? 'העסק הועבר לטיפול — ראי בלשונית "שאלות ומענה"' : 'ההעברה נכשלה', r.ok ? 'ok' : 'err');
     } catch (e) { alert(e.message); }
 }
 
@@ -443,7 +519,7 @@ async function sinitToggleStage(stageId, done) {
 }
 
 async function sinitStageNote(stageId) {
-    const note = prompt('הערה לשלב הזה:');
+    const note = await sinitPrompt({ title: 'הערה לשלב הסגירה', placeholder: 'מה קרה בשלב הזה...', rows: 4 });
     if (note === null) return;
     try {
         const stage = (await api(`/api/sinit/businesses/${S.modalId}/detail`)).stages.find((s) => s.id === stageId);
@@ -485,6 +561,9 @@ function renderQuestions() {
             </div>
             ${x.answer ? `<div class="q-answer"><b>התשובה:</b> ${esc(x.answer)}
                 <span class="hint">${esc(x.answered_by || '')} · ${fmtDate(x.answered_at)}</span></div>` : ''}
+            ${x.business_id ? `<div class="q-actions">
+                <button class="btn secondary" onclick="sinitOpenBiz(${x.business_id})">📋 פרטי הדיווח של ${esc(x.business_name || 'העסק')}</button>
+            </div>` : ''}
             ${canWrite() ? `<div class="q-actions">
                 <button class="btn secondary" onclick="sinitAddStep(${x.id})">➕ שלב מענה</button>
                 <button class="btn" onclick="sinitAnswer(${x.id})">✍ ${x.answer ? 'עדכון התשובה' : 'כתיבת תשובה'}</button>
@@ -503,14 +582,18 @@ async function sinitAddQuestion() {
         } });
         el('squestionText').value = '';
         if (el('squestionMail')?.checked ?? true) {
-            alert(r.mail?.sent ? `השאלה נרשמה ונשלח מייל ל${r.mail.to}` : `השאלה נרשמה, אבל המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`);
+            sinitToast(r.mail?.sent ? `השאלה נרשמה ונשלח מייל ל${r.mail.to}` : `השאלה נרשמה, אבל המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`, r.mail?.sent ? 'ok' : 'err');
         }
         await Promise.all([sinitLoadQuestions(), sinitLoadOverview()]);
     } catch (e) { alert(e.message); }
 }
 
 async function sinitAddStep(id) {
-    const text = prompt('מה נעשה עכשיו בשאלה הזו? (שלב מענה)');
+    const text = await sinitPrompt({
+        title: 'הוספת שלב מענה',
+        hint: 'מה נעשה עכשיו בשאלה הזו — למי פנו, מה נבדק, מה הוחלט.',
+        placeholder: 'למשל: העברתי לנחמי לבדיקה מול ההנהלה', rows: 5, okLabel: 'הוספת שלב',
+    });
     if (!text || !text.trim()) return;
     try { await api(`/api/sinit/questions/${id}/steps`, { method: 'POST', body: { text: text.trim() } }); await sinitLoadQuestions(); }
     catch (e) { alert(e.message); }
@@ -518,7 +601,12 @@ async function sinitAddStep(id) {
 
 async function sinitAnswer(id) {
     const current = S.questions.find((q) => q.id === id)?.answer || '';
-    const answer = prompt('התשובה לשאלה:', current);
+    const q = S.questions.find((x) => x.id === id);
+    const answer = await sinitPrompt({
+        title: 'כתיבת התשובה',
+        hint: q ? q.text : '',
+        value: current, placeholder: 'התשובה שתיראה לכל מי שתשאל את זה...', rows: 8, okLabel: 'שמירת התשובה',
+    });
     if (answer === null) return;
     try {
         await api(`/api/sinit/questions/${id}`, { method: 'PUT', body: { answer, status: 'נענתה' } });
@@ -590,9 +678,9 @@ async function sinitAsk() {
 async function sinitEscalate(logId) {
     try {
         const r = await api(`/api/sinit/ai/escalate/${logId}`, { method: 'POST' });
-        alert(r.mail?.sent
+        sinitToast(r.mail?.sent
             ? `השאלה נרשמה ונשלח מייל ל${r.mail.to}`
-            : `השאלה נרשמה אצל המנהלת, אבל המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`);
+            : `השאלה נרשמה אצל המנהלת, אבל המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`, r.mail?.sent ? 'ok' : 'err');
         await Promise.all([sinitLoadAi(), sinitLoadQuestions(), sinitLoadOverview()]);
     } catch (e) { alert(e.message); }
 }
@@ -629,7 +717,7 @@ function wireSinit() {
     });
 
     on('sbizAddStatusBtn', 'click', async () => {
-        const name = prompt('שם הסטטוס החדש:');
+        const name = await sinitPrompt({ title: 'סטטוס חדש לעסקים', placeholder: 'למשל: ממתין לחשבונית', rows: 2, okLabel: 'הוספה' });
         if (!name || !name.trim()) return;
         try { await api('/api/sinit/statuses', { method: 'POST', body: { name: name.trim() } }); await sinitLoadOverview(); }
         catch (e) { alert(e.message); }
@@ -641,9 +729,9 @@ function wireSinit() {
         try {
             const r = await api('/api/sinit/sync', { method: 'POST' });
             await sinitLoadOverview();
-            alert('הסנכרון הסתיים:\n' + r.sources.map((s) => s.error
-                ? `${s.name}: שגיאה — ${s.error}`
-                : `${s.name}: ${s.rows} שורות, ${s.added} חדשים, ${s.updated} עודכנו`).join('\n'));
+            sinitToast('הסנכרון הסתיים — ' + r.sources.map((s) => (s.error
+                ? `${s.name}: שגיאה`
+                : `${s.name}: +${s.added}`)).join(' · '), (r.errors || []).length ? 'err' : 'ok');
         } catch (e) { alert(e.message); }
         finally { btn.disabled = false; btn.textContent = '⟳ סנכרון עכשיו'; }
     });
@@ -676,7 +764,7 @@ function wireSinit() {
         try {
             const r = await api('/api/sinit/questions', { method: 'POST', body: { text, business_id: S.modalId, send_email: true } });
             el('sbizQuestionText').value = '';
-            alert(r.mail?.sent ? `השאלה נרשמה ונשלח מייל ל${r.mail.to}` : `השאלה נרשמה, המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`);
+            sinitToast(r.mail?.sent ? `השאלה נרשמה ונשלח מייל ל${r.mail.to}` : `השאלה נרשמה, המייל לא נשלח: ${r.mail?.error || 'שגיאה'}`, r.mail?.sent ? 'ok' : 'err');
             await Promise.all([sinitLoadQuestions(), sinitLoadOverview()]);
             await refreshModal();
         } catch (e) { alert(e.message); }
