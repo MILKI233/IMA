@@ -5,11 +5,13 @@ import { randomBytes } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { utils, write } from 'xlsx';
 import { db, audit, getSetting, getAllCampaignSettings, setCampaignSettings, isManagerOrAbove, hasFeature } from './db.js';
-import { getCampaignSheetsCache, fetchSheetRows } from './sheets-sync.js';
+import { getCampaignSheetsCache, fetchSheetRows, POINTS_SHEET_ID } from './sheets-sync.js';
 import { parseDocx, extractPairsFromText } from './docx.js';
 import { sendMailTo, mailProvider, mailReady, mailFrom } from './integrations.js';
 
 const BUILTIN_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
+// לשונית הדיווחים בגיליון הנקודות — כל גיוס שדווח דרך הטלפון נרשם שם
+export const REPORTS_SHEET_TAB = 'פרטי דיווחים';
 // הפלטה להדגשת עסק — צבעים רכים שנקראים טוב מתחת לטקסט שחור
 export const HIGHLIGHT_COLORS = ['#fde8e6', '#fdf3d7', '#e4f6e9', '#e2eefc', '#efe6fa', '#fae6f1', '#e6f6f8', '#f0f0f0'];
 
@@ -94,10 +96,35 @@ function upsertFromSource(rec, sourceName) {
     return { outcome: 'updated', id: existing.id };
 }
 
-// מאתרת עמודה לפי מילות מפתח חלקיות בכותרת — כך הסנכרון לא נשבר אם ניסוח הכותרת בטופס שונה
-function col(row, words) {
-    const key = Object.keys(row).find((k) => words.some((w) => k.replace(/\s+/g, ' ').includes(w)));
-    return key ? row[key] : '';
+// מאתרת עמודה לפי מילות מפתח חלקיות בכותרת, **לפי סדר העדיפות של מילות המפתח**.
+// הסדר קריטי: בגיליון הדיווחים יש גם "טלפון" (של המדווחת) וגם "טלפון העסק" — חיפוש
+// לפי סדר העמודות היה מחזיר את הראשון שנתקל בו ומשבץ את הטלפון הלא נכון.
+function col(row, words, exclude = []) {
+    const keys = Object.keys(row).filter((k) => !exclude.some((x) => k.includes(x)));
+    for (const w of words) {
+        const key = keys.find((k) => k.replace(/\s+/g, ' ').includes(w));
+        if (key && String(row[key] ?? '').trim() !== '') return row[key];
+    }
+    return '';
+}
+
+// עמודות שלעולם אינן שם של עסק — בלי החרגה כזו, מילת מפתח כללית כמו "עסק"
+// נתפסת על "טלפון העסק" ושם העסק מתמלא במספר טלפון.
+const NOT_A_NAME = ['טלפון', 'נייד', 'פלאפון', 'מייל', 'אימייל', 'דוא', 'תאריך', 'שעה', 'סכום', 'עלות', 'שווי'];
+
+// מיפוי שורה של גיליון לשדות עסק — משותף לכל מקורות הסנכרון
+function rowToBusiness(row) {
+    return {
+        name: col(row, ['שם העסק', 'שם עסק', 'שם התורם', 'תורם', 'חנות', 'ספק', 'עסק'], NOT_A_NAME),
+        phone: col(row, ['טלפון העסק', 'נייד העסק', 'טלפון', 'נייד', 'פלאפון']),
+        email: col(row, ['מייל העסק', 'אימייל העסק', 'מייל', 'אימייל', 'דוא']),
+        contacted_by: col(row, ['שם המגייס', 'מי פנתה', 'מגייסת', 'אחראית', 'שם המדווח', 'מתנדבת']),
+        product: col(row, ['תיאור המוצר', 'המוצר שגויס', 'מוצר', 'תרומה', 'פרס']),
+        value_nis: col(row, ['סכום עלות המוצר', 'שווי', 'סכום', 'עלות', 'ערך']),
+        pickup: col(row, ['איסוף המוצר', 'איסוף']),
+        response: col(row, ['תגובה', 'הערה', 'הערות']),
+        status: clean(col(row, ['סטטוס', 'מצב'])),
+    };
 }
 
 export async function syncSinitBusinesses() {
@@ -121,25 +148,33 @@ export async function syncSinitBusinesses() {
     result.added += added; result.updated += updated;
     if (cache.error) result.errors.push(`גליונות הקמפיין: ${cache.error}`);
 
-    // (2) מקורות נוספים שהמנהלת הגדירה בעצמה
+    // (2) לשונית "פרטי דיווחים" בגיליון הנקודות — כל דיווח גיוס שנכנס דרך הטלפון
+    try {
+        const rows = await fetchSheetRows(POINTS_SHEET_ID, REPORTS_SHEET_TAB);
+        let a = 0, u = 0;
+        for (const row of rows) {
+            const rec = rowToBusiness(row);
+            if (!clean(rec.name)) continue;   // דיווח בלי שם תורם — אין ממה ליצור עסק
+            const res = upsertFromSource(rec, 'פרטי דיווחים');
+            if (res.outcome === 'added') a++; else if (res.outcome === 'updated') u++;
+        }
+        result.sources.push({ name: 'פרטי דיווחים', rows: rows.length, added: a, updated: u });
+        result.added += a; result.updated += u;
+    } catch (e) {
+        result.errors.push(`פרטי דיווחים: ${e.message}`);
+        result.sources.push({ name: 'פרטי דיווחים', error: e.message });
+    }
+
+    // (3) מקורות נוספים שהמנהלת הגדירה בעצמה
     const sources = db.prepare('SELECT * FROM campaign_sync_sources WHERE active = 1 ORDER BY id ASC').all();
     for (const src of sources) {
         try {
             const rows = await fetchSheetRows(src.sheet_id, src.sheet_name);
             let a = 0, u = 0;
             for (const row of rows) {
-                const name = clean(col(row, ['שם העסק', 'שם עסק', 'עסק', 'חנות', 'ספק']));
-                if (!name) continue;
-                const res = upsertFromSource({
-                    name,
-                    phone: col(row, ['טלפון', 'נייד', 'פלאפון']),
-                    email: col(row, ['מייל', 'אימייל', 'דוא']),
-                    contacted_by: col(row, ['מי פנתה', 'מגייסת', 'שם המגייסת', 'אחראית', 'מתנדבת']),
-                    product: col(row, ['מוצר', 'תרומה', 'פרס']),
-                    value_nis: col(row, ['שווי', 'סכום', 'ערך']),
-                    response: col(row, ['תגובה', 'הערה', 'הערות']),
-                    status: clean(col(row, ['סטטוס', 'מצב'])),
-                }, src.name);
+                const rec = rowToBusiness(row);
+                if (!clean(rec.name)) continue;
+                const res = upsertFromSource(rec, src.name);
                 if (res.outcome === 'added') a++; else if (res.outcome === 'updated') u++;
             }
             db.prepare("UPDATE campaign_sync_sources SET last_synced_at = datetime('now','localtime'), last_rows = ?, last_error = NULL WHERE id = ?")
@@ -569,12 +604,24 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
     router.delete('/businesses/:id', mustLogin, mustManager, (req, res) => {
         const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
         if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });
-        db.prepare('DELETE FROM campaign_business_stages WHERE business_id = ?').run(before.id);
-        db.prepare('DELETE FROM campaign_business_notes WHERE business_id = ?').run(before.id);
-        db.prepare('DELETE FROM campaign_businesses WHERE id = ?').run(before.id);
-        audit(actor(req), 'campaign.business.delete', 'campaign_businesses', before.id, before, null);
+        const who = actor(req);
+        // שאלות שנפתחו על העסק נשארות — הן עשויות להיות באמצע טיפול. מנתקים את הקישור
+        // ומוסיפים שלב שמתעד שהעסק נמחק, כדי שלא יישאר הקשר חסר. בלי זה המחיקה נכשלת
+        // על אילוץ המפתח הזר שבין השאלות לעסקים.
+        const purge = db.transaction(() => {
+            const linked = db.prepare('SELECT id FROM campaign_questions WHERE business_id = ?').all(before.id);
+            const addStep = db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)');
+            for (const q of linked) addStep.run(q.id, `העסק "${before.name}" נמחק מרשימת העסקים`, who);
+            db.prepare('UPDATE campaign_questions SET business_id = NULL WHERE business_id = ?').run(before.id);
+            db.prepare('DELETE FROM campaign_business_stages WHERE business_id = ?').run(before.id);
+            db.prepare('DELETE FROM campaign_business_notes WHERE business_id = ?').run(before.id);
+            db.prepare('DELETE FROM campaign_businesses WHERE id = ?').run(before.id);
+            return linked.length;
+        });
+        const detached = purge();
+        audit(who, 'campaign.business.delete', 'campaign_businesses', before.id, before, { detachedQuestions: detached });
         touch();
-        res.json({ ok: true });
+        res.json({ ok: true, detachedQuestions: detached });
     });
 
     // כל מה שידוע על עסק אחד: פרטים, תגובות, שלבי סגירה, שאלות עליו ואזכורים בגיליון התנועות

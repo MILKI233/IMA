@@ -173,6 +173,20 @@ function stageBar(b, big = false) {
     </div>`;
 }
 
+// פעולות על עסק: העברה ללשונית השאלות לטיפול, ומחיקה (למנהלת בלבד)
+function rowActions(b) {
+    const parts = [];
+    if (canWrite()) {
+        parts.push(`<button class="btn secondary act-btn" title="פתיחת שאלה על העסק הזה בלשונית שאלות ומענה"
+            onclick="event.stopPropagation();sinitMoveToQuestions(${b.id})">➜ לשאלות</button>`);
+    }
+    if (S.overview?.isManager) {
+        parts.push(`<button class="btn danger act-btn" title="מחיקת העסק וכל ההיסטוריה שלו"
+            onclick="event.stopPropagation();sinitDeleteBiz(${b.id})">מחיקה</button>`);
+    }
+    return parts.join(' ');
+}
+
 function colorButtons(b) {
     if (!canWrite()) return '';
     return `<button class="dot-btn${b.highlight ? ' on' : ''}" title="הדגשה" onclick="event.stopPropagation();sinitToggleHighlight(${b.id})">⭐</button>`
@@ -197,7 +211,7 @@ function renderBusinesses() {
 function tableHtml(rows) {
     return `<table class="biz-table"><thead><tr>
         <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>מוצר</th>
-        <th>סטטוס</th><th>שלבי סגירה</th><th>תגובה אחרונה</th><th>מקור</th>${canWrite() ? '<th>צבע</th>' : ''}
+        <th>סטטוס</th><th>שלבי סגירה</th><th>תגובה אחרונה</th><th>מקור</th>${canWrite() ? '<th>צבע</th>' : ''}<th></th>
     </tr></thead><tbody>${rows.map((b) => `
         <tr class="biz-row${b.highlight ? ' marked' : ''}" style="${b.color ? `background:${esc(b.color)}` : ''}" onclick="sinitOpenBiz(${b.id})">
             <td>${b.highlight ? '⭐ ' : ''}${esc(b.name)}</td>
@@ -210,6 +224,7 @@ function tableHtml(rows) {
             <td class="cell-wrap">${b.response ? esc(b.response) : '<span class="hint">אין תגובה</span>'}</td>
             <td><span class="src-tag">${esc(b.source || 'ידני')}</span></td>
             ${canWrite() ? `<td class="color-cell">${colorButtons(b)}</td>` : ''}
+            <td class="act-cell">${rowActions(b)}</td>
         </tr>`).join('')}</tbody></table>`;
 }
 
@@ -233,6 +248,7 @@ function bizCard(b) {
             ${b.notes_count ? `<span class="hint">${b.notes_count} רשומות</span>` : ''}
             <span class="bc-colors">${colorButtons(b)}</span>
         </footer>
+        ${rowActions(b) ? `<div class="bc-actions">${rowActions(b)}</div>` : ''}
     </article>`;
 }
 
@@ -282,9 +298,32 @@ async function sinitToggleHighlight(id) {
 }
 
 async function sinitDeleteBiz(id) {
-    if (!confirm('למחוק את העסק, התגובות ושלבי הסגירה שלו?')) return;
-    try { await api(`/api/sinit/businesses/${id}`, { method: 'DELETE' }); await sinitLoadOverview(); }
-    catch (e) { alert(e.message); }
+    const b = S.businesses.find((x) => x.id === id);
+    if (!confirm(`למחוק את "${b?.name || 'העסק'}"? יימחקו גם כל התגובות וההיסטוריה שלו, וזה בלתי הפיך.`)) return;
+    try {
+        await api(`/api/sinit/businesses/${id}`, { method: 'DELETE' });
+        if (S.modalId === id) { S.modalId = null; el('sbizModalOverlay')?.classList.add('hidden'); }
+        await sinitLoadOverview();
+    } catch (e) { alert(e.message); }
+}
+
+// העברת עסק לטיפול בלשונית "שאלות ומענה" — נפתחת שאלה מקושרת לעסק, עם שלבי מענה
+async function sinitMoveToQuestions(id) {
+    const b = S.businesses.find((x) => x.id === id);
+    if (!b) return;
+    const text = prompt(`מה צריך לטפל בעסק "${b.name}"?\nהטקסט ייפתח כשאלה בלשונית "שאלות ומענה", מקושרת לעסק.`,
+        `לטפל בעסק ${b.name}${b.status ? ` (סטטוס: ${b.status})` : ''}`);
+    if (text === null || !text.trim()) return;
+    try {
+        const r = await api('/api/sinit/questions', { method: 'POST', body: {
+            text: text.trim(), business_id: id, send_email: false,
+        } });
+        await Promise.all([sinitLoadQuestions(), sinitLoadOverview()]);
+        if (S.modalId === id) await refreshModal();
+        // גלילה ישירה לרשומה החדשה, כדי שרואים לאן זה הלך
+        el('hd-squestions')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        alert(r.ok ? `העסק הועבר לטיפול בלשונית "שאלות ומענה".` : 'ההעברה נכשלה');
+    } catch (e) { alert(e.message); }
 }
 
 /* ---------- חלון עסק ---------- */
@@ -367,8 +406,10 @@ function renderBizModal(d) {
             : '<div class="hint">אין אזכורים בגיליון התנועות</div>';
     }
     if (el('sbizDeleteWrap')) {
-        el('sbizDeleteWrap').innerHTML = S.overview?.isManager
-            ? `<button class="btn danger" onclick="sinitDeleteBiz(${b.id})">מחיקת העסק</button>` : '';
+        el('sbizDeleteWrap').innerHTML = [
+            canWrite() ? `<button class="btn secondary" onclick="sinitMoveToQuestions(${b.id})">➜ העברה לשאלות ומענה</button>` : '',
+            S.overview?.isManager ? `<button class="btn danger" onclick="sinitDeleteBiz(${b.id})">מחיקת העסק</button>` : '',
+        ].filter(Boolean).join(' ');
     }
 }
 
