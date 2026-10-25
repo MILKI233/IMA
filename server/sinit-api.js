@@ -6,7 +6,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { utils, write } from 'xlsx';
 import { db, audit, getSetting, getAllCampaignSettings, setCampaignSettings, isManagerOrAbove, hasFeature } from './db.js';
 import { getCampaignSheetsCache, fetchSheetRows } from './sheets-sync.js';
-import { parseDocx } from './docx.js';
+import { parseDocx, extractPairsFromText } from './docx.js';
 import { sendMailTo, mailProvider, mailReady, mailFrom } from './integrations.js';
 
 const BUILTIN_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
@@ -154,6 +154,63 @@ export async function syncSinitBusinesses() {
         }
     }
     return result;
+}
+
+// ---------- מסמך התשובות של המנהלת (Google Docs) ----------
+// הלולאה: ה-AI לא ידע לענות → נשלח מייל עם קישור למסמך → המנהלת כותבת שם את התשובה
+// → המערכת שואבת את המסמך ומכניסה את התשובות לבסיס הידע → בפעם הבאה יש מענה.
+export const ANSWERS_DOC_NAME = 'מסמך התשובות של המנהלת (Google Docs)';
+
+export function answersDocId() {
+    const url = getAllCampaignSettings().campaign_answers_doc_url || '';
+    const m = url.match(/\/document\/d\/([a-zA-Z0-9-_]+)/) || url.match(/^([a-zA-Z0-9-_]{20,})$/);
+    return m ? m[1] : null;
+}
+
+export async function syncAnswersDoc() {
+    const id = answersDocId();
+    if (!id) return { configured: false };
+    const res = await fetch(`https://docs.google.com/document/d/${id}/export?format=txt`);
+    if (res.status === 401 || res.status === 403) {
+        throw new Error('המסמך סגור לקריאה. יש לפתוח אותו ב-Google Docs ← שיתוף ← "כל מי שיש לו הקישור" בהרשאת צפייה, ואז לסנכרן שוב.');
+    }
+    if (res.status === 404) throw new Error('המסמך לא נמצא — ייתכן שהקישור שגוי או שהמסמך נמחק.');
+    if (!res.ok) throw new Error(`שליפת המסמך נכשלה (${res.status})`);
+
+    let text = await res.text();
+    // גוגל מחזיר BOM בתחילת הייצוא, שמבלבל את זיהוי השורה הראשונה
+    text = text.replace(/^﻿/, '');
+    const { text: clean_, pairs } = extractPairsFromText(text);
+
+    // מסמך אחד קבוע במסד — כל סנכרון מחליף את תוכנו, כדי שעריכה בגוגל תשתקף ולא תצטבר
+    const existing = db.prepare('SELECT id FROM campaign_kb_docs WHERE filename = ?').get(ANSWERS_DOC_NAME);
+    let docId = existing?.id;
+    if (docId) {
+        db.prepare('DELETE FROM campaign_kb_pairs WHERE doc_id = ?').run(docId);
+        db.prepare('UPDATE campaign_kb_docs SET raw_text = ?, char_count = ?, uploaded_at = datetime(\'now\',\'localtime\') WHERE id = ?')
+            .run(clean_, clean_.length, docId);
+    } else {
+        docId = db.prepare('INSERT INTO campaign_kb_docs (filename, raw_text, char_count, uploaded_by) VALUES (?, ?, ?, ?)')
+            .run(ANSWERS_DOC_NAME, clean_, clean_.length, 'סנכרון אוטומטי').lastInsertRowid;
+    }
+    const ins = db.prepare('INSERT INTO campaign_kb_pairs (doc_id, question, answer) VALUES (?, ?, ?)');
+    for (const p of pairs) ins.run(docId, p.question, p.answer);
+    return { configured: true, pairs: pairs.length, chars: clean_.length, docId };
+}
+
+// הטקסט שנשלח במייל כשאין מענה — כולל קישור למסמך ושורות מוכנות להדבקה
+function answersDocMailBlock(question) {
+    const url = getAllCampaignSettings().campaign_answers_doc_url;
+    if (!url) return '';
+    return `
+        <div style="background:#f6f8fb;border-right:3px solid #14497c;padding:12px 14px;margin:14px 0">
+          <p style="margin:0 0 8px"><b>כדי שהמערכת תדע לענות על זה בפעם הבאה:</b></p>
+          <p style="margin:0 0 8px">פתחי את <a href="${url}">מסמך התשובות</a> והוסיפי בסופו את שתי השורות האלה
+             (אפשר פשוט להעתיק אותן מכאן ולהשלים את התשובה):</p>
+          <pre style="background:#fff;border:1px solid #e3e8f0;padding:10px;white-space:pre-wrap;font-family:Arial,sans-serif;margin:0">שאלה: ${question}
+תשובה: </pre>
+          <p style="margin:8px 0 0;color:#5a6b85;font-size:13px">המערכת קוראת את המסמך כל כמה דקות, ומהרגע שהתשובה כתובה שם — היא תינתן אוטומטית לשאלות הבאות.</p>
+        </div>`;
 }
 
 // אזכורים של העסק בגיליון התנועות (מי דיווחה עליו בטלפון) — תצוגה בלבד, לא נשמר במסד
@@ -405,6 +462,15 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             mailReady: mailReady(),
             mailProvider: mailProvider(),
             mailFrom: mailFrom() || null,
+            answersDocUrl: getAllCampaignSettings().campaign_answers_doc_url || '',
+            answersDocPairs: (() => {
+                try {
+                    const d = db.prepare('SELECT id, uploaded_at FROM campaign_kb_docs WHERE filename = ?').get(ANSWERS_DOC_NAME);
+                    if (!d) return null;
+                    const c = db.prepare('SELECT COUNT(*) c FROM campaign_kb_pairs WHERE doc_id = ?').get(d.id).c;
+                    return { pairs: c, syncedAt: d.uploaded_at };
+                } catch { return null; }
+            })(),
             resendKeySet: !!getSetting('resend_api_key'),
             resendFrom: getSetting('resend_from') || '',
             sheetsSyncedAt: cache.syncedAt,
@@ -644,7 +710,8 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                     html: `<p>${actor(req)} שאלה:</p><blockquote>${text}</blockquote>
                            ${biz ? `<p>בהקשר של העסק: <b>${biz.name}</b></p>` : ''}
                            ${origin === 'AI' ? '<p>השאלה נשאלה קודם את המענה האוטומטי ולא נמצאה לה תשובה בחומר שהועלה למערכת.</p>' : ''}
-                           <p>אפשר לענות ישירות במערכת, בלשונית "מכירה סינית" ← שאלות ושלבי מענה.</p>`,
+                           ${answersDocMailBlock(text)}
+                           <p>אפשר גם לענות ישירות במערכת, בלשונית "מכירה סינית" ← שאלות ושלבי מענה.</p>`,
                 });
                 mail.sent = true;
                 db.prepare("UPDATE campaign_questions SET email_sent_at = datetime('now','localtime'), email_to = ?, status = 'נשלחה למנהלת' WHERE id = ?")
@@ -736,6 +803,17 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             { filename, pairs: parsed.pairs.length, chars: parsed.text.length });
         touch();
         res.json({ ok: true, id: r.lastInsertRowid, pairs: parsed.pairs.length, chars: parsed.text.length });
+    });
+
+    // שליפה ידנית של מסמך התשובות (רץ גם אוטומטית כל 5 דקות)
+    router.post('/answers-doc/sync', mustLogin, requireFeature('campaign_settings'), async (req, res) => {
+        try {
+            const r = await syncAnswersDoc();
+            if (!r.configured) return res.status(400).json({ error: 'לא הוגדר קישור למסמך התשובות' });
+            audit(actor(req), 'campaign.sinit.answers_doc_sync', 'campaign_kb_docs', r.docId, null, { pairs: r.pairs });
+            touch();
+            res.json(r);
+        } catch (e) { res.status(400).json({ error: e.message }); }
     });
 
     router.delete('/kb/:id', mustLogin, requireFeature('campaign_settings'), (req, res) => {
@@ -856,7 +934,8 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                 html: `<p>${actor(req)} שאלה את המענה האוטומטי של לשונית "מכירה סינית":</p>
                        <blockquote>${entry.question}</blockquote>
                        <p>לא נמצאה תשובה בחומר שהועלה למערכת, ולכן השאלה מועברת אליך.</p>
-                       <p>לתשובה: מערכת אמא במשמרת ← קמפיין ← מכירה סינית ← שאלות ושלבי מענה.</p>`,
+                       ${answersDocMailBlock(entry.question)}
+                       <p>אפשר גם לענות ישירות במערכת: קמפיין ← מכירה סינית ← שאלות ושלבי מענה.</p>`,
             });
             mail.sent = true;
             db.prepare("UPDATE campaign_questions SET email_sent_at = datetime('now','localtime'), email_to = ?, status = 'נשלחה למנהלת' WHERE id = ?")
@@ -879,9 +958,14 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
             return res.status(400).json({ error: 'כתובת המייל אינה תקינה' });
         }
+        const docUrl = clean(req.body?.campaign_answers_doc_url);
+        if (docUrl && !/\/document\/d\/[a-zA-Z0-9-_]+/.test(docUrl)) {
+            return res.status(400).json({ error: 'הקישור צריך להיות למסמך Google Docs (כתובת שמכילה /document/d/...)' });
+        }
         setCampaignSettings({
             campaign_admin_email: email,
             campaign_admin_name: clean(req.body?.campaign_admin_name) || 'מנהלת המערכת',
+            ...(req.body?.campaign_answers_doc_url !== undefined ? { campaign_answers_doc_url: docUrl } : {}),
         });
         audit(actor(req), 'campaign.sinit.settings', 'campaign_settings', null, null, { campaign_admin_email: email });
         touch();

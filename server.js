@@ -12,7 +12,7 @@ import { integrationsRouter, scheduleAutoBackup, scheduleDailyReport, sendUrgent
 import { createYemotRouter } from './server/yemot.js';
 import { createCampaignYemotRouter } from './server/campaign-yemot.js';
 import { campaignApiRouter } from './server/campaign-api.js';
-import { sinitApiRouter, syncSinitBusinesses } from './server/sinit-api.js';
+import { sinitApiRouter, syncSinitBusinesses, syncAnswersDoc } from './server/sinit-api.js';
 import { scheduleCampaignSheetsSync, getCampaignSheetsCache, syncCampaignSheets, pushSheetUpdate, checkSyncPassword, POINTS_SHEET_ID, HUBS_SHEET_ID } from './server/sheets-sync.js';
 
 const PRIORITIES = ['רגיל', 'דחוף', 'חשוב', 'להמשך'];
@@ -1039,9 +1039,15 @@ scheduleCampaignSheetsSync();
 
 // רשימת העסקים של לשונית "מכירה סינית" נמשכת מהטפסים והגליונות — דקה אחרי העלייה (כדי שהקאש
 // של הגליונות יהיה מלא) ואחר כך כל 5 דקות. כפתור "סנכרון עכשיו" בלשונית מריץ את אותו תהליך מיידית.
-const runSinitSync = () => syncSinitBusinesses()
-  .then((r) => { if (r.added || r.updated) console.log(`[מכירה סינית] סנכרון עסקים: ${r.added} חדשים, ${r.updated} עודכנו`); })
-  .catch((e) => console.error('[מכירה סינית] סנכרון העסקים נכשל:', e.message));
+const runSinitSync = () => {
+  syncSinitBusinesses()
+    .then((r) => { if (r.added || r.updated) console.log(`[מכירה סינית] סנכרון עסקים: ${r.added} חדשים, ${r.updated} עודכנו`); })
+    .catch((e) => console.error('[מכירה סינית] סנכרון העסקים נכשל:', e.message));
+  // מסמך התשובות של המנהלת — תשובות שהיא כותבת שם נכנסות לבסיס הידע של ה-AI
+  syncAnswersDoc()
+    .then((r) => { if (r.configured && r.pairs) console.log(`[מכירה סינית] מסמך התשובות: ${r.pairs} תשובות נקלטו`); })
+    .catch((e) => console.error('[מכירה סינית] שליפת מסמך התשובות נכשלה:', e.message));
+};
 setTimeout(runSinitSync, 60 * 1000);
 setInterval(runSinitSync, 5 * 60 * 1000);
 

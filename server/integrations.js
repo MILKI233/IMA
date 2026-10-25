@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import nodemailer from 'nodemailer';
-import { db, audit, getSetting, setSetting, DB_PATH } from './db.js';
+import { db, audit, getSetting, setSetting, DB_PATH, TASK_IRRELEVANT } from './db.js';
 import { vEmail, vAmount, firstError } from './validate.js';
 import { isoDate } from './hebrew.js';
 
@@ -79,57 +79,273 @@ export async function deliverMail({ to, subject, html }) {
   return { to };
 }
 
-// תקציר יומי: ביצוע משימות + פעילות קמפיין המכירה הסינית (מתנדבות חדשות, נקודות, אישורים ממתינים, מלאי מוקדים)
+// תקציר יומי — סטטיסטיקות מכל אזור במערכת.
+// כל אזור נאסף בנפרד ובתוך try משלו, כדי שטבלה חסרה או מודול כבוי לא יפילו את הדוח כולו.
 export function buildDailySummary() {
   const today = isoDate(new Date());
-  const tasks = db.prepare(`
-    SELECT COUNT(*) AS total, SUM(status='done') AS done FROM task_instances WHERE due_date = ?`).get(today);
-  const openProblems = db.prepare(`SELECT COUNT(*) c FROM problems WHERE status != 'נבדק'`).get().c;
+  const one = (sql, ...args) => { try { return db.prepare(sql).get(...args); } catch { return null; } };
+  const many = (sql, ...args) => { try { return db.prepare(sql).all(...args); } catch { return []; } };
+  const num = (row, key = 'c') => (row && row[key] != null ? row[key] : 0);
 
+  // ---- משימות ----
+  const t = one(`SELECT COUNT(*) AS total, SUM(status='done') AS done, SUM(status=?) AS irrelevant,
+                        SUM(status='open') AS open FROM task_instances WHERE due_date = ?`, TASK_IRRELEVANT, today) || {};
+  const tasks = {
+    total: num(t, 'total'), done: num(t, 'done'), irrelevant: num(t, 'irrelevant'), open: num(t, 'open'),
+    late: num(one(`SELECT COUNT(*) c FROM task_instances WHERE status='open' AND due_date < ?`, today)),
+    week: num(one(`SELECT COUNT(*) c FROM task_instances WHERE status='open' AND due_date > ? AND due_date <= date(?, '+7 day')`, today, today)),
+    doneBy: many(`SELECT done_by AS name, COUNT(*) c FROM task_instances
+                  WHERE status='done' AND date(done_at) = ? AND done_by IS NOT NULL
+                  GROUP BY done_by ORDER BY c DESC`, today),
+  };
+  tasks.percent = tasks.total ? Math.round((tasks.done / tasks.total) * 100) : null;
+
+  // ---- לוח בעיות ----
+  const problems = {
+    open: num(one(`SELECT COUNT(*) c FROM problems WHERE status != 'נבדק'`)),
+    newToday: num(one(`SELECT COUNT(*) c FROM problems WHERE date(created_at) = ?`, today)),
+    overdue: num(one(`SELECT COUNT(*) c FROM problems WHERE status != 'נבדק' AND due_date IS NOT NULL AND due_date < ?`, today)),
+  };
+
+  // ---- העברת משמרת והודעות ----
+  const handover = {
+    today: num(one(`SELECT COUNT(*) c FROM handovers WHERE date(created_at) = ?`, today)),
+    unacked: num(one(`SELECT COUNT(*) c FROM handovers h WHERE h.acked_at IS NULL
+                      AND NOT EXISTS (SELECT 1 FROM handover_acks a WHERE a.handover_id = h.id)`)),
+  };
+  const messages = {
+    today: num(one(`SELECT COUNT(*) c FROM messages WHERE date(created_at) = ? AND status='sent'`, today)),
+    unhandled: num(one(`SELECT COUNT(*) c FROM messages WHERE handled_at IS NULL AND status='sent'`)),
+    drafts: num(one(`SELECT COUNT(*) c FROM messages WHERE status='draft'`)),
+  };
+
+  // ---- נוכחות ----
+  const attendance = {
+    rows: many(`SELECT u.name, a.check_in, a.check_out FROM attendance a JOIN users u ON u.id = a.user_id
+                WHERE date(a.check_in) = ? ORDER BY a.check_in`, today),
+    openShifts: num(one(`SELECT COUNT(*) c FROM attendance WHERE check_out IS NULL`)),
+  };
+  attendance.hours = attendance.rows.reduce((sum, r) => {
+    if (!r.check_out) return sum;
+    return sum + Math.max(0, (new Date(r.check_out.replace(' ', 'T')) - new Date(r.check_in.replace(' ', 'T'))) / 3600000);
+  }, 0);
+
+  // ---- מלאי והשכרה (רק אם המודול פעיל) ----
+  let inventory = null;
+  if (getSetting('inventory_module') === '1') {
+    inventory = {
+      pickupsToday: num(one(`SELECT COUNT(*) c FROM orders WHERE pickup_date = ? AND status IN ('שריון','נמסרה')`, today)),
+      returnsToday: num(one(`SELECT COUNT(*) c FROM orders WHERE return_date = ? AND status = 'נמסרה'`, today)),
+      activeOrders: num(one(`SELECT COUNT(*) c FROM orders WHERE status IN ('שריון','נמסרה')`)),
+      lateReturns: num(one(`SELECT COUNT(*) c FROM orders WHERE status='נמסרה' AND return_date < ? AND delivery_back = 0`, today)),
+      newOrders: num(one(`SELECT COUNT(*) c FROM orders WHERE date(created_at) = ?`, today)),
+      itemsActive: num(one(`SELECT COUNT(*) c FROM items WHERE active = 1`)),
+    };
+  }
+
+  // ---- קמפיין: נקודות ומוקדים ----
   let campaign = null;
   try {
-    const newVolunteers = db.prepare(`SELECT phone, name FROM campaign_volunteers WHERE date(created_at) = ?`).all(today);
-    const pointsToday = db.prepare(`
-      SELECT COALESCE(SUM(points), 0) c FROM campaign_point_transactions
-      WHERE status = 'approved' AND points > 0 AND date(created_at) = ?`).get(today).c;
-    const pendingApprovals = db.prepare(`SELECT COUNT(*) c FROM campaign_point_transactions WHERE status = 'pending'`).get().c;
-    const lowHubs = db.prepare(`
-      SELECT name, kits_available, kits_total FROM campaign_hubs
-      WHERE kits_total > 0 AND (kits_available * 1.0 / kits_total) <= 0.2`).all();
-    const redemptionsToday = db.prepare(`
-      SELECT COUNT(*) c FROM campaign_point_transactions WHERE type = 'redeem' AND date(created_at) = ?`).get(today).c;
-    campaign = { newVolunteers, pointsToday, pendingApprovals, lowHubs, redemptionsToday };
-  } catch { /* טבלאות הקמפיין עוד לא קיימות — דוח ישן בלי הקטע הזה */ }
+    campaign = {
+      newVolunteers: many(`SELECT phone, name FROM campaign_volunteers WHERE date(created_at) = ?`, today),
+      pointsToday: num(one(`SELECT COALESCE(SUM(points), 0) c FROM campaign_point_transactions
+                            WHERE status='approved' AND points > 0 AND date(created_at) = ?`, today)),
+      pendingApprovals: num(one(`SELECT COUNT(*) c FROM campaign_point_transactions WHERE status='pending'`)),
+      redemptionsToday: num(one(`SELECT COUNT(*) c FROM campaign_point_transactions WHERE type='redeem' AND date(created_at) = ?`, today)),
+      volunteersTotal: num(one(`SELECT COUNT(*) c FROM campaign_volunteers`)),
+      lowHubs: many(`SELECT name, kits_available, kits_total FROM campaign_hubs
+                     WHERE kits_total > 0 AND (kits_available * 1.0 / kits_total) <= 0.2`),
+    };
+  } catch { /* טבלאות הקמפיין עוד לא קיימות */ }
 
-  return { today, tasks, openProblems, campaign };
+  // ---- לשונית מכירה סינית: עסקים, שלבי סגירה, שאלות ו-AI ----
+  let sinit = null;
+  try {
+    const stagesTotal = num(one(`SELECT COUNT(*) c FROM campaign_close_stages`));
+    sinit = {
+      businesses: num(one(`SELECT COUNT(*) c FROM campaign_businesses`)),
+      newToday: num(one(`SELECT COUNT(*) c FROM campaign_businesses WHERE date(created_at) = ?`, today)),
+      donated: num(one(`SELECT COUNT(*) c FROM campaign_businesses WHERE status='תרם'`)),
+      refused: num(one(`SELECT COUNT(*) c FROM campaign_businesses WHERE status='סירב'`)),
+      waiting: num(one(`SELECT COUNT(*) c FROM campaign_businesses WHERE status='ממתין'`)),
+      notesToday: num(one(`SELECT COUNT(*) c FROM campaign_business_notes WHERE date(created_at) = ?`, today)),
+      stagesMarkedToday: num(one(`SELECT COUNT(*) c FROM campaign_business_stages WHERE done=1 AND date(done_at) = ?`, today)),
+      fullyClosed: stagesTotal ? num(one(`SELECT COUNT(*) c FROM (
+          SELECT business_id FROM campaign_business_stages WHERE done=1
+          GROUP BY business_id HAVING COUNT(*) >= ?)`, stagesTotal)) : 0,
+      stagesTotal,
+      questionsOpen: num(one(`SELECT COUNT(*) c FROM campaign_questions WHERE status NOT IN ('נענתה','נסגרה')`)),
+      questionsToday: num(one(`SELECT COUNT(*) c FROM campaign_questions WHERE date(created_at) = ?`, today)),
+      answeredToday: num(one(`SELECT COUNT(*) c FROM campaign_questions WHERE date(answered_at) = ?`, today)),
+      aiToday: num(one(`SELECT COUNT(*) c FROM campaign_ai_log WHERE date(created_at) = ?`, today)),
+      aiNoAnswerToday: num(one(`SELECT COUNT(*) c FROM campaign_ai_log WHERE outcome='אין מענה' AND date(created_at) = ?`, today)),
+      kbDocs: num(one(`SELECT COUNT(*) c FROM campaign_kb_docs`)),
+      kbPairs: num(one(`SELECT COUNT(*) c FROM campaign_kb_pairs`)),
+      shareLinks: num(one(`SELECT COUNT(*) c FROM campaign_share_links WHERE active=1`)),
+      sources: num(one(`SELECT COUNT(*) c FROM campaign_sync_sources WHERE active=1`)),
+    };
+  } catch { /* טבלאות הלשונית עוד לא קיימות */ }
+
+  // ---- פעילות כללית במערכת ----
+  const activity = {
+    actions: num(one(`SELECT COUNT(*) c FROM audit_log WHERE date(at) = ?`, today)),
+    users: num(one(`SELECT COUNT(DISTINCT user_name) c FROM audit_log WHERE date(at) = ? AND user_name IS NOT NULL`, today)),
+  };
+
+  return { today, tasks, problems, handover, messages, attendance, inventory, campaign, sinit, activity };
+}
+
+// ---- בניית גוף המייל ----
+const ALERT = '#c1362f';
+const fmtHours = (h) => (h >= 0.1 ? `${h.toFixed(1)} שעות` : '—');
+
+function reportSections(s) {
+  const sections = [];
+
+  sections.push({
+    title: '📋 משימות',
+    rows: [
+      ['משימות היום', s.tasks.total ? `${s.tasks.done} מתוך ${s.tasks.total} בוצעו (${s.tasks.percent}%)` : 'אין משימות להיום'],
+      ['עדיין פתוחות להיום', s.tasks.open, s.tasks.open > 0],
+      ['בפיגור מימים קודמים', s.tasks.late, s.tasks.late > 0],
+      ['סומנו "לא רלוונטי"', s.tasks.irrelevant],
+      ['פתוחות לשבוע הקרוב', s.tasks.week],
+      ['מי ביצעה היום', s.tasks.doneBy.length
+        ? s.tasks.doneBy.map((r) => `${r.name} (${r.c})`).join(', ') : '—'],
+    ],
+  });
+
+  sections.push({
+    title: '⚠️ לוח בעיות',
+    rows: [
+      ['בעיות פתוחות', s.problems.open, s.problems.open > 0],
+      ['נפתחו היום', s.problems.newToday],
+      ['עברו את תאריך היעד', s.problems.overdue, s.problems.overdue > 0],
+    ],
+  });
+
+  sections.push({
+    title: '🔄 משמרת והודעות',
+    rows: [
+      ['העברות משמרת היום', s.handover.today],
+      ['העברות שאיש לא אישר', s.handover.unacked, s.handover.unacked > 0],
+      ['הודעות שנשלחו היום', s.messages.today],
+      ['הודעות שלא טופלו', s.messages.unhandled, s.messages.unhandled > 0],
+      ['טיוטות שלא נשלחו', s.messages.drafts],
+    ],
+  });
+
+  sections.push({
+    title: '🕐 שעות נוכחות',
+    rows: [
+      ['נכנסו היום', s.attendance.rows.length
+        ? s.attendance.rows.map((r) => r.name).join(', ') : '—'],
+      ['סך שעות שנרשמו היום', fmtHours(s.attendance.hours)],
+      ['משמרות שלא נסגרו', s.attendance.openShifts, s.attendance.openShifts > 0],
+    ],
+  });
+
+  if (s.inventory) {
+    sections.push({
+      title: '👗 מלאי והשכרה',
+      rows: [
+        ['מסירות להיום', s.inventory.pickupsToday],
+        ['החזרות להיום', s.inventory.returnsToday],
+        ['הזמנות פעילות', s.inventory.activeOrders],
+        ['הזמנות חדשות היום', s.inventory.newOrders],
+        ['מאחרות בהחזרה', s.inventory.lateReturns, s.inventory.lateReturns > 0],
+        ['פריטים פעילים במלאי', s.inventory.itemsActive],
+      ],
+    });
+  }
+
+  if (s.campaign) {
+    sections.push({
+      title: '🎗 קמפיין — נקודות ומוקדים',
+      rows: [
+        ['מתנדבות רשומות', s.campaign.volunteersTotal],
+        ['נרשמו היום', s.campaign.newVolunteers.length
+          ? `${s.campaign.newVolunteers.length} — ${s.campaign.newVolunteers.map((v) => v.name || v.phone).join(', ')}`
+          : '0'],
+        ['נקודות שחולקו היום', s.campaign.pointsToday],
+        ['דיווחים הממתינים לאישור', s.campaign.pendingApprovals, s.campaign.pendingApprovals > 0],
+        ['מתנות שמומשו היום', s.campaign.redemptionsToday],
+        ['מוקדים כמעט ריקים', s.campaign.lowHubs.length
+          ? s.campaign.lowHubs.map((h) => `${h.name} (${h.kits_available}/${h.kits_total})`).join(', ') : '—',
+        s.campaign.lowHubs.length > 0],
+      ],
+    });
+  }
+
+  if (s.sinit) {
+    sections.push({
+      title: '🧾 מכירה סינית — עסקים ושאלות',
+      rows: [
+        ['סך עסקים', s.sinit.businesses],
+        ['נוספו היום', s.sinit.newToday],
+        ['תרמו / ממתינים / סירבו', `${s.sinit.donated} / ${s.sinit.waiting} / ${s.sinit.refused}`],
+        ['סגורים לגמרי', s.sinit.stagesTotal ? `${s.sinit.fullyClosed} (מתוך ${s.sinit.businesses})` : '—'],
+        ['שלבי סגירה שסומנו היום', s.sinit.stagesMarkedToday],
+        ['תגובות שנרשמו היום', s.sinit.notesToday],
+        ['שאלות פתוחות למנהלת', s.sinit.questionsOpen, s.sinit.questionsOpen > 0],
+        ['שאלות חדשות היום / נענו היום', `${s.sinit.questionsToday} / ${s.sinit.answeredToday}`],
+        ['שאלות ל-AI היום (מתוכן בלי מענה)', `${s.sinit.aiToday} (${s.sinit.aiNoAnswerToday})`, s.sinit.aiNoAnswerToday > 0],
+        ['בסיס הידע', `${s.sinit.kbDocs} קבצים · ${s.sinit.kbPairs} שאלות`],
+        ['קישורי מתנדבות פעילים', s.sinit.shareLinks],
+        ['מקורות סנכרון פעילים', s.sinit.sources],
+      ],
+    });
+  }
+
+  sections.push({
+    title: '📈 פעילות במערכת',
+    rows: [
+      ['פעולות שנרשמו היום', s.activity.actions],
+      ['משתמשות פעילות היום', s.activity.users],
+    ],
+  });
+
+  return sections;
+}
+
+function reportHtml(s) {
+  const sections = reportSections(s);
+  const body = sections.map((sec) => `
+    <h3 style="margin:22px 0 6px;font-size:15px;color:#14497c;border-bottom:2px solid #e3e8f0;padding-bottom:4px">${sec.title}</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
+      ${sec.rows.map(([label, value, alert]) => `
+        <tr>
+          <td style="padding:5px 0;color:#5a6b85;width:55%">${label}</td>
+          <td style="padding:5px 0;font-weight:600;${alert ? `color:${ALERT}` : ''}">${value}${alert ? ' ⚠️' : ''}</td>
+        </tr>`).join('')}
+    </table>`).join('');
+
+  const headline = s.tasks.total
+    ? `${s.tasks.done}/${s.tasks.total} משימות בוצעו היום (${s.tasks.percent}%)`
+    : 'אין משימות שהוגדרו להיום';
+
+  return `
+    <div style="max-width:640px">
+      <h2 style="margin:0 0 4px;color:#14497c">דוח יומי — אמא במשמרת</h2>
+      <div style="color:#6b7a90;font-size:13px;margin-bottom:10px">${s.today} · ${headline}</div>
+      ${body}
+      <p style="color:#8795a8;font-size:12px;margin-top:26px;border-top:1px solid #e3e8f0;padding-top:10px">
+        נשלח אוטומטית ממערכת אמא במשמרת. לשינוי השעה או כיבוי הדוח: ניהול ← חיבורים ← דוח יומי.
+      </p>
+    </div>`;
 }
 
 export async function sendDailyReport(toOverride) {
   const to = toOverride || getSetting('report_email');
   if (!to) throw new Error('לא הוגדרה כתובת מייל לדוחות');
   const s = buildDailySummary();
-  const c = s.campaign;
-  const campaignHtml = c ? `
-    <h3>קמפיין המכירה הסינית</h3>
-    <ul>
-      <li><b>מתנדבות חדשות שנרשמו היום:</b> ${c.newVolunteers.length}${c.newVolunteers.length ? ' — ' + c.newVolunteers.map((v) => v.name || v.phone).join(', ') : ''}</li>
-      <li><b>נקודות שחולקו היום:</b> ${c.pointsToday}</li>
-      <li><b>דיווחי גיוס מוצר הממתינים לאישור:</b> ${c.pendingApprovals}</li>
-      <li><b>מתנות שמומשו היום:</b> ${c.redemptionsToday}</li>
-      ${c.lowHubs.length ? `<li style="color:#a73950"><b>⚠️ מוקדים כמעט ריקים:</b> ${c.lowHubs.map((h) => `${h.name} (${h.kits_available}/${h.kits_total})`).join(', ')}</li>` : ''}
-    </ul>` : '';
-  const html = `
-    <div dir="rtl" style="font-family:Arial,sans-serif">
-      <h2>דוח יומי – אמא במשמרת (${s.today})</h2>
-      <ul>
-        <li><b>משימות היום:</b> ${s.tasks.done || 0} מתוך ${s.tasks.total || 0} בוצעו</li>
-        <li><b>בעיות פתוחות בלוח:</b> ${s.openProblems}</li>
-      </ul>
-      ${campaignHtml}
-      <p style="color:#888">נשלח אוטומטית ממערכת אמא במשמרת</p>
-    </div>`;
-  await deliverMail({ to, subject: `דוח יומי אמא במשמרת – ${s.today}`, html });
+  await deliverMail({ to, subject: `דוח יומי אמא במשמרת – ${s.today}`, html: reportHtml(s) });
   return { to };
+}
+
+// תצוגה מקדימה של הדוח בלי לשלוח אותו — למסך ההגדרות
+export function previewDailyReport() {
+  return reportHtml(buildDailySummary());
 }
 
 // התרעה דחופה — לדוגמה תגובה על משימה שסומנה "דחוף" — נשלחת ישירות לכתובת המייל שהוגדרה לדוחות
@@ -298,6 +514,17 @@ export function integrationsRouter({ mustLogin, mustManager, requireFeature }) {
   r.post('/email/daily-report', mustLogin, async (req, res) => {
     try { res.json({ ok: true, ...(await sendDailyReport(req.body?.to)) }); }
     catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  // תצוגה מקדימה של הדוח בדפדפן — לראות בדיוק מה יישלח, בלי לשלוח ובלי להמתין לשעה שנקבעה
+  r.get('/email/daily-report/preview', mustLogin, requireFeature('integrations'), (req, res) => {
+    res.type('html').send(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+      <title>תצוגה מקדימה — דוח יומי</title></head>
+      <body style="font-family:Arial,sans-serif;background:#f6f8fb;padding:24px">
+        <div style="background:#fff;border-radius:14px;padding:24px;max-width:700px;margin:0 auto;box-shadow:0 4px 16px rgba(11,42,74,.08)">
+          ${previewDailyReport()}
+        </div>
+      </body></html>`);
   });
 
   r.post('/ai/chat', mustLogin, requireFeature('ai'), async (req, res) => {

@@ -2441,6 +2441,25 @@ async function renderSinitAdminCards(main) {
     </div>
     <div id="si-test-mail-result" class="sub muted" style="margin-top:6px"></div>
 
+    <div class="section-title">מסמך התשובות (Google Docs)</div>
+    <p class="sub muted">כששאלה לא מקבלת מענה מה-AI, המייל שנשלח אלייך יכלול קישור למסמך הזה ואת השאלה מוכנה להדבקה.
+      מה שתכתבי שם נכנס לבסיס הידע תוך כמה דקות, וה-AI יענה לפיו בפעם הבאה.
+      <b>המסמך חייב להיות משותף</b> ב"כל מי שיש לו הקישור" בהרשאת צפייה.
+      הפורמט במסמך: שורת <code>שאלה: ...</code> ואחריה <code>תשובה: ...</code> (או שאלה שמסתיימת בסימן שאלה והתשובה בשורה שאחריה).</p>
+    <div class="row">
+      <div style="flex:2"><label class="sub muted">קישור למסמך</label><br><input class="in" id="si-doc-url" style="width:100%" placeholder="https://docs.google.com/document/d/..." value="${esc(ov.answersDocUrl || '')}"></div>
+      <div style="align-self:end"><button class="btn-secondary" id="si-save-doc">שמירה</button></div>
+      <div style="align-self:end"><button class="btn-secondary" id="si-sync-doc">⟳ שליפה עכשיו</button></div>
+    </div>
+    <div class="sub" style="margin-top:6px">
+      ${ov.answersDocUrl
+        ? (ov.answersDocPairs
+          ? `<span style="color:#12805c">✔</span> נקלטו ${ov.answersDocPairs.pairs} תשובות מהמסמך · עודכן ${esc(ov.answersDocPairs.syncedAt)}`
+          : '<span class="muted">הקישור נשמר — עדיין לא בוצעה שליפה. אפשר ללחוץ "שליפה עכשיו".</span>')
+        : '<span class="muted">לא הוגדר מסמך — המייל יישלח בלי קישור לעדכון תשובות.</span>'}
+    </div>
+    <div id="si-doc-result" class="sub muted" style="margin-top:6px"></div>
+
     <div class="section-title">שליחה דרך Resend (במקום Gmail)</div>
     <p class="sub muted">כשאין גישה להגדרות חשבון הגוגל, זו הדרך הפשוטה: נרשמים ב-resend.com (חינם עד 3,000 מיילים בחודש),
       יוצרים מפתח ב-<b>API Keys</b> ומדביקים כאן. אין סיסמאות ואין אימות דו-שלבי.
@@ -2486,6 +2505,28 @@ async function renderSinitAdminCards(main) {
       } });
       toast('נשמר', 'ok');
     } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+  });
+  $('#si-save-doc').addEventListener('click', async () => {
+    try {
+      await api('/api/sinit/settings', { method: 'PUT', body: {
+        campaign_admin_email: $('#si-mail').value.trim(),
+        campaign_admin_name: $('#si-mail-name').value.trim(),
+        campaign_answers_doc_url: $('#si-doc-url').value.trim(),
+      } });
+      toast('הקישור נשמר', 'ok');
+      render();
+    } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+  });
+  $('#si-sync-doc').addEventListener('click', async () => {
+    const box = $('#si-doc-result');
+    box.textContent = 'שולפת את המסמך...';
+    try {
+      const r = await api('/api/sinit/answers-doc/sync', { method: 'POST' });
+      box.innerHTML = r.pairs
+        ? `<span style="color:#12805c">✔ נקלטו ${r.pairs} תשובות (${r.chars} תווים). ה-AI כבר יודע לענות לפיהן.</span>`
+        : '<span style="color:#b7791f">⚠ המסמך נקרא בהצלחה אבל לא נמצאו בו זוגות שאלה-תשובה. יש לכתוב שורת "שאלה: ..." ואחריה "תשובה: ...".</span>';
+      render();
+    } catch (e) { box.innerHTML = `<span style="color:#c1362f">✕ ${esc(e.message || 'השליפה נכשלה')}</span>`; }
   });
   $('#si-save-resend').addEventListener('click', async () => {
     const key = $('#si-resend-key').value.trim();
@@ -2747,10 +2788,11 @@ async function renderIntegrations(main) {
         <div class="row" style="margin-top:12px">
           <button class="btn-secondary" id="email-test">שליחת מייל בדיקה</button>
           <button class="btn-secondary" id="email-report">📊 שליחת דוח יומי עכשיו</button>
+          <button class="btn-secondary" id="email-report-preview">👁 תצוגה מקדימה</button>
         </div>
         <label class="fld" style="display:flex;align-items:center;gap:8px;margin-top:14px">
           <input type="checkbox" id="set-daily_report_auto" ${settings.daily_report_auto === '1' ? 'checked' : ''} style="width:auto">
-          שליחת דוח יומי אוטומטית (משימות + פעילות קמפיין)
+          שליחת דוח יומי אוטומטית (סטטיסטיקות מכל אזורי המערכת)
         </label>
         <label class="fld">בשעה (0-23)</label>
         <input class="in" id="set-daily_report_hour" type="number" min="0" max="23" style="max-width:90px" value="${esc(settings.daily_report_hour || '20')}">
@@ -2874,6 +2916,15 @@ async function renderIntegrations(main) {
   $('#email-report').addEventListener('click', async () => {
     try { await save(); const r = await api('/api/integrations/email/daily-report', { method: 'POST', body: {} }); toast('הדוח נשלח אל ' + r.to, 'ok'); }
     catch (e) { toast(e.message, 'err'); }
+  });
+  $('#email-report-preview').addEventListener('click', async () => {
+    // נפתח בלשונית חדשה עם זיהוי המשתמשת בכותרת — fetch ואז blob, כי זו בקשת GET מוגנת
+    try {
+      const res = await fetch('/api/integrations/email/daily-report/preview', { headers: { 'x-user-id': USER.id } });
+      if (!res.ok) throw new Error('טעינת התצוגה נכשלה');
+      const url = URL.createObjectURL(new Blob([await res.text()], { type: 'text/html' }));
+      window.open(url, '_blank');
+    } catch (e) { toast(e.message || 'לא ניתן להציג', 'err'); }
   });
   $('#backup-now').addEventListener('click', async () => {
     try { await save(); const r = await api('/api/integrations/backup/now', { method: 'POST', body: {} }); toast('הגיבוי נשמר: ' + r.file, 'ok'); render(); }

@@ -133,6 +133,12 @@ function extractPairs(lines) {
     });
 }
 
+// חילוץ זוגות מטקסט רגיל (למשל ייצוא של Google Docs) — אותן שלוש תבניות, בלי שכבת ה-ZIP
+export function extractPairsFromText(text) {
+    const lines = String(text || '').split(/\r?\n/).map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    return { text: lines.join('\n'), pairs: extractPairs(lines) };
+}
+
 // הקלט: base64 של קובץ .docx. הפלט: הטקסט המלא + זוגות שאלה-תשובה שזוהו בו.
 export function parseDocx(base64) {
     const buf = Buffer.from(String(base64 || ''), 'base64');

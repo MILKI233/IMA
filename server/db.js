@@ -1012,7 +1012,10 @@ const CAMPAIGN_SETTING_DEFAULTS = {
     campaign_sync_admin_password: '',
     // לשונית "מכירה סינית": לאן נשלחות שאלות למנהלת המערכת (אם ריק — נופלים לכתובת הדוחות report_email)
     campaign_admin_email: '',
-    campaign_admin_name: 'מנהלת המערכת'
+    campaign_admin_name: 'מנהלת המערכת',
+    // מסמך גוגל שבו המנהלת כותבת תשובות לשאלות שה-AI לא ידע לענות עליהן.
+    // הקישור נשלח אליה במייל, והמערכת שואבת ממנו את התשובות חזרה לבסיס הידע.
+    campaign_answers_doc_url: ''
 };
 
 export function getCampaignSetting(key) {
