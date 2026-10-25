@@ -260,6 +260,15 @@ export function integrationsRouter({ mustLogin, mustManager, requireFeature }) {
         ? vAmount(b.delivery_price_back, 'מחיר משלוח חזור', { min: 0, max: 5000, allowZero: true }) : null,
     );
     if (sErr) return res.status(400).json({ error: sErr });
+    // הטעות הנפוצה ב-Resend: הכנסת כתובת ג'ימייל פרטית כשולח. Resend דורש דומיין בבעלותך,
+    // ולכן זה נדחה אצלו עם 403 רק בזמן השליחה — עדיף לעצור כאן ולהסביר.
+    const freeMail = /@(gmail|googlemail|walla|hotmail|outlook|live|yahoo|icloud|aol)\./i;
+    if (b.resend_from !== undefined && b.resend_from !== '' && freeMail.test(String(b.resend_from))) {
+      return res.status(400).json({
+        error: 'אי אפשר לשלוח דרך Resend מכתובת ג\'ימייל/וואלה/הוטמייל — Resend מאפשר לשלוח רק מדומיין שבבעלותך. '
+          + 'יש להשאיר את שדה "כתובת השולח" ריק (אז נשלח מ-onboarding@resend.dev), או לאמת דומיין משלך ב-resend.com/domains.',
+      });
+    }
     for (const { key } of SETTING_KEYS) {
       const v = req.body?.[key];
       if (v === undefined || v === MASK) continue; // ערך מוסתר שלא שונה — לא דורסים

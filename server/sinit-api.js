@@ -652,7 +652,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                 db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
                     .run(id, `נשלח מייל למנהלת המערכת (${mail.to})`, actor(req));
             } catch (e) {
-                mail.error = e.message;
+                mail.error = mailErrorText(e);
                 db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
                     .run(id, `שליחת המייל נכשלה: ${e.message}`, actor(req));
             }
@@ -864,7 +864,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
                 .run(qid, `נשלח מייל למנהלת המערכת (${to})`, actor(req));
         } catch (e) {
-            mail.error = e.message;
+            mail.error = mailErrorText(e);
             db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
                 .run(qid, `שליחת המייל נכשלה: ${e.message}`, actor(req));
         }
