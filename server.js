@@ -13,7 +13,7 @@ import { createYemotRouter } from './server/yemot.js';
 import { createCampaignYemotRouter } from './server/campaign-yemot.js';
 import { campaignApiRouter } from './server/campaign-api.js';
 import { sinitApiRouter, syncSinitBusinesses, syncAnswersDoc } from './server/sinit-api.js';
-import { scheduleCampaignSheetsSync, getCampaignSheetsCache, syncCampaignSheets, pushSheetUpdate, checkSyncPassword, POINTS_SHEET_ID, HUBS_SHEET_ID } from './server/sheets-sync.js';
+import { scheduleCampaignSheetsSync, getCampaignSheetsCache, syncCampaignSheets, pushSheetUpdate, checkSyncPassword, POINTS_SHEET_ID, HUBS_SHEET_ID, MANUAL_POINTS_TAB, MANUAL_POINTS_COLS } from './server/sheets-sync.js';
 
 const PRIORITIES = ['רגיל', 'דחוף', 'חשוב', 'להמשך'];
 
@@ -961,6 +961,40 @@ app.post('/api/campaign/sheets-write/hub', mustLogin, requireFeature('campaign_h
     audit(req.user.name, 'campaign.sheets.hub_update', 'campaign_sheets_hub', row, null, updates);
     const data = await syncCampaignSheets();
     res.json(data);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// הזנת נקודות ידנית: מוסיפה שורה חדשה בסוף לשונית "נקודות ידניות".
+// הכתיבה מפוצלת לשתיים בכוונה — קודם טלפון ותיאור, ורק אז הנקודות — כי הסקריפט
+// בגיליון מופעל על עמודת הנקודות ומזכה את המתנדבת ברגע שהיא מתמלאת.
+app.post('/api/campaign/sheets-write/manual-points', mustLogin, requireFeature('campaign'), async (req, res) => {
+  try {
+    // בודקים קודם את השדות ורק אחר כך את הסיסמה, כדי שלא יתברר אחרי הקלדת סיסמה ששדה חסר
+    const phone = String(req.body?.phone ?? '').replace(/\D/g, '');
+    const description = String(req.body?.description ?? '').trim();
+    const points = parseInt(req.body?.points, 10);
+    if (!phone) return res.status(400).json({ error: 'יש להזין מספר טלפון של המתנדבת' });
+    if (!description) return res.status(400).json({ error: 'יש להזין תיאור — על מה הנקודות' });
+    if (!Number.isFinite(points) || points === 0) return res.status(400).json({ error: 'יש להזין מספר נקודות (אפשר מינוס להורדה), לא אפס' });
+    checkSyncPassword(req.body?.syncPassword);
+
+    // השורה הבאה בגיליון, לפי מה שנקרא בסנכרון האחרון
+    const existing = getCampaignSheetsCache().manualPoints || [];
+    const lastRow = existing.reduce((m, r) => Math.max(m, r.__row || 1), 1);
+    const row = lastRow + 1;
+
+    await pushSheetUpdate({
+      spreadsheetId: POINTS_SHEET_ID, sheetName: MANUAL_POINTS_TAB, row,
+      updates: { [MANUAL_POINTS_COLS.phone]: phone, [MANUAL_POINTS_COLS.description]: description },
+    });
+    await pushSheetUpdate({
+      spreadsheetId: POINTS_SHEET_ID, sheetName: MANUAL_POINTS_TAB, row,
+      updates: { [MANUAL_POINTS_COLS.points]: points },
+    });
+
+    audit(req.user.name, 'campaign.sheets.manual_points', 'campaign_sheets_manual_points', row, null, { phone, description, points });
+    const data = await syncCampaignSheets();
+    res.json({ ok: true, row, ...data });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 

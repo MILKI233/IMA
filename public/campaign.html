@@ -31,6 +31,7 @@
 <nav class="c-nav">
     <button data-tab="dashboard" class="active">לוח בקרה חי</button>
     <button data-tab="sinit">מכירה סינית</button>
+    <button data-tab="points">נקודות</button>
     <button data-tab="recruited">מוצרים שגויסו</button>
     <button data-tab="activity">יומן פעולות</button>
 </nav>
@@ -43,6 +44,7 @@
     <button data-tab="sinit" data-target="hd-sbiz" title="כל העסקים מכל הטפסים, שלבי סגירה וצביעה">עסקים</button>
     <button data-tab="sinit" data-target="hd-squestions" title="שאלות שנשאלו ושלבי המענה על כל שאלה">שאלות ומענה</button>
     <button data-tab="sinit" data-target="hd-sai" title="מענה אוטומטי מתוך קבצי הוורד שהועלו">מענה AI</button>
+    <button data-tab="points" data-target="hd-manualpoints" title="הזנת נקודות ידנית לגיליון">נקודות ידניות</button>
     <button data-tab="recruited" data-target="hd-recruited">מוצרים שגויסו</button>
     <button data-tab="activity" data-target="hd-activity">יומן פעולות</button>
 </nav>
@@ -230,6 +232,38 @@
             <div id="sbizDeleteWrap" style="margin-top:16px"></div>
         </div>
     </div>
+
+    <section id="points" class="c-section">
+        <div class="stat-row" id="pointsStats"></div>
+        <div class="card">
+            <h2 id="hd-manualpoints">הזנת נקודות ידנית</h2>
+            <p class="hint">הרשומה נכתבת ישירות ללשונית "נקודות ידניות" בגיליון, והמערכת של אוצרותינו
+                מזכה את המתנדבת אוטומטית. אפשר להזין מספר שלילי כדי להוריד נקודות.</p>
+            <div class="add-box">
+                <div class="row">
+                    <input id="mpPhone" list="mpPhoneList" placeholder="טלפון המתנדבת" style="width:170px" inputmode="numeric">
+                    <datalist id="mpPhoneList"></datalist>
+                    <span class="hint" id="mpPhoneName"></span>
+                </div>
+                <div class="row">
+                    <input id="mpDescription" placeholder="על מה הנקודות (למשל: סידור מוקד, שליחות מיוחדת)" style="flex:1;min-width:260px">
+                    <input id="mpPoints" type="number" placeholder="נקודות" style="width:110px">
+                    <button class="btn" id="mpAddBtn">הוספה לגיליון</button>
+                </div>
+                <div class="row"><span class="hint" id="mpHint"></span></div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-manualpointslist">רשומות שהוזנו</h2>
+                <input id="mpSearch" class="search-box" type="search" placeholder="🔍 טלפון / שם / תיאור">
+            </div>
+            <table id="mpTable"><thead><tr>
+                <th>טלפון</th><th>שם המתנדבת</th><th>על מה</th><th>נקודות</th><th>סטטוס</th>
+            </tr></thead><tbody></tbody></table>
+            <div class="empty" id="mpEmpty" style="display:none">עדיין לא הוזנו נקודות ידניות</div>
+        </div>
+    </section>
 
     <section id="recruited" class="c-section">
         <div class="card">

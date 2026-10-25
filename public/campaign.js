@@ -140,6 +140,21 @@ function startApp() {
         recruitedQuery = e.target.value.trim();
         if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
     });
+    document.getElementById('mpSearch').addEventListener('input', (e) => {
+        mpQuery = e.target.value.trim();
+        if (lastSheetsData) renderManualPoints(lastSheetsData);
+    });
+    document.getElementById('mpAddBtn').addEventListener('click', addManualPoints);
+    // הצגת שם המתנדבת ברגע שמוקלד טלפון מזוהה
+    document.getElementById('mpPhone').addEventListener('input', (e) => {
+        const box = document.getElementById('mpPhoneName');
+        const digits = e.target.value.replace(/\D/g, '');
+        if (!lastSheetsData || digits.length < 9) { box.textContent = ''; return; }
+        const label = participantLabel(lastSheetsData, digits);
+        box.innerHTML = label
+            ? `✓ ${label}`
+            : '<span style="color:#b26a00">הטלפון לא מופיע ברשימת המשתתפות — הסקריפט ירשום אותה כחדשה</span>';
+    });
 
     loadDashboard();
     setInterval(loadDashboard, 5000);
@@ -384,6 +399,115 @@ function renderSheetsDashboard(data) {
             <td>${p.filledBy || ''}</td>
         </tr>`).join('');
     setNavTooltip('hd-recruited', `מוצרים שגויסו: ${(data.recruitedProducts || []).length}`);
+
+    renderManualPoints(data);
+}
+
+/* ---- נקודות ידניות: נקראות מהגיליון ונכתבות אליו ---- */
+const MP_COLS = {
+    phone: 'טלפון',
+    description: 'תיאור (על מה)',
+    points: 'נקודות (אפשר מינוס להורדה) - למלא אחרון',
+    status: 'סטטוס (אוטומטי, לא לגעת)',
+};
+let mpQuery = '';
+
+// המתנדבת לפי הטלפון, מתוך לשונית המשתתפים
+function participantByPhone(data, phone) {
+    const clean = String(phone || '').replace(/\D/g, '');
+    if (!clean) return null;
+    return (data.participants || []).find((x) => String(x['טלפון'] || '').replace(/\D/g, '') === clean) || null;
+}
+
+// עמודת השם בגיליון ממולאת ידנית ורוב השורות ריקות, אז כשאין שם
+// מציגים את מצב הנקודות — זה מה שמאשר שהוקלד הטלפון הנכון
+function participantLabel(data, phone) {
+    const p = participantByPhone(data, phone);
+    if (!p) return '';
+    const name = String(p['שם (אפשר למלא ידנית)'] || '').trim();
+    return name || `${p['סך נצבר'] || 0} נק' נצברו · ${p['מספר דיווחים'] || 0} דיווחים`;
+}
+
+// הסקריפט בגיליון כותב בעמודת הסטטוס גם "נקלט ..." וגם הודעות שגיאה
+function statusBadge(status) {
+    if (!status) return '<span class="badge warn">ממתין לקליטה</span>';
+    const failed = /שגיאה|לא נמצא|נכשל/.test(status);
+    return `<span class="badge ${failed ? 'danger' : 'ok'}">${status}</span>`;
+}
+
+function renderManualPoints(data) {
+    const rows = data.manualPoints || [];
+    const isErr = (r) => /שגיאה|לא נמצא|נכשל/.test(String(r[MP_COLS.status] || ''));
+    const pts = (r) => parseInt(r[MP_COLS.points], 10) || 0;
+    // סופרים רק את מה שנקלט בפועל — שורה עם שגיאה לא זיכתה אף אחת
+    const sum = rows.filter((r) => !isErr(r)).reduce((s, r) => s + pts(r), 0);
+    const pending = rows.filter((r) => !String(r[MP_COLS.status] || '').trim()).length;
+    const failed = rows.filter(isErr).length;
+    const statsBox = document.getElementById('pointsStats');
+    if (statsBox) {
+        statsBox.innerHTML = `
+            <div class="stat-card"><div class="stat-num">${rows.length}</div><div class="stat-label">רשומות ידניות</div></div>
+            <div class="stat-card"><div class="stat-num">${sum}</div><div class="stat-label">נקודות שנקלטו בפועל</div></div>
+            <div class="stat-card${pending ? ' alert' : ''}"><div class="stat-num">${pending}</div><div class="stat-label">ממתינות לקליטה</div></div>
+            <div class="stat-card${failed ? ' alert' : ''}"><div class="stat-num">${failed}</div><div class="stat-label">שורות עם שגיאה</div></div>`;
+    }
+    setNavTooltip('hd-manualpoints', `נקודות ידניות: ${rows.length} רשומות · ${sum} נקודות נקלטו${failed ? ` · ${failed} שגיאות` : ''}`);
+
+    // רשימת טלפונים לבחירה מהירה, עם מצב הנקודות לצידה
+    const dl = document.getElementById('mpPhoneList');
+    if (dl) {
+        dl.innerHTML = (data.participants || [])
+            .filter((p) => p['טלפון'])
+            .map((p) => `<option value="${p['טלפון']}">${participantLabel(data, p['טלפון'])}</option>`).join('');
+    }
+
+    const tbody = document.querySelector('#mpTable tbody');
+    if (!tbody) return;
+    const q = mpQuery.toLowerCase();
+    const filtered = rows.filter((r) => !q
+        || String(r[MP_COLS.phone] || '').includes(q)
+        || String(r[MP_COLS.description] || '').toLowerCase().includes(q)
+        || participantLabel(data, r[MP_COLS.phone]).toLowerCase().includes(q))
+        .slice().reverse();   // החדש למעלה
+    document.getElementById('mpEmpty').style.display = filtered.length ? 'none' : 'block';
+    tbody.innerHTML = filtered.map((r) => {
+        const pts = parseInt(r[MP_COLS.points], 10) || 0;
+        const status = String(r[MP_COLS.status] || '').trim();
+        return `<tr>
+            <td>${r[MP_COLS.phone] || ''}</td>
+            <td>${participantLabel(data, r[MP_COLS.phone]) || '<span class="hint">לא ברשימת המשתתפות</span>'}</td>
+            <td>${r[MP_COLS.description] || ''}</td>
+            <td style="font-weight:600;${pts < 0 ? 'color:#c1362f' : ''}">${pts > 0 ? '+' : ''}${pts}</td>
+            <td>${statusBadge(status)}</td>
+        </tr>`;
+    }).join('');
+}
+
+async function addManualPoints() {
+    const phone = document.getElementById('mpPhone').value.trim();
+    const description = document.getElementById('mpDescription').value.trim();
+    const points = document.getElementById('mpPoints').value.trim();
+    const hint = document.getElementById('mpHint');
+    if (!phone || !description || !points) {
+        hint.innerHTML = '<span style="color:#c1362f">צריך למלא טלפון, תיאור ומספר נקודות</span>';
+        return;
+    }
+    const pw = prompt('סיסמת מנהל לאישור כתיבה לגיליון:');
+    if (pw === null) return;
+    const btn = document.getElementById('mpAddBtn');
+    btn.disabled = true; hint.textContent = 'כותבת לגיליון...';
+    try {
+        const data = await api('/api/campaign/sheets-write/manual-points', { method: 'POST', body: {
+            phone, description, points, syncPassword: pw,
+        } });
+        lastSheetsData = data;
+        renderSheetsDashboard(data);
+        document.getElementById('mpDescription').value = '';
+        document.getElementById('mpPoints').value = '';
+        hint.innerHTML = `<span style="color:#12805c">נכתב לגיליון (שורה ${data.row}). הזיכוי מתבצע אוטומטית תוך כמה שניות.</span>`;
+    } catch (e) {
+        hint.innerHTML = `<span style="color:#c1362f">${e.message || 'הכתיבה נכשלה'}</span>`;
+    } finally { btn.disabled = false; }
 }
 
 function openSheetPointsEdit(row) {

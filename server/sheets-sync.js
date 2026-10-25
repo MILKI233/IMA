@@ -8,8 +8,17 @@ export const POINTS_SHEET_ID = '1h-Hj2Wam8UeW6Cn9zg-ovkOc5kf1_evXY9UgBRmmuVA';
 export const HUBS_SHEET_ID = '1DZ4tcEuNA_ZcCEuOTDaDo5FK7EVypNsD-71_3yWX0sM';
 // תשובות לטופס "תודה על תרומתך" — מוצרים שגויסו בפועל, ממולא על ידי המגייסות אחרי שעסק תרם
 export const RECRUITED_PRODUCTS_SHEET_ID = '1qkuii5yPOC5kbQkxX3oxIK6FX37Ok2VbzVWQ-_OdR0o';
+// לשונית ההזנה הידנית של נקודות. הסקריפט של המנהלת בגיליון קולט כל שורה חדשה
+// ומזכה את המתנדבת, ולכן עמודת הנקודות היא האחרונה שממלאים.
+export const MANUAL_POINTS_TAB = 'נקודות ידניות';
+export const MANUAL_POINTS_COLS = {
+  phone: 'טלפון',
+  description: 'תיאור (על מה)',
+  points: 'נקודות (אפשר מינוס להורדה) - למלא אחרון',
+  status: 'סטטוס (אוטומטי, לא לגעת)',
+};
 
-let cache = { participants: [], transactions: [], hubs: [], kitRecipients: [], recruitedProducts: [], syncedAt: null, error: null };
+let cache = { participants: [], transactions: [], hubs: [], kitRecipients: [], recruitedProducts: [], manualPoints: [], syncedAt: null, error: null };
 
 // הטופס עצמו (לא רק הגיליון) — כותרת העמודה H ענקית כי התיאור של השאלה מוטמע בה, אז קוראים לפי מיקום ולא לפי שם
 const RECRUITED_PRODUCTS_FIELDS = [
@@ -44,16 +53,17 @@ export async function fetchSheetRows(spreadsheetId, sheetName) {
 
 export async function syncCampaignSheets() {
   try {
-    const [participants, transactions, hubs, kitRecipients, recruitedProducts] = await Promise.all([
+    const [participants, transactions, hubs, kitRecipients, recruitedProducts, manualPoints] = await Promise.all([
       fetchSheetRows(POINTS_SHEET_ID, 'משתתפים'),
       fetchSheetRows(POINTS_SHEET_ID, 'תנועות'),
       fetchSheetRows(HUBS_SHEET_ID, 'מוקדים ומלאי'),
       fetchSheetRows(HUBS_SHEET_ID, 'מקבלי ערכות'),
       fetchRecruitedProducts(),
+      fetchSheetRows(POINTS_SHEET_ID, MANUAL_POINTS_TAB),
     ]);
     transactions.reverse();
     kitRecipients.reverse();
-    cache = { participants, transactions: transactions.slice(0, 100), hubs, kitRecipients, recruitedProducts, syncedAt: new Date().toISOString(), error: null };
+    cache = { participants, transactions: transactions.slice(0, 100), hubs, kitRecipients, recruitedProducts, manualPoints, syncedAt: new Date().toISOString(), error: null };
   } catch (e) {
     cache = { ...cache, error: e.message, syncedAt: cache.syncedAt };
     console.error('סנכרון גליונות הקמפיין נכשל:', e.message);
