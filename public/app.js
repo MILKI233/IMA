@@ -2717,9 +2717,10 @@ async function renderIntegrations(main) {
       <div class="card">
         <div class="section-title" style="margin-top:0">✦ בוט AI (Claude)</div>
         <label class="fld">מפתח API של Anthropic</label>
-        <input class="in" id="set-anthropic_api_key" type="password" value="${esc(settings.anthropic_api_key)}" placeholder="sk-ant-...">
-        <div class="sub muted" style="margin-top:8px">מנפיקים מפתח ב-platform.claude.com. אחרי השמירה, לשונית
-          "עוזרת AI" תדע לענות על שאלות מתוך נתוני המערכת בזמן אמת.</div>
+        <input class="in" id="set-anthropic_api_key" type="password" value="${esc(settings.anthropic_api_key)}" placeholder="המפתח המלא, כפי שהועתק">
+        <div class="sub muted" style="margin-top:8px">מנפיקים מפתח ב-platform.claude.com ← API keys. כל סוג מפתח מתאים
+          (sk-ant-api, sk-ant-usr ואחרים) — מדביקים בדיוק כפי שהועתק, בלי לקצר ובלי רווחים.
+          אחרי השמירה, לשונית "עוזרת AI" ולשונית "מכירה סינית" ידעו לענות.</div>
       </div>
 
       <div class="card">
