@@ -2369,9 +2369,24 @@ async function renderCampaignAdminCards(main) {
         <div><label class="sub muted">סיסמה סודית (כמו שהוגדרה בסקריפט)</label><br><input class="in" id="ca-sw-secret" type="password" value="${esc(s.campaign_sheets_write_secret || '')}"></div>
       </div>
       <div class="row">
-        <div><label class="sub muted">סיסמת אישור לפני כל כתיבה בפועל</label><br><input class="in" id="ca-sync-pw" type="password" value="${esc(s.campaign_sync_admin_password || '')}"></div>
+        <div><label class="sub muted">סיסמת אישור לפני כל כתיבה בפועל</label><br><input class="in" id="ca-sync-pw" type="password" value="${esc(s.campaign_sync_admin_password || '')}">
+          <div class="sub muted" style="margin-top:4px">סיסמה שאת בוחרת. המערכת תבקש אותה לפני כל עדכון שמשנה את הגיליון.</div></div>
       </div>
-      <button class="btn-secondary" id="ca-save-sync" style="margin-top:10px">שמירת הגדרות סנכרון כתיבה</button>`;
+      <button class="btn-secondary" id="ca-save-sync" style="margin-top:10px">שמירת הגדרות סנכרון כתיבה</button>
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;font-weight:600">איך מכינים את הסקריפט בגיליון — 6 שלבים</summary>
+        <ol class="sub" style="line-height:1.9;margin:10px 0">
+          <li>בחרי סיסמה סודית כלשהי (למשל <code>ama2026</code>) והדביקי אותה בשדה "סיסמה סודית" למעלה.</li>
+          <li>בגיליון של אוצרותינו: <b>תוספים ← Apps Script</b>.</li>
+          <li>הוסיפי קובץ חדש, הדביקי את הקוד שלמטה (כפתור ההעתקה כבר משתיל בו את הסיסמה), ושמרי.</li>
+          <li><b>פריסה ← פריסה חדשה ← אפליקציית אינטרנט</b>. "הפעל בתור": אני. "למי יש גישה": <b>כל אחד</b>.</li>
+          <li>העתיקי את הכתובת שמסתיימת ב-<code>/exec</code> והדביקי בשדה "כתובת ה-Web App" למעלה.</li>
+          <li>מלאי "סיסמת אישור" ולחצי "שמירת הגדרות סנכרון כתיבה".</li>
+        </ol>
+        <button class="btn-secondary" id="ca-copy-script">העתקת הקוד</button>
+        <span class="sub muted" id="ca-copy-msg" style="margin-right:8px"></span>
+        <pre id="ca-script-box" style="background:#f6f7f9;padding:12px;border-radius:8px;overflow:auto;direction:ltr;text-align:left;font-size:12px;max-height:280px"></pre>
+      </details>`;
     main.append(card);
     $('#ca-save-brand').addEventListener('click', async () => {
       const payload = { campaign_brand_primary: $('#ca-c1').value, campaign_brand_accent: $('#ca-c2').value, campaign_brand_dark: $('#ca-c3').value };
@@ -2398,6 +2413,45 @@ async function renderCampaignAdminCards(main) {
         } });
         toast('הגדרות הסנכרון נשמרו', 'ok');
       } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+    });
+
+    // הסקריפט שהמנהלת מדביקה בגיליון. מקבל עדכונים לפי שם העמודה,
+    // כך שאם סדר העמודות בגיליון משתנה — הכתיבה עדיין נוחתת נכון.
+    const scriptCode = (secret) => `function doPost(e) {
+  var body = JSON.parse(e.postData.contents);
+  var SECRET = ${JSON.stringify(secret || 'הדביקי-כאן-סיסמה')};
+  if (body.secret !== SECRET) return out({ error: 'bad secret' });
+  try {
+    var sheet = SpreadsheetApp.openById(body.spreadsheetId).getSheetByName(body.sheetName);
+    if (!sheet) return out({ error: 'sheet not found: ' + body.sheetName });
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var written = [];
+    for (var name in body.updates) {
+      var col = headers.indexOf(name) + 1;
+      if (col < 1) return out({ error: 'column not found: ' + name });
+      sheet.getRange(body.row, col).setValue(body.updates[name]);
+      written.push(name);
+    }
+    SpreadsheetApp.flush();
+    return out({ ok: true, row: body.row, written: written });
+  } catch (err) {
+    return out({ error: String(err) });
+  }
+}
+
+function out(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+    const scriptBox = $('#ca-script-box');
+    const refreshScript = () => { scriptBox.textContent = scriptCode($('#ca-sw-secret').value); };
+    refreshScript();
+    $('#ca-sw-secret').addEventListener('input', refreshScript);
+    $('#ca-copy-script').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(scriptBox.textContent);
+        $('#ca-copy-msg').textContent = 'הקוד הועתק — אפשר להדביק ב-Apps Script';
+      } catch { $('#ca-copy-msg').textContent = 'ההעתקה נחסמה — אפשר לסמן את הקוד ולהעתיק ידנית'; }
     });
   }
 
