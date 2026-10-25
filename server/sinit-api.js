@@ -59,12 +59,17 @@ function businessesWithStages() {
 function upsertFromSource(rec, sourceName) {
     const name = clean(rec.name);
     if (!name) return 'skipped';
-    const key = `${sourceName}|${normName(name)}`;
+    // הזיהוי מול המקור מבוסס על הטלפון כשהוא קיים, ולא על השם: שם יכול להשתנות
+    // (למשל כשמחליפים "ללא שם · 05..." בשם האמיתי) ואז סנכרון חוזר היה יוצר כפילות.
+    const phoneKey = clean(rec.phone).replace(/\D/g, '');
+    const key = phoneKey ? `${sourceName}|tel:${phoneKey}` : `${sourceName}|${normName(name)}`;
     let existing = db.prepare('SELECT * FROM campaign_businesses WHERE external_key = ?').get(key);
     if (!existing) {
-        // אותו עסק אולי הוקלד ידנית לפני שהטופס סונכרן — מזהים לפי שם מנורמל ולא יוצרים כפילות
-        existing = db.prepare('SELECT * FROM campaign_businesses').all()
-            .find((b) => normName(b.name) === normName(name));
+        // אותו עסק אולי הוקלד ידנית לפני שהטופס סונכרן, או נקלט קודם לפי שם —
+        // מזהים לפי טלפון או לפי שם מנורמל, כדי לא ליצור כפילות
+        const all = db.prepare('SELECT * FROM campaign_businesses').all();
+        existing = (phoneKey && all.find((b) => String(b.phone || '').replace(/\D/g, '') === phoneKey))
+            || all.find((b) => normName(b.name) === normName(name));
     }
 
     if (!existing) {
@@ -112,14 +117,40 @@ function col(row, words, exclude = []) {
 // נתפסת על "טלפון העסק" ושם העסק מתמלא במספר טלפון.
 const NOT_A_NAME = ['טלפון', 'נייד', 'פלאפון', 'מייל', 'אימייל', 'דוא', 'תאריך', 'שעה', 'סכום', 'עלות', 'שווי'];
 
-// מיפוי שורה של גיליון לשדות עסק — משותף לכל מקורות הסנכרון
+// מאחדת שני תיאורי מוצר לשדה אחד, בלי לכפול כשאחד מוכל בשני
+function joinProduct(main, extra) {
+    const a = clean(main);
+    const b = clean(extra);
+    if (!a) return b;
+    if (!b || a.includes(b) || b.includes(a)) return a;
+    return `${a} (${b})`;
+}
+
+// מיפוי שורה של גיליון לשדות עסק — משותף לכל מקורות הסנכרון.
+// כששם העסק חסר (קורה כמעט תמיד בדיווחי הטלפון) עדיין יוצרים רשומה, עם שם זמני
+// לפי הטלפון: אחרת דיווח אמיתי — עם מוצר, שווי ומגייסת — פשוט נעלם ולא ניתן לחיפוש.
 function rowToBusiness(row) {
+    const rec = rawRowToBusiness(row);
+    if (!clean(rec.name)) {
+        const idPart = clean(rec.phone) || clean(rec.email);
+        if (idPart) { rec.name = `ללא שם · ${idPart}`; rec.unnamed = true; }
+    }
+    return rec;
+}
+
+function rawRowToBusiness(row) {
     return {
         name: col(row, ['שם העסק', 'שם עסק', 'שם התורם', 'תורם', 'חנות', 'ספק', 'עסק'], NOT_A_NAME),
         phone: col(row, ['טלפון העסק', 'נייד העסק', 'טלפון', 'נייד', 'פלאפון']),
         email: col(row, ['מייל העסק', 'אימייל העסק', 'מייל', 'אימייל', 'דוא']),
         contacted_by: col(row, ['שם המגייס', 'מי פנתה', 'מגייסת', 'אחראית', 'שם המדווח', 'מתנדבת']),
-        product: col(row, ['תיאור המוצר', 'המוצר שגויס', 'מוצר', 'תרומה', 'פרס']),
+        // שתי עמודות שונות מתארות את אותו מוצר: "המוצר שגויס" הוא בדרך כלל התיאור
+        // המלא (ושם העסק מסתתר בתוכו), ו"תיאור המוצר" הוא הסוג. מאחדים כדי ששניהם
+        // יופיעו בכרטיס ויימצאו בחיפוש.
+        product: joinProduct(
+            col(row, ['המוצר שגויס', 'מוצר שגויס']),
+            col(row, ['תיאור המוצר', 'מוצר', 'תרומה', 'פרס']),
+        ),
         value_nis: col(row, ['סכום עלות המוצר', 'שווי', 'סכום', 'עלות', 'ערך']),
         pickup: col(row, ['איסוף המוצר', 'איסוף']),
         response: col(row, ['תגובה', 'הערה', 'הערות']),

@@ -357,3 +357,10 @@ td.act-cell { white-space: nowrap; }
 .sinit-toast.show { opacity: 1; transform: translateY(0); }
 .sinit-toast.ok { background: #12805c; }
 .sinit-toast.err { background: #c1362f; }
+
+/* צ'יפ סינון מהיר ליד מונה העסקים */
+.chip-filter {
+    border: 1px solid #e3e8f0; background: #fff; color: var(--c-raspberry);
+    border-radius: 999px; padding: 3px 12px; font-size: .8rem; cursor: pointer;
+}
+.chip-filter.on { background: var(--c-dark); color: #fff; border-color: var(--c-dark); }

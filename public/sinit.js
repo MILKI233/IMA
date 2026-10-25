@@ -232,9 +232,13 @@ function filteredBusinesses() {
         if (S.f.color === 'marked' && !b.highlight) return false;
         if (S.f.color === 'colored' && !b.color) return false;
         if (S.f.color === 'plain' && b.color) return false;
+        if (S.f.unnamed && !isUnnamed(b)) return false;
         return true;
     });
 }
+
+// עסק שנוצר מדיווח טלפוני בלי שם תורם — ממתין לשם אמיתי
+const isUnnamed = (b) => String(b.name || '').startsWith('ללא שם ·');
 
 function stageBar(b, big = false) {
     if (!b.stages_total) return '<span class="hint">אין שלבים</span>';
@@ -248,6 +252,10 @@ function stageBar(b, big = false) {
 // פעולות על עסק: העברה ללשונית השאלות לטיפול, ומחיקה (למנהלת בלבד)
 function rowActions(b) {
     const parts = [];
+    if (canWrite() && isUnnamed(b)) {
+        parts.push(`<button class="btn act-btn" title="מתן שם לעסק שנקלט מדיווח טלפוני"
+            onclick="event.stopPropagation();sinitRename(${b.id})">✎ שם</button>`);
+    }
     if (canWrite()) {
         parts.push(`<button class="btn secondary act-btn" title="פתיחת שאלה על העסק הזה בלשונית שאלות ומענה"
             onclick="event.stopPropagation();sinitMoveToQuestions(${b.id})">➜ לשאלות</button>`);
@@ -271,7 +279,12 @@ function renderBusinesses() {
     const host = el('sbizView');
     if (!host) return;
     const rows = filteredBusinesses();
-    if (el('sbizCount')) el('sbizCount').textContent = `מוצגים ${rows.length} מתוך ${S.businesses.length}`;
+    if (el('sbizCount')) {
+        const unnamed = S.businesses.filter(isUnnamed).length;
+        el('sbizCount').innerHTML = `מוצגים ${rows.length} מתוך ${S.businesses.length}`
+            + (unnamed ? ` · <button class="chip-filter${S.f.unnamed ? ' on' : ''}" onclick="sinitToggleUnnamed()"
+                 title="עסקים שנוצרו מדיווח טלפוני בלי שם תורם — ממתינים לשם">ללא שם (${unnamed})</button>` : '');
+    }
     if (el('sbizEmpty')) el('sbizEmpty').style.display = rows.length ? 'none' : 'block';
     document.querySelectorAll('.view-switch button').forEach((b) => b.classList.toggle('on', b.dataset.view === S.view));
     host.className = `biz-view view-${S.view}`;
@@ -342,6 +355,30 @@ function boardHtml(rows) {
             </div>
         </section>`;
     }).join('')}</div>`;
+}
+
+function sinitToggleUnnamed() {
+    S.f.unnamed = !S.f.unnamed;
+    renderBusinesses();
+}
+
+// שינוי מהיר של שם עסק — בלי לפתוח את כל חלון העסק
+async function sinitRename(id) {
+    const b = S.businesses.find((x) => x.id === id);
+    if (!b) return;
+    const name = await sinitPrompt({
+        title: 'שם העסק',
+        hint: b.product ? `המוצר שדווח: ${b.product}` : '',
+        value: isUnnamed(b) ? '' : b.name,
+        placeholder: 'שם העסק כפי שצריך להופיע ברשימה', rows: 2, okLabel: 'שמירת השם',
+    });
+    if (name === null || !name.trim()) return;
+    try {
+        await api(`/api/sinit/businesses/${id}`, { method: 'PUT', body: { name: name.trim() } });
+        await sinitLoadOverview();
+        if (S.modalId === id) await refreshModal();
+        sinitToast('השם נשמר');
+    } catch (e) { sinitToast(e.message, 'err'); }
 }
 
 function setView(view) {
