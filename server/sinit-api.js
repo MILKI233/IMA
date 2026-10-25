@@ -194,6 +194,10 @@ function tokenHits(token, text) {
     return false;
 }
 
+// התאמה נמדדת לשני הכיוונים: כמה ממילות השאלה נמצאות בשאלה שבקובץ (ratio),
+// וכמה מהשאלה שבקובץ מכוסה על ידי השאלה שנשאלה (coverage). בלי הכיוון השני,
+// שאלה ארוכה בקובץ שבמקרה מכילה שתיים-שלוש מהמילים נחשבת "התאמה מלאה"
+// והמערכת מחזירה את התשובה הלא נכונה.
 function scorePair(tokens, pair) {
     const q = normHeb(pair.question);
     const a = normHeb(pair.answer);
@@ -202,7 +206,13 @@ function scorePair(tokens, pair) {
         if (tokenHits(t, q)) qHits++;
         else if (tokenHits(t, a)) aHits++;
     }
-    return { score: qHits * 3 + aHits, ratio: tokens.length ? qHits / tokens.length : 0 };
+    const pairTokens = tokenize(pair.question);
+    const covered = pairTokens.filter((t) => tokens.some((qt) => qt === t || tokenHits(t, tokens.join(' ')))).length;
+    return {
+        score: qHits * 3 + aHits,
+        ratio: tokens.length ? qHits / tokens.length : 0,
+        coverage: pairTokens.length ? covered / pairTokens.length : 0,
+    };
 }
 
 function splitChunks(text, size = 700) {
@@ -239,12 +249,36 @@ function retrieve(question) {
 }
 
 const AI_SYSTEM = `את עונה לצוות של ארגון "אמא במשמרת" על שאלות בנוגע לקמפיין המכירה הסינית.
-מותר לך לענות רק ממה שכתוב בחומר שמצורף לשאלה. החומר נלקח מקבצי הוורד שהמנהלת העלתה למערכת.
+
+מקור המידע: רק מה שכתוב בחומר שמצורף לשאלה (נלקח מקבצי הוורד שהמנהלת העלתה).
+אסור להוסיף מידע מהידע הכללי שלך, לנחש, או להמציא מספרים ותאריכים.
 אם התשובה לשאלה לא נמצאת בחומר — החזירי בדיוק את המשפט: אין לי מענה
-אל תנחשי, אל תוסיפי מידע מהידע הכללי שלך, ואל תמציאי מספרים או תאריכים.
-עני בעברית, קצר וברור, בגובה העיניים, ובלי לפתוח במשפטי נימוס.`;
+
+איך לענות:
+- עני על מה שנשאל בפועל, ולא על נושא קרוב. אם השאלה היא "מתי", עני תאריך; "כמה" — עני מספר; "מי" — עני שם.
+- החומר שמצורף הוא חומר גלם לחיפוש, לא התשובה. אל תעתיקי ממנו פסקאות ואל תצטטי אותו באריכות —
+  שלפי ממנו רק את הפרט שעונה על השאלה ונסחי אותו במשפט משלך.
+- שתיים-שלוש שורות הן התשובה הנכונה כמעט תמיד. אם צריך יותר מזה (למשל רשימת שלבים שכתובה בחומר) —
+  נקודות קצרות, בלי הקדמה ובלי סיכום.
+- בלי פתיחות ("שאלה טובה", "על פי החומר"), בלי הצעות המשך, ובלי לחזור על השאלה.
+- אם החומר עונה רק על חלק מהשאלה — עני על החלק הזה ואמרי במשפט אחד מה חסר.`;
 
 const NO_ANSWER = 'אין לי מענה';
+
+// תרגום שגיאות ה-API להסבר שאומר למנהלת מה לעשות, במקום להדפיס JSON גולמי בצ'אט
+function aiErrorText(e) {
+    const raw = String(e?.message || '');
+    if (/authentication_error|401|invalid x-api-key/i.test(raw)) {
+        return 'מפתח ה-AI שמוגדר במערכת אינו תקף (אולי פג תוקף או הוחלף). יש להנפיק מפתח חדש ולהדביק אותו במסך "חיבורים".';
+    }
+    if (/credit balance|billing|payment/i.test(raw)) {
+        return 'נגמר הקרדיט בחשבון ה-AI. יש להטעין ב-platform.claude.com ← Billing.';
+    }
+    if (/rate_limit|429/i.test(raw)) return 'יותר מדי שאלות בבת אחת — כדאי לנסות שוב בעוד דקה.';
+    if (/overloaded|529|5\d\d/.test(raw)) return 'שירות ה-AI עמוס כרגע. כדאי לנסות שוב בעוד כמה דקות.';
+    if (/fetch failed|ENOTFOUND|ETIMEDOUT|network/i.test(raw)) return 'אין כרגע חיבור לשירות ה-AI מהשרת.';
+    return 'הפנייה ל-AI נכשלה.';
+}
 const MODELS = ['claude-opus-5', 'claude-opus-4-8'];
 
 async function askClaude(apiKey, question, context, history) {
@@ -259,7 +293,11 @@ async function askClaude(apiKey, question, context, history) {
     let lastErr = null;
     for (const model of MODELS) {
         try {
-            const r = await client.messages.create({ model, max_tokens: 1024, system: AI_SYSTEM, messages });
+            const r = await client.messages.create({
+                model, max_tokens: 700, system: AI_SYSTEM, messages,
+                // שליפת פרט מתוך חומר נתון לא דורשת חשיבה עמוקה — effort נמוך מקצר תגובה ועלות
+                output_config: { effort: 'low' },
+            });
             if (r.stop_reason === 'refusal') throw new Error('הבקשה נדחתה על ידי מערכת הבטיחות של המודל');
             return r.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
         } catch (e) {
@@ -705,9 +743,16 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             });
         }
 
-        // התאמה ישירה בחומר — אם השאלה כמעט זהה לשאלה שכבר כתובה בקובץ, עונים ממנה בלי לפנות ל-AI
+        // התאמה ישירה בחומר — רק כששלושת התנאים מתקיימים: השאלה כמעט זהה לשאלה שבקובץ (ratio),
+        // השאלה שבקובץ לא רחבה בהרבה מהנשאל (coverage), והתשובה עצמה קצרה. אחרת מעבירים ל-AI
+        // שישלוף את הפרט הרלוונטי במקום להחזיר פסקה שלמה מהמסמך.
+        const DIRECT_ANSWER_MAX = 350;
+        const apiKeyForDirect = getSetting('anthropic_api_key');
         const best = pairs[0];
-        if (best && best.ratio >= 0.7) {
+        const tightMatch = !!best && best.ratio >= 0.8 && best.coverage >= 0.6
+            && best.answer.length <= DIRECT_ANSWER_MAX;
+        // בלי מפתח AI אין אלטרנטיבה, אז מחזירים גם התאמה בינונית — עדיף מכלום
+        if (best && (tightMatch || (!apiKeyForDirect && best.ratio >= 0.7))) {
             const id = log('מהחומר', best.answer, best.filename);
             touch();
             return res.json({
@@ -753,7 +798,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             touch();
             res.json({
                 id, outcome: 'אין מענה', needsAdmin: true,
-                answer: `הפנייה ל-AI נכשלה (${e.message}). אפשר לשלוח את השאלה למנהלת המערכת.`,
+                answer: `${aiErrorText(e)} אפשר לשלוח את השאלה למנהלת המערכת.`,
             });
         }
     });

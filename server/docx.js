@@ -106,13 +106,18 @@ function extractPairs(lines) {
         plain.push(line);
     }
 
+    // תקרה לאורך התשובה בתבנית "שורה שמסתיימת בסימן שאלה": בלי זה, שאלה אחת בראש מסמך
+    // בולעת את כל הפסקאות שאחריה, והמערכת מחזירה אותן כ"תשובה" — מלל ארוך במקום מענה.
+    const ANSWER_MAX_LINES = 8;
+    const ANSWER_MAX_CHARS = 1200;
     let current = null;
     for (const line of plain) {
         const stripped = line.replace(NUMBERING, '').trim();
         if (looksLikeQuestion(line)) {
             if (current && current.answer.length) pairs.push({ question: current.question, answer: current.answer.join(' ') });
             current = { question: stripped.replace(Q_PREFIX, '').trim(), answer: [] };
-        } else if (current) {
+        } else if (current && current.answer.length < ANSWER_MAX_LINES
+            && current.answer.join(' ').length < ANSWER_MAX_CHARS) {
             current.answer.push(stripped.replace(A_PREFIX, '').trim());
         }
     }
