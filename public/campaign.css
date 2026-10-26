@@ -106,6 +106,24 @@ tr.biz-row { cursor: pointer; }
 .modal-head h3 { margin: 0; color: var(--c-raspberry); font-size: 1.15rem; }
 .modal-close { border: none; background: #eef3fa; color: var(--c-dark); border-radius: 999px; width: 30px; height: 30px; cursor: pointer; font-size: .9rem; }
 .modal-meta { color: #6b7a90; font-size: .85rem; margin-bottom: 16px; }
+
+/* עריכת פרטי העסק בתוך הכרטיס */
+.modal-extra { margin: -8px 0 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.biz-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 14px; }
+.biz-field { display: flex; flex-direction: column; gap: 4px; }
+.biz-field.wide { grid-column: 1 / -1; }
+.biz-field > span { font-size: .8rem; color: #6b7a90; }
+.biz-field input {
+    padding: 9px 11px; border: 1px solid #dfe4ec; border-radius: 9px;
+    font: inherit; font-size: .92rem; background: #fff;
+}
+.biz-field input:focus { outline: none; border-color: #9fb3cd; box-shadow: 0 0 0 3px rgba(159,179,205,.22); }
+.biz-field .lock { font-style: normal; color: #12805c; cursor: help; }
+.biz-extra { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.biz-extra-row { display: flex; gap: 8px; }
+.biz-extra-row input { flex: 1; padding: 8px 11px; border: 1px solid #e6eaf1; border-radius: 9px; font: inherit; font-size: .9rem; }
+.biz-extra-row .bx-k { max-width: 220px; }
+@media (max-width: 560px) { .biz-extra-row { flex-direction: column; } .biz-extra-row .bx-k { max-width: none; } }
 .modal-notes-head { font-weight: 600; color: var(--c-dark); margin-bottom: 8px; font-size: .9rem; }
 .modal-notes-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 320px; overflow-y: auto; padding-inline-start: 2px; }
 .modal-note { display: flex; gap: 10px; background: #f6f8fb; border-radius: 12px; padding: 10px 14px; border-inline-start: 3px solid #dde5f0; }

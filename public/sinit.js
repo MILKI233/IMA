@@ -381,6 +381,69 @@ async function sinitRename(id) {
     } catch (e) { sinitToast(e.message, 'err'); }
 }
 
+/* ---------- עריכת פרטי העסק ---------- */
+// גם עסק שהגיע מסנכרון ניתן לעריכה. שדה שנערך כאן ננעל ולא נדרס בשליפה הבאה.
+const BIZ_FIELDS = [
+    { k: 'name', label: 'שם העסק' },
+    { k: 'phone', label: 'טלפון העסק', type: 'tel' },
+    { k: 'email', label: 'מייל העסק', type: 'email' },
+    { k: 'contacted_by', label: 'מי פנתה' },
+    { k: 'product', label: 'המוצר שגויס', wide: true },
+    { k: 'value_nis', label: 'שווי בש"ח' },
+    { k: 'pickup', label: 'איסוף' },
+    { k: 'validity', label: 'תוקף' },
+    { k: 'logo_url', label: 'קישור ללוגו', wide: true },
+    { k: 'contact_number', label: 'מס\' פנייה' },
+    { k: 'message_number', label: 'מס\' הודעה' },
+];
+
+function sinitEditFields(d) {
+    const b = d.biz;
+    const locked = new Set(b.manualFields || []);
+    const extra = b.extra || {};
+    const rows = BIZ_FIELDS.map(({ k, label, type, wide }) => `
+        <label class="biz-field${wide ? ' wide' : ''}">
+            <span>${label}${locked.has(k) ? ' <i class="lock" title="נערך ידנית — סנכרון לא ידרוס">✎</i>' : ''}</span>
+            <input id="bf-${k}" type="${type || 'text'}" value="${esc(b[k] || '')}">
+        </label>`).join('');
+    // שורות ריקות נוספות כדי שתמיד יהיה מקום להוסיף שדה חדש
+    const extraRows = [...Object.entries(extra), ['', ''], ['', '']].map(([k, v], i) => `
+        <div class="biz-extra-row">
+            <input class="bx-k" data-i="${i}" placeholder="שם השדה (למשל: איש קשר)" value="${esc(k)}">
+            <input class="bx-v" data-i="${i}" placeholder="הערך" value="${esc(v)}">
+        </div>`).join('');
+    return `
+        <div class="biz-fields">${rows}</div>
+        <div class="biz-extra">
+            <div class="hint">שדות נוספים משלך — אפשר להוסיף כל פרט שחסר (שעות פתיחה, איש קשר, כתובת…)</div>
+            ${extraRows}
+        </div>
+        <div class="row" style="margin-top:10px">
+            <button class="btn" onclick="sinitSaveBizFields()">שמירת הפרטים</button>
+            <span class="hint" id="bizFieldsHint"></span>
+        </div>`;
+}
+
+async function sinitSaveBizFields() {
+    const body = { extra: {} };
+    for (const { k } of BIZ_FIELDS) {
+        const input = el(`bf-${k}`);
+        if (input) body[k] = input.value.trim();
+    }
+    if (!body.name) { el('bizFieldsHint').textContent = 'שם העסק לא יכול להישאר ריק'; return; }
+    document.querySelectorAll('.biz-extra-row').forEach((row) => {
+        const k = row.querySelector('.bx-k').value.trim();
+        const v = row.querySelector('.bx-v').value.trim();
+        if (k && v) body.extra[k] = v;
+    });
+    try {
+        await api(`/api/sinit/businesses/${S.modalId}`, { method: 'PUT', body });
+        await sinitLoadOverview();
+        await refreshModal();
+        sinitToast('הפרטים נשמרו');
+    } catch (e) { sinitToast(e.message, 'err'); }
+}
+
 function setView(view) {
     S.view = view;
     localStorage.setItem('sinit_view', view);
@@ -467,6 +530,19 @@ function renderBizModal(d) {
     ].filter(Boolean).join(' · ')
         + ` <span class="badge ${STATUS_CLASS[b.status] || ''}">${esc(b.status)}</span>`
         + (b.logo_url ? ` · <a href="${esc(b.logo_url)}" target="_blank" rel="noopener">לוגו</a>` : '');
+
+    if (el('sbizModalFields')) {
+        el('sbizModalFields').innerHTML = canWrite() ? sinitEditFields(d)
+            : '<span class="hint">הקישור שלך הוא לצפייה בלבד</span>';
+    }
+
+    // פרטים חופשיים שנוספו ידנית מוצגים גם בשורת הכותרת
+    const extraPairs = Object.entries(b.extra || {});
+    if (el('sbizModalExtra')) {
+        el('sbizModalExtra').innerHTML = extraPairs.length
+            ? extraPairs.map(([k, v]) => `<span class="chip-tag">${esc(k)}: ${esc(v)}</span>`).join(' ')
+            : '';
+    }
 
     if (el('sbizModalStatus')) {
         el('sbizModalStatus').value = b.status;

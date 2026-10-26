@@ -338,6 +338,11 @@ for (const stmt of [
   `ALTER TABLE campaign_businesses ADD COLUMN validity TEXT`,
   `ALTER TABLE campaign_businesses ADD COLUMN logo_url TEXT`,
   `ALTER TABLE campaign_businesses ADD COLUMN synced_at TEXT`,
+  // שדות שהמנהלת ערכה ביד. סנכרון מהגיליון לא דורס אותם, אחרת כל שליפה
+  // הייתה מוחקת טלפון או מייל שהושלמו כאן ידנית.
+  `ALTER TABLE campaign_businesses ADD COLUMN manual_fields TEXT`,
+  // שדות חופשיים שהמנהלת מוסיפה בעצמה (איש קשר, שעות פתיחה וכו') — JSON של שם:ערך
+  `ALTER TABLE campaign_businesses ADD COLUMN extra TEXT`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

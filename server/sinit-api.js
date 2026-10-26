@@ -56,6 +56,21 @@ function businessesWithStages() {
 
 // עדכון עסק ממקור חיצוני: לא דורס שום דבר שמישהי כתבה ידנית (סטטוס, תגובה, צבע),
 // רק משלים שדות ריקים ומרענן את פרטי המוצר מהטופס.
+// השדות שאפשר לערוך ידנית בכרטיס העסק. השדות החופשיים (extra) נשמרים בנפרד.
+const EDITABLE_FIELDS = ['name', 'contacted_by', 'phone', 'email', 'product', 'value_nis',
+    'pickup', 'validity', 'logo_url', 'contact_number', 'message_number', 'response'];
+
+function manualSet(biz) {
+    try { return new Set(JSON.parse(biz.manual_fields || '[]')); } catch { return new Set(); }
+}
+
+function parseExtra(biz) {
+    try {
+        const o = JSON.parse(biz.extra || '{}');
+        return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+    } catch { return {}; }
+}
+
 function upsertFromSource(rec, sourceName) {
     const name = clean(rec.name);
     if (!name) return 'skipped';
@@ -72,6 +87,16 @@ function upsertFromSource(rec, sourceName) {
             || all.find((b) => normName(b.name) === normName(name));
     }
 
+    // נתיב ההקלטה של שם העסק נשמר כשדה חופשי, כדי שאפשר יהיה לאתר אותו בימות
+    const withRecording = (bizId) => {
+        if (!clean(rec.recording)) return;
+        const row = db.prepare('SELECT extra FROM campaign_businesses WHERE id = ?').get(bizId);
+        const extra = parseExtra(row);
+        if (extra['הקלטת שם העסק'] === clean(rec.recording)) return;
+        extra['הקלטת שם העסק'] = clean(rec.recording);
+        db.prepare('UPDATE campaign_businesses SET extra = ? WHERE id = ?').run(JSON.stringify(extra), bizId);
+    };
+
     if (!existing) {
         const r = db.prepare(`INSERT INTO campaign_businesses
             (name, contacted_by, phone, email, response, status, source, external_key, product, value_nis, pickup, validity, logo_url, created_at, synced_at)
@@ -80,24 +105,33 @@ function upsertFromSource(rec, sourceName) {
                 clean(rec.response) || null, allStatuses().includes(rec.status) ? rec.status : 'תרם',
                 sourceName, key, clean(rec.product) || null, clean(rec.value_nis) || null,
                 clean(rec.pickup) || null, clean(rec.validity) || null, clean(rec.logo_url) || null);
+        withRecording(r.lastInsertRowid);
         return { outcome: 'added', id: r.lastInsertRowid };
     }
+
+    // שדות שנערכו ידנית כאן מנצחים את המקור: בלי זה כל סנכרון היה מחזיר
+    // את הערך הישן מהגיליון ומוחק את מה שהמנהלת השלימה בעצמה
+    const locked = manualSet(existing);
+    const srcWins = (field, value) => (locked.has(field) ? null : (clean(value) || null));
+    const fillOnly = (field, value) => (locked.has(field) ? null : (clean(value) || null));
 
     db.prepare(`UPDATE campaign_businesses SET
             external_key = COALESCE(external_key, ?),
             contacted_by = COALESCE(NULLIF(contacted_by,''), ?),
             phone        = COALESCE(NULLIF(phone,''), ?),
             email        = COALESCE(NULLIF(email,''), ?),
-            product      = COALESCE(NULLIF(?,''), product),
-            value_nis    = COALESCE(NULLIF(?,''), value_nis),
-            pickup       = COALESCE(NULLIF(?,''), pickup),
-            validity     = COALESCE(NULLIF(?,''), validity),
-            logo_url     = COALESCE(NULLIF(?,''), logo_url),
+            product      = COALESCE(?, product),
+            value_nis    = COALESCE(?, value_nis),
+            pickup       = COALESCE(?, pickup),
+            validity     = COALESCE(?, validity),
+            logo_url     = COALESCE(?, logo_url),
             synced_at    = datetime('now','localtime')
         WHERE id = ?`)
-        .run(key, clean(rec.contacted_by) || null, clean(rec.phone) || null, clean(rec.email) || null,
-            clean(rec.product), clean(rec.value_nis), clean(rec.pickup), clean(rec.validity), clean(rec.logo_url),
+        .run(key, fillOnly('contacted_by', rec.contacted_by), fillOnly('phone', rec.phone), fillOnly('email', rec.email),
+            srcWins('product', rec.product), srcWins('value_nis', rec.value_nis), srcWins('pickup', rec.pickup),
+            srcWins('validity', rec.validity), srcWins('logo_url', rec.logo_url),
             existing.id);
+    withRecording(existing.id);
     return { outcome: 'updated', id: existing.id };
 }
 
@@ -138,11 +172,27 @@ function rowToBusiness(row) {
     return rec;
 }
 
+// במערכת הטלפונית שם העסק מוקלט ולא מוקלד, ואז העמודה "שם העסק" מכילה נתיב
+// להקלטה (/campaign1/Messages/05....wav) במקום טקסט. זה לא שם — אבל כן רמז
+// שימושי, ולכן הוא נשמר בנפרד כדי שאפשר יהיה לאתר את ההקלטה בימות.
+const RECORDING_RE = /(^\/|\bMessages\/)|\.wav\s*$/i;
+function isRecordingPath(v) {
+    const s = clean(v);
+    return !!s && RECORDING_RE.test(s);
+}
+
 function rawRowToBusiness(row) {
+    const rawName = col(row, ['שם העסק', 'שם עסק', 'שם התורם', 'תורם', 'חנות', 'ספק', 'עסק'], NOT_A_NAME);
+    // עמודות "אישור..." מכילות 1/0 ולא ערך אמיתי, ומילת מפתח כללית כמו "מייל"
+    // נתפסת עליהן ("אישור שליחת אימייל"). מסננים אותן, ובנוסף מאמתים את הערך עצמו.
+    const NOT_A_VALUE = ['אישור', 'סטטוס', 'תאריך'];
+    const rawEmail = col(row, ['מייל העסק', 'אימייל העסק', 'מייל', 'אימייל', 'דוא'], NOT_A_VALUE);
+    const rawPhone = col(row, ['טלפון העסק', 'נייד העסק', 'טלפון', 'נייד', 'פלאפון'], NOT_A_VALUE);
     return {
-        name: col(row, ['שם העסק', 'שם עסק', 'שם התורם', 'תורם', 'חנות', 'ספק', 'עסק'], NOT_A_NAME),
-        phone: col(row, ['טלפון העסק', 'נייד העסק', 'טלפון', 'נייד', 'פלאפון']),
-        email: col(row, ['מייל העסק', 'אימייל העסק', 'מייל', 'אימייל', 'דוא']),
+        name: isRecordingPath(rawName) ? '' : rawName,
+        recording: isRecordingPath(rawName) ? clean(rawName) : '',
+        phone: clean(rawPhone).replace(/\D/g, '').length >= 7 ? rawPhone : '',
+        email: /\S+@\S+\.\S+/.test(clean(rawEmail)) ? rawEmail : '',
         contacted_by: col(row, ['שם המגייס', 'מי פנתה', 'מגייסת', 'אחראית', 'שם המדווח', 'מתנדבת']),
         // שתי עמודות שונות מתארות את אותו מוצר: "המוצר שגויס" הוא בדרך כלל התיאור
         // המלא (ושם העסק מסתתר בתוכו), ו"תיאור המוצר" הוא הסוג. מאחדים כדי ששניהם
@@ -158,8 +208,32 @@ function rawRowToBusiness(row) {
     };
 }
 
+// תיקון חד-פעמי: עסקים שנקלטו לפני שזוהו נתיבי ההקלטה נשמרו עם הנתיב כשם.
+// מחליפים לשם הזמני לפי הטלפון ושומרים את ההקלטה כשדה חופשי.
+function repairRecordingNames() {
+    // ערכי "1" שנקלטו בטעות כמייל (מעמודת "אישור שליחת אימייל") — מנקים
+    const badMail = db.prepare(`UPDATE campaign_businesses SET email = NULL
+        WHERE email IS NOT NULL AND email != '' AND email NOT LIKE '%@%'`).run().changes;
+    if (badMail) console.log(`נוקו ${badMail} ערכי מייל שגויים`);
+
+    const rows = db.prepare('SELECT id, name, phone, email, extra FROM campaign_businesses').all();
+    let fixed = 0;
+    for (const b of rows) {
+        if (!isRecordingPath(b.name)) continue;
+        const idPart = clean(b.phone) || clean(b.email);
+        const extra = parseExtra(b);
+        extra['הקלטת שם העסק'] = clean(b.name);
+        db.prepare('UPDATE campaign_businesses SET name = ?, extra = ? WHERE id = ?')
+            .run(idPart ? `ללא שם · ${idPart}` : 'ללא שם', JSON.stringify(extra), b.id);
+        fixed++;
+    }
+    if (fixed) console.log(`תוקנו ${fixed} עסקים ששמם היה נתיב הקלטה`);
+    return fixed;
+}
+
 export async function syncSinitBusinesses() {
     const result = { sources: [], added: 0, updated: 0, errors: [] };
+    result.repairedNames = repairRecordingNames();
 
     // (1) טופס "תודה על תרומתך" — כבר נשלף כל 3 דקות ללוח הבקרה
     const cache = getCampaignSheetsCache();
@@ -618,13 +692,37 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const status = allStatuses().includes(b.status) ? b.status : before.status;
         const color = b.color === undefined ? before.color : (clean(b.color) || null);
         const highlight = b.highlight === undefined ? before.highlight : (b.highlight ? 1 : 0);
+
+        // כל שדה שנשלח במפורש נרשם כ"ידני" ומוגן מפני דריסה בסנכרון הבא.
+        // שינוי צבע או סטטוס לבדו לא נוגע ברשימה הזו.
+        const locked = manualSet(before);
+        for (const f of EDITABLE_FIELDS) {
+            if (b[f] === undefined) continue;
+            if (clean(b[f]) === clean(before[f] ?? '')) continue;   // לא השתנה — לא ננעל
+            locked.add(f);
+        }
+
+        // שדות חופשיים: אובייקט של שם:ערך. ערך ריק מוחק את השדה.
+        let extra = parseExtra(before);
+        if (b.extra && typeof b.extra === 'object' && !Array.isArray(b.extra)) {
+            extra = {};
+            for (const [k, v] of Object.entries(b.extra)) {
+                const key = clean(k).slice(0, 60);
+                const val = clean(v).slice(0, 500);
+                if (key && val) extra[key] = val;
+            }
+        }
+
         db.prepare(`UPDATE campaign_businesses SET name=?, contacted_by=?, phone=?, email=?, response=?, status=?,
-                    contact_number=?, message_number=?, product=?, value_nis=?, color=?, highlight=?,
+                    contact_number=?, message_number=?, product=?, value_nis=?, pickup=?, validity=?, logo_url=?,
+                    color=?, highlight=?, manual_fields=?, extra=?,
                     updated_at=datetime('now','localtime') WHERE id=?`)
             .run(clean(b.name) || before.name, pick('contacted_by', before.contacted_by), pick('phone', before.phone),
                 pick('email', before.email), pick('response', before.response), status,
                 pick('contact_number', before.contact_number), pick('message_number', before.message_number),
-                pick('product', before.product), pick('value_nis', before.value_nis), color, highlight, before.id);
+                pick('product', before.product), pick('value_nis', before.value_nis),
+                pick('pickup', before.pickup), pick('validity', before.validity), pick('logo_url', before.logo_url),
+                color, highlight, JSON.stringify([...locked]), JSON.stringify(extra), before.id);
         audit(actor(req), 'campaign.business.update', 'campaign_businesses', before.id,
             { status: before.status, color: before.color, highlight: before.highlight },
             { status, color, highlight, response: pick('response', before.response) });
@@ -662,8 +760,10 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const stages = stageList();
         const progress = db.prepare('SELECT * FROM campaign_business_stages WHERE business_id = ?').all(biz.id);
         const pMap = new Map(progress.map((p) => [p.stage_id, p]));
+        const raw = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(biz.id);
         res.json({
-            biz,
+            biz: { ...biz, manualFields: [...manualSet(raw)], extra: parseExtra(raw) },
+            editableFields: EDITABLE_FIELDS,
             notes: db.prepare('SELECT * FROM campaign_business_notes WHERE business_id = ? ORDER BY id DESC').all(biz.id),
             stages: stages.map((s) => ({ ...s, ...(pMap.get(s.id) || { done: 0, note: null, done_by: null, done_at: null }) })),
             questions: db.prepare('SELECT * FROM campaign_questions WHERE business_id = ? ORDER BY id DESC').all(biz.id),
