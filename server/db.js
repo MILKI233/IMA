@@ -346,6 +346,8 @@ for (const stmt of [
   // הטלפון שממנו הגיע הדיווח (המתנדבת שהתקשרה) — נפרד מטלפון העסק
   `ALTER TABLE campaign_businesses ADD COLUMN reporter_phone TEXT`,
   `ALTER TABLE campaign_businesses ADD COLUMN reported_at TEXT`,
+  // עסק שהועבר לטיפול ב"שאלות ומענה" יוצא מרשימת העסקים ומטופל שם
+  `ALTER TABLE campaign_businesses ADD COLUMN moved_to_questions INTEGER NOT NULL DEFAULT 0`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

@@ -47,6 +47,7 @@ function businessesWithStages() {
         const lastDone = [...stages].reverse().find((s) => done.has(s.id));
         return {
             ...b,
+            moved_to_questions: b.moved_to_questions ? 1 : 0,
             notes_count: noteMap.get(b.id) || 0,
             stages_done: done.size,
             stages_total: stages.length,
@@ -875,6 +876,16 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         res.json({ ok: true });
     });
 
+    // החזרת עסק מ"שאלות ומענה" חזרה לרשימת העסקים
+    router.post('/businesses/:id/return', gate('businesses', 'write'), (req, res) => {
+        const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
+        if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });
+        db.prepare('UPDATE campaign_businesses SET moved_to_questions = 0 WHERE id = ?').run(before.id);
+        audit(actor(req), 'campaign.business.return', 'campaign_businesses', before.id, { moved: 1 }, { moved: 0 });
+        touch();
+        res.json({ ok: true });
+    });
+
     router.delete('/businesses/:id', mustLogin, mustManager, (req, res) => {
         const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
         if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });
@@ -1021,6 +1032,12 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const id = r.lastInsertRowid;
         db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
             .run(id, 'השאלה נרשמה במערכת', actor(req));
+        // עסק שהועבר לטיפול יוצא מרשימת העסקים — הוא מטופל מכאן ואילך בשאלות
+        if (businessId && req.body?.move_business) {
+            db.prepare('UPDATE campaign_businesses SET moved_to_questions = 1 WHERE id = ?').run(businessId);
+            db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
+                .run(id, 'העסק הועבר מרשימת העסקים לטיפול כאן', actor(req));
+        }
 
         let mail = { sent: false, to: adminEmails().join(', '), error: null };
         if (req.body?.send_email) {

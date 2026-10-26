@@ -6,7 +6,7 @@ const S = {
     businesses: [], stages: [], statuses: [], questions: [], aiLog: [],
     overview: null, modalId: null, wired: false, asking: false,
     view: localStorage.getItem('sinit_view') || 'table',
-    f: { q: '', status: '', stage: '', source: '', color: '', question: '' },
+    f: { q: '', status: '', stage: '', source: '', color: '', question: '', moved: false, qMode: 'open' },
 };
 
 // מצב שיתוף נקבע ב-share-boot.js רק אחרי שהמתנדבת מזינה את שמה — לכן נקרא בכל פעם מחדש
@@ -222,6 +222,8 @@ function fillSelects() {
 function filteredBusinesses() {
     const q = S.f.q.toLowerCase();
     return S.businesses.filter((b) => {
+        // עסק שהועבר ל"שאלות ומענה" מטופל שם, ולא מופיע כאן אלא אם ביקשו לראות אותו
+        if (S.f.moved ? !b.moved_to_questions : !!b.moved_to_questions) return false;
         if (q && ![b.name, b.contacted_by, b.phone, b.reporter_phone, b.email, b.product, b.response]
             .some((v) => String(v || '').toLowerCase().includes(q))) return false;
         if (S.f.status && b.status !== S.f.status) return false;
@@ -256,8 +258,11 @@ function rowActions(b) {
         parts.push(`<button class="btn act-btn" title="מתן שם לעסק שנקלט מדיווח טלפוני"
             onclick="event.stopPropagation();sinitRename(${b.id})">✎ שם</button>`);
     }
-    if (canWrite()) {
-        parts.push(`<button class="btn secondary act-btn" title="פתיחת שאלה על העסק הזה בלשונית שאלות ומענה"
+    if (canWrite() && b.moved_to_questions) {
+        parts.push(`<button class="btn act-btn" title="החזרת העסק לרשימת העסקים"
+            onclick="event.stopPropagation();sinitReturnBiz(${b.id})">↩ חזרה לעסקים</button>`);
+    } else if (canWrite()) {
+        parts.push(`<button class="btn secondary act-btn" title="העברת העסק לטיפול בלשונית שאלות ומענה — הוא יצא מרשימת העסקים"
             onclick="event.stopPropagation();sinitMoveToQuestions(${b.id})">➜ לשאלות</button>`);
     }
     if (S.overview?.isManager) {
@@ -280,10 +285,14 @@ function renderBusinesses() {
     if (!host) return;
     const rows = filteredBusinesses();
     if (el('sbizCount')) {
-        const unnamed = S.businesses.filter(isUnnamed).length;
-        el('sbizCount').innerHTML = `מוצגים ${rows.length} מתוך ${S.businesses.length}`
-            + (unnamed ? ` · <button class="chip-filter${S.f.unnamed ? ' on' : ''}" onclick="sinitToggleUnnamed()"
-                 title="עסקים שנוצרו מדיווח טלפוני בלי שם תורם — ממתינים לשם">ללא שם (${unnamed})</button>` : '');
+        const active = S.businesses.filter((b) => !b.moved_to_questions);
+        const moved = S.businesses.length - active.length;
+        const unnamed = active.filter(isUnnamed).length;
+        el('sbizCount').innerHTML = `מוצגים ${rows.length} מתוך ${S.f.moved ? moved : active.length}`
+            + (unnamed && !S.f.moved ? ` · <button class="chip-filter${S.f.unnamed ? ' on' : ''}" onclick="sinitToggleUnnamed()"
+                 title="עסקים שנוצרו מדיווח טלפוני בלי שם תורם — ממתינים לשם">ללא שם (${unnamed})</button>` : '')
+            + (moved ? ` · <button class="chip-filter${S.f.moved ? ' on' : ''}" onclick="sinitToggleMoved()"
+                 title="עסקים שהועברו לטיפול בלשונית שאלות ומענה">בטיפול בשאלות (${moved})</button>` : '');
     }
     if (el('sbizEmpty')) el('sbizEmpty').style.display = rows.length ? 'none' : 'block';
     document.querySelectorAll('.view-switch button').forEach((b) => b.classList.toggle('on', b.dataset.view === S.view));
@@ -362,6 +371,21 @@ function boardHtml(rows) {
 function sinitToggleUnnamed() {
     S.f.unnamed = !S.f.unnamed;
     renderBusinesses();
+}
+
+// מעבר בין רשימת העסקים הפעילים לבין אלה שהועברו לטיפול בשאלות
+function sinitToggleMoved() {
+    S.f.moved = !S.f.moved;
+    if (S.f.moved) S.f.unnamed = false;
+    renderBusinesses();
+}
+
+async function sinitReturnBiz(id) {
+    try {
+        await api(`/api/sinit/businesses/${id}/return`, { method: 'POST' });
+        await sinitLoadOverview();
+        sinitToast('העסק הוחזר לרשימת העסקים');
+    } catch (e) { sinitToast(e.message, 'err'); }
 }
 
 // שינוי מהיר של שם עסק — בלי לפתוח את כל חלון העסק
@@ -487,21 +511,21 @@ async function sinitMoveToQuestions(id) {
     if (!b) return;
     const text = await sinitPrompt({
         title: `העברה לטיפול — ${b.name}`,
-        hint: 'הטקסט ייפתח כשאלה בלשונית "שאלות ומענה", מקושרת לעסק הזה.',
+        hint: 'העסק יצא מרשימת העסקים ויטופל מכאן ואילך ב"שאלות ומענה". תמיד אפשר להחזיר אותו.',
         value: `לטפל בעסק ${b.name}${b.status ? ` (סטטוס: ${b.status})` : ''}`,
         okLabel: 'העברה לשאלות', rows: 5,
     });
     if (text === null || !text.trim()) return;
     try {
         const r = await api('/api/sinit/questions', { method: 'POST', body: {
-            text: text.trim(), business_id: id, send_email: false,
+            text: text.trim(), business_id: id, send_email: false, move_business: true,
         } });
+        if (S.modalId === id) sinitCloseModal();
         await Promise.all([sinitLoadQuestions(), sinitLoadOverview()]);
-        if (S.modalId === id) await refreshModal();
         // גלילה ישירה לרשומה החדשה, כדי שרואים לאן זה הלך
         el('hd-squestions')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         sinitToast(r.ok ? 'העסק הועבר לטיפול — ראי בלשונית "שאלות ומענה"' : 'ההעברה נכשלה', r.ok ? 'ok' : 'err');
-    } catch (e) { alert(e.message); }
+    } catch (e) { sinitToast(e.message, 'err'); }
 }
 
 /* ---------- חלון עסק ---------- */
@@ -654,14 +678,39 @@ async function sinitDeleteNote(noteId) {
 }
 
 /* ---------- שאלות ושלבי מענה ---------- */
+// שאלה "טופלה" כשנכתבה לה תשובה או שהיא נסגרה
+const isHandled = (x) => x.status === 'נענתה' || x.status === 'נסגרה';
+
+function sinitSetQFilter(mode) {
+    S.f.qMode = mode;
+    renderQuestions();
+}
+
 function renderQuestions() {
     if (!el('squestionsList')) return;
     const q = S.f.question.toLowerCase();
-    const rows = S.questions.filter((x) => !q
+    const matched = S.questions.filter((x) => !q
         || (x.text || '').toLowerCase().includes(q)
         || (x.answer || '').toLowerCase().includes(q)
         || (x.asked_by || '').toLowerCase().includes(q));
-    if (el('squestionsEmpty')) el('squestionsEmpty').style.display = rows.length ? 'none' : 'block';
+
+    const open = matched.filter((x) => !isHandled(x));
+    const handled = matched.filter(isHandled);
+    const mode = S.f.qMode || 'open';
+    const rows = mode === 'handled' ? handled : (mode === 'all' ? matched : open);
+
+    if (el('squestionsTabs')) {
+        const tab = (key, label, n) => `<button class="chip-filter${mode === key ? ' on' : ''}"
+            onclick="sinitSetQFilter('${key}')">${label} (${n})</button>`;
+        el('squestionsTabs').innerHTML = tab('open', 'ממתינות לטיפול', open.length)
+            + ' ' + tab('handled', 'שאלות שטופלו', handled.length)
+            + ' ' + tab('all', 'הכל', matched.length);
+    }
+    if (el('squestionsEmpty')) {
+        el('squestionsEmpty').style.display = rows.length ? 'none' : 'block';
+        el('squestionsEmpty').textContent = mode === 'handled'
+            ? 'עדיין לא טופלו שאלות' : (mode === 'open' ? 'אין שאלות שממתינות לטיפול' : 'אין שאלות');
+    }
     el('squestionsList').innerHTML = rows.map((x) => `
         <div class="q-card">
             <div class="q-head">
