@@ -79,7 +79,10 @@ function upsertFromSource(rec, sourceName) {
     // הזיהוי מול המקור מבוסס על הטלפון כשהוא קיים, ולא על השם: שם יכול להשתנות
     // (למשל כשמחליפים "ללא שם · 05..." בשם האמיתי) ואז סנכרון חוזר היה יוצר כפילות.
     const phoneKey = clean(rec.phone).replace(/\D/g, '');
-    const key = phoneKey ? `${sourceName}|tel:${phoneKey}` : `${sourceName}|${normName(name)}`;
+    // בלי טלפון של העסק אין מזהה יציב, ואז כל דיווח הוא רשומה בפני עצמה לפי
+    // מספר השורה בגיליון. בלי זה כל הדיווחים של אותה מתנדבת נדרסו לעסק אחד.
+    const key = phoneKey ? `${sourceName}|tel:${phoneKey}`
+        : (rec.srcRow ? `${sourceName}|row:${rec.srcRow}` : `${sourceName}|${normName(name)}`);
     let existing = db.prepare('SELECT * FROM campaign_businesses WHERE external_key = ?').get(key);
     if (!existing) {
         // אותו עסק אולי הוקלד ידנית לפני שהטופס סונכרן, או נקלט קודם לפי שם —
@@ -91,6 +94,12 @@ function upsertFromSource(rec, sourceName) {
 
     // נתיב ההקלטה של שם העסק נשמר כשדה חופשי, כדי שאפשר יהיה לאתר אותו בימות
     const withRecording = (bizId) => {
+        if (clean(rec.reporter_phone) || clean(rec.reported_at)) {
+            db.prepare(`UPDATE campaign_businesses
+                SET reporter_phone = COALESCE(NULLIF(?,''), reporter_phone),
+                    reported_at    = COALESCE(NULLIF(?,''), reported_at)
+                WHERE id = ?`).run(clean(rec.reporter_phone), clean(rec.reported_at), bizId);
+        }
         if (!clean(rec.recording)) return;
         const row = db.prepare('SELECT extra FROM campaign_businesses WHERE id = ?').get(bizId);
         const extra = parseExtra(row);
@@ -165,11 +174,17 @@ function joinProduct(main, extra) {
 // מיפוי שורה של גיליון לשדות עסק — משותף לכל מקורות הסנכרון.
 // כששם העסק חסר (קורה כמעט תמיד בדיווחי הטלפון) עדיין יוצרים רשומה, עם שם זמני
 // לפי הטלפון: אחרת דיווח אמיתי — עם מוצר, שווי ומגייסת — פשוט נעלם ולא ניתן לחיפוש.
-function rowToBusiness(row) {
-    const rec = rawRowToBusiness(row);
+function rowToBusiness(row, opts = {}) {
+    const rec = rawRowToBusiness(row, opts);
     if (!clean(rec.name)) {
+        // מעדיפים את טלפון העסק. כשאין — מסמנים במפורש שזה הטלפון של המדווחת,
+        // כדי שלא ייראה כאילו זה מספר העסק.
         const idPart = clean(rec.phone) || clean(rec.email);
         if (idPart) { rec.name = `ללא שם · ${idPart}`; rec.unnamed = true; }
+        else if (clean(rec.reporter_phone)) {
+            rec.name = `ללא שם · דווח מ-${clean(rec.reporter_phone)}${rec.reported_at ? ` · ${rec.reported_at}` : ''}`;
+            rec.unnamed = true;
+        }
     }
     return rec;
 }
@@ -183,13 +198,21 @@ function isRecordingPath(v) {
     return !!s && RECORDING_RE.test(s);
 }
 
-function rawRowToBusiness(row) {
+// בלשונית "פרטי דיווחים" יש שני טלפונים שונים: "טלפון" הוא המספר שממנו
+// הגיעה השיחה (המתנדבת שדיווחה), ו"טלפון העסק" הוא של העסק עצמו. ערבוב
+// ביניהם גרם לכל הדיווחים של אותה מתנדבת להתמזג לעסק אחד.
+function rawRowToBusiness(row, opts = {}) {
     const rawName = col(row, ['שם העסק', 'שם עסק', 'שם התורם', 'תורם', 'חנות', 'ספק', 'עסק'], NOT_A_NAME);
     // עמודות "אישור..." מכילות 1/0 ולא ערך אמיתי, ומילת מפתח כללית כמו "מייל"
     // נתפסת עליהן ("אישור שליחת אימייל"). מסננים אותן, ובנוסף מאמתים את הערך עצמו.
     const NOT_A_VALUE = ['אישור', 'סטטוס', 'תאריך'];
     const rawEmail = col(row, ['מייל העסק', 'אימייל העסק', 'מייל', 'אימייל', 'דוא'], NOT_A_VALUE);
-    const rawPhone = col(row, ['טלפון העסק', 'נייד העסק', 'טלפון', 'נייד', 'פלאפון'], NOT_A_VALUE);
+    // כשיש עמודת "טלפון מדווח" נפרדת, הטלפון הכללי אינו של העסק ואסור ליפול אליו
+    const phoneWords = opts.reporterPhoneColumn
+        ? ['טלפון העסק', 'נייד העסק']
+        : ['טלפון העסק', 'נייד העסק', 'טלפון', 'נייד', 'פלאפון'];
+    const rawPhone = col(row, phoneWords, NOT_A_VALUE);
+    const reporterPhone = opts.reporterPhoneColumn ? clean(row[opts.reporterPhoneColumn]) : '';
     // כל שדה טקסט עלול להכיל נתיב הקלטה, לא רק השם: במערכת הטלפונית גם
     // "המוצר שגויס" ו"שם המגייס" נשאלים בהקלטה. נתיב אף פעם אינו ערך להצגה.
     const txt = (v) => (isRecordingPath(v) ? '' : v);
@@ -197,6 +220,9 @@ function rawRowToBusiness(row) {
         name: txt(rawName),
         recording: isRecordingPath(rawName) ? clean(rawName) : '',
         phone: clean(rawPhone).replace(/\D/g, '').length >= 7 ? rawPhone : '',
+        reporter_phone: clean(reporterPhone).replace(/\D/g, '').length >= 7 ? reporterPhone : '',
+        reported_at: clean(col(row, ['תאריך ושעה', 'תאריך'])),
+        srcRow: row.__row || null,
         email: /\S+@\S+\.\S+/.test(clean(rawEmail)) ? rawEmail : '',
         contacted_by: txt(col(row, ['שם המגייס', 'מי פנתה', 'מגייסת', 'אחראית', 'שם המדווח', 'מתנדבת'])),
         // שתי עמודות שונות מתארות את אותו מוצר: "המוצר שגויס" הוא בדרך כלל התיאור
@@ -250,6 +276,74 @@ function repairRecordingNames() {
     return fixed;
 }
 
+// תיקון חד-פעמי לדיווחים שנדרסו: לפני התיקון, דיווח בלי טלפון עסק זוהה לפי
+// הטלפון של *המדווחת*, וכל הדיווחים שלה התמזגו לרשומה אחת. עכשיו המזהה הוא
+// שורת הגיליון, ולכן הרשומות הישנות צריכות לפנות את מקומן.
+// רשומה שמישהי כבר עבדה עליה (תגובה, שלב סגירה, עריכה ידנית) לא נמחקת —
+// רק מקבלת מזהה חדש כדי שתמשיך להתעדכן מהשורה שלה.
+function repairMergedReports(reportRows) {
+    const prefix = `${REPORTS_SHEET_TAB}|tel:`;
+    const stale = db.prepare('SELECT * FROM campaign_businesses WHERE external_key LIKE ?').all(`${prefix}%`);
+    if (!stale.length) return { rekeyed: 0, removed: 0 };
+
+    // טלפונים שבאמת שייכים לעסק בגיליון — אלה תקינים ואין לגעת בהם
+    const bizPhones = new Set(reportRows.map((r) => clean(r['טלפון העסק']).replace(/\D/g, '')).filter(Boolean));
+    let rekeyed = 0, removed = 0;
+
+    for (const b of stale) {
+        const tel = b.external_key.slice(prefix.length);
+        if (bizPhones.has(tel)) continue;          // מזהה תקין לפי טלפון העסק
+
+        const touched = db.prepare('SELECT COUNT(*) c FROM campaign_business_notes WHERE business_id = ?').get(b.id).c
+            || db.prepare('SELECT COUNT(*) c FROM campaign_business_stages WHERE business_id = ?').get(b.id).c
+            || db.prepare('SELECT COUNT(*) c FROM campaign_questions WHERE business_id = ?').get(b.id).c
+            || manualSet(b).size > 0;
+
+        // השורה הראשונה בגיליון שדווחה מהטלפון הזה בלי טלפון עסק
+        const row = reportRows.find((r) => clean(r['טלפון']).replace(/\D/g, '') === tel
+            && !clean(r['טלפון העסק']));
+
+        if (touched || !row) {
+            if (row) {
+                db.prepare('UPDATE campaign_businesses SET external_key = ?, reporter_phone = ? WHERE id = ?')
+                    .run(`${REPORTS_SHEET_TAB}|row:${row.__row}`, tel, b.id);
+            } else {
+                db.prepare('UPDATE campaign_businesses SET external_key = NULL, reporter_phone = ? WHERE id = ?')
+                    .run(tel, b.id);
+            }
+            rekeyed++;
+        } else {
+            // רשומה שנוצרה אוטומטית ואיש לא נגע בה — הסנכרון ייצר אותה מחדש נכון
+            db.prepare('DELETE FROM campaign_businesses WHERE id = ?').run(b.id);
+            removed++;
+        }
+    }
+    if (rekeyed || removed) console.log(`דיווחים שהתמזגו: ${rekeyed} קיבלו מזהה חדש, ${removed} נוצרו מחדש`);
+    return { rekeyed, removed };
+}
+
+// לפני התיקון, טלפון המדווחת נשמר בטעות כטלפון העסק. מנקים — אבל רק כשהמספר
+// באמת לא מופיע באף שורה כטלפון עסק (מתנדבת יכולה לדווח מהמספר של העסק עצמו).
+function clearReporterPhoneUsedAsBusiness(reportRows) {
+    const bizPhones = new Set(reportRows.map((r) => clean(r['טלפון העסק']).replace(/\D/g, '')).filter(Boolean));
+    const rows = db.prepare(`SELECT id, name, phone, reporter_phone, reported_at, manual_fields
+        FROM campaign_businesses WHERE source = ? AND phone IS NOT NULL AND phone != ''`).all(REPORTS_SHEET_TAB);
+    let cleared = 0;
+    for (const b of rows) {
+        const digits = clean(b.phone).replace(/\D/g, '');
+        if (digits !== clean(b.reporter_phone).replace(/\D/g, '')) continue;
+        if (bizPhones.has(digits)) continue;              // זה באמת טלפון של עסק
+        if (manualSet(b).has('phone')) continue;          // המנהלת הזינה אותו ביד
+        const newName = /^ללא שם/.test(clean(b.name))
+            ? `ללא שם · דווח מ-${clean(b.reporter_phone)}${b.reported_at ? ` · ${b.reported_at}` : ''}`
+            : b.name;
+        db.prepare('UPDATE campaign_businesses SET phone = NULL, name = ? WHERE id = ?').run(newName, b.id);
+        cleared++;
+    }
+    if (cleared) console.log(`נוקו ${cleared} עסקים שבהם טלפון המדווחת נרשם כטלפון העסק`);
+    return cleared;
+}
+
 export async function syncSinitBusinesses() {
     const result = { sources: [], added: 0, updated: 0, errors: [] };
     result.repairedNames = repairRecordingNames();
@@ -275,13 +369,16 @@ export async function syncSinitBusinesses() {
     // (2) לשונית "פרטי דיווחים" בגיליון הנקודות — כל דיווח גיוס שנכנס דרך הטלפון
     try {
         const rows = await fetchSheetRows(POINTS_SHEET_ID, REPORTS_SHEET_TAB);
+        result.mergedFix = repairMergedReports(rows);
         let a = 0, u = 0;
         for (const row of rows) {
-            const rec = rowToBusiness(row);
-            if (!clean(rec.name)) continue;   // דיווח בלי שם תורם — אין ממה ליצור עסק
+            // "טלפון" כאן הוא המספר שממנו התקבל הדיווח, לא של העסק
+            const rec = rowToBusiness(row, { reporterPhoneColumn: 'טלפון' });
+            if (!clean(rec.name)) continue;   // דיווח בלי שום מזהה — אין ממה ליצור עסק
             const res = upsertFromSource(rec, 'פרטי דיווחים');
             if (res.outcome === 'added') a++; else if (res.outcome === 'updated') u++;
         }
+        result.clearedReporterPhones = clearReporterPhoneUsedAsBusiness(rows);
         result.sources.push({ name: 'פרטי דיווחים', rows: rows.length, added: a, updated: u });
         result.added += a; result.updated += u;
     } catch (e) {

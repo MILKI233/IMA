@@ -343,6 +343,9 @@ for (const stmt of [
   `ALTER TABLE campaign_businesses ADD COLUMN manual_fields TEXT`,
   // שדות חופשיים שהמנהלת מוסיפה בעצמה (איש קשר, שעות פתיחה וכו') — JSON של שם:ערך
   `ALTER TABLE campaign_businesses ADD COLUMN extra TEXT`,
+  // הטלפון שממנו הגיע הדיווח (המתנדבת שהתקשרה) — נפרד מטלפון העסק
+  `ALTER TABLE campaign_businesses ADD COLUMN reporter_phone TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN reported_at TEXT`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

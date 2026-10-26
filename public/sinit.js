@@ -222,7 +222,7 @@ function fillSelects() {
 function filteredBusinesses() {
     const q = S.f.q.toLowerCase();
     return S.businesses.filter((b) => {
-        if (q && ![b.name, b.contacted_by, b.phone, b.email, b.product, b.response]
+        if (q && ![b.name, b.contacted_by, b.phone, b.reporter_phone, b.email, b.product, b.response]
             .some((v) => String(v || '').toLowerCase().includes(q))) return false;
         if (S.f.status && b.status !== S.f.status) return false;
         if (S.f.source && (b.source || 'ידני') !== S.f.source) return false;
@@ -295,13 +295,14 @@ function renderBusinesses() {
 
 function tableHtml(rows) {
     return `<table class="biz-table"><thead><tr>
-        <th>שם העסק</th><th>מי פנתה</th><th>טלפון</th><th>מייל</th><th>מוצר</th>
+        <th>שם העסק</th><th>מי פנתה</th><th>טלפון העסק</th><th>דווח מהטלפון</th><th>מייל</th><th>מוצר</th>
         <th>סטטוס</th><th>שלבי סגירה</th><th>תגובה אחרונה</th><th>מקור</th>${canWrite() ? '<th>צבע</th>' : ''}<th></th>
     </tr></thead><tbody>${rows.map((b) => `
         <tr class="biz-row${b.highlight ? ' marked' : ''}" style="${b.color ? `background:${esc(b.color)}` : ''}" onclick="sinitOpenBiz(${b.id})">
             <td>${b.highlight ? '⭐ ' : ''}${esc(b.name)}</td>
             <td>${esc(b.contacted_by || '—')}</td>
             <td>${esc(b.phone || '')}</td>
+            <td>${b.reporter_phone ? esc(b.reporter_phone) : '<span class="hint">—</span>'}${b.reported_at ? `<br><span class="hint">${esc(b.reported_at)}</span>` : ''}</td>
             <td>${esc(b.email || '')}</td>
             <td>${esc(b.product || '')}${b.value_nis ? ` <span class="hint">(${esc(b.value_nis)} ₪)</span>` : ''}</td>
             <td><span class="badge ${STATUS_CLASS[b.status] || ''}">${esc(b.status)}</span></td>
@@ -324,6 +325,7 @@ function bizCard(b) {
         <div class="bc-meta">
             ${b.contacted_by ? `<span>👤 ${esc(b.contacted_by)}</span>` : ''}
             ${b.phone ? `<span>📞 ${esc(b.phone)}</span>` : ''}
+            ${b.reporter_phone ? `<span title="הטלפון שממנו התקבל הדיווח">☎ דווח מ-${esc(b.reporter_phone)}</span>` : ''}
             ${b.email ? `<span>✉ ${esc(b.email)}</span>` : ''}
         </div>
         ${stageBar(b, true)}
@@ -517,7 +519,9 @@ function renderBizModal(d) {
     el('sbizModalTitle').textContent = b.name;
     el('sbizModalMeta').innerHTML = [
         b.contacted_by ? `פנתה: ${esc(b.contacted_by)}` : '',
-        b.phone ? `טלפון: ${esc(b.phone)}` : '',
+        b.phone ? `טלפון העסק: ${esc(b.phone)}` : '',
+        b.reporter_phone ? `דווח מהטלפון: ${esc(b.reporter_phone)}` : '',
+        b.reported_at ? `מועד הדיווח: ${esc(b.reported_at)}` : '',
         b.email ? `מייל: ${esc(b.email)}` : '',
         b.product ? `מוצר: ${esc(b.product)}` : '',
         b.value_nis ? `שווי: ${esc(b.value_nis)} ₪` : '',
