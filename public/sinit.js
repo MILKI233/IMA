@@ -20,7 +20,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 const el = (id) => document.getElementById(id);
 const on = (id, ev, fn) => el(id)?.addEventListener(ev, fn);
 
-const STATUS_CLASS = { 'ממתין': 'warn', 'תרם': 'ok', 'סירב': 'bad', 'נוצר קשר': '' };
+const STATUS_CLASS = { 'ממתין': 'warn', 'תרם': 'ok', 'סופי סופי': 'done', 'סירב': 'bad', 'נוצר קשר': '' };
 const Q_STATUS_CLASS = { 'נשאלה': 'warn', 'נשלחה למנהלת': 'warn', 'בטיפול': '', 'נענתה': 'ok', 'נסגרה': 'ok' };
 const AI_OUTCOME_CLASS = { 'מהחומר': 'ok', 'AI מהחומר': 'ok', 'אין מענה': 'bad' };
 

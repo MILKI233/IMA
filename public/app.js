@@ -2486,13 +2486,17 @@ async function renderSinitAdminCards(main) {
     <p class="sub muted">לכתובת הזו נשלחות השאלות מהלשונית ומה-AI. אם נשאיר ריק — נשלח לכתובת הדוח היומי.</p>
     <div class="row">
       <div><label class="sub muted">כתובת מייל</label><br><input class="in" id="si-mail" style="min-width:240px" value="${esc(ov.adminEmail || '')}"></div>
+      <div><label class="sub muted">כתובת מייל שנייה (לא חובה)</label><br><input class="in" id="si-mail-2" style="min-width:240px" value="${esc(ov.adminEmail2 || '')}"></div>
       <div><label class="sub muted">שם המנהלת</label><br><input class="in" id="si-mail-name" value="${esc(ov.adminName || '')}"></div>
       <div style="align-self:end"><button class="btn-secondary" id="si-save-mail">שמירה</button></div>
       <div style="align-self:end"><button class="btn-secondary" id="si-test-mail">✉ שליחת מייל בדיקה</button></div>
     </div>
+    ${ov.mailProvider === 'resend' && !ov.mailDomainVerified ? `<p class="sub" style="color:#b26a00;margin-top:6px">
+      שימי לב: כל עוד Resend שולח מ-onboarding@resend.dev הוא מעביר מיילים <b>רק לכתובת של בעל חשבון ה-Resend</b>.
+      כתובת שנייה אחרת תידחה. כדי לשלוח לשתיהן צריך לאמת דומיין ב-resend.com/domains ולמלא כאן כתובת שולח עליו.</p>` : ''}
     <div class="sub" style="margin-top:8px">
       ${ov.adminEmail
-        ? `<span style="color:#12805c">✔</span> הכתובת מוגדרת: ${esc(ov.adminEmail)}`
+        ? `<span style="color:#12805c">✔</span> הכתובת מוגדרת: ${esc(ov.adminEmail)}${ov.adminEmail2 ? ` · וגם: ${esc(ov.adminEmail2)}` : ''}`
         : '<span style="color:#c1362f">✕</span> אין כתובת מייל — השאלות לא יישלחו לאף אחד'}
       &nbsp;·&nbsp;
       ${ov.mailReady
@@ -2562,8 +2566,10 @@ async function renderSinitAdminCards(main) {
     try {
       await api('/api/sinit/settings', { method: 'PUT', body: {
         campaign_admin_email: $('#si-mail').value.trim(), campaign_admin_name: $('#si-mail-name').value.trim(),
+        campaign_admin_email_2: $('#si-mail-2').value.trim(),
       } });
       toast('נשמר', 'ok');
+      render();
     } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
   });
   $('#si-save-doc').addEventListener('click', async () => {
@@ -2571,6 +2577,7 @@ async function renderSinitAdminCards(main) {
       await api('/api/sinit/settings', { method: 'PUT', body: {
         campaign_admin_email: $('#si-mail').value.trim(),
         campaign_admin_name: $('#si-mail-name').value.trim(),
+        campaign_admin_email_2: $('#si-mail-2').value.trim(),
         campaign_answers_doc_url: $('#si-doc-url').value.trim(),
       } });
       toast('הקישור נשמר', 'ok');
@@ -2604,9 +2611,13 @@ async function renderSinitAdminCards(main) {
     box.textContent = 'שולחת מייל בדיקה...';
     try {
       const r = await api('/api/sinit/settings/test-mail', { method: 'POST' });
-      box.innerHTML = r.ok
-        ? `<span style="color:#12805c">✔ נשלח ל${esc(r.to)} — אם ההודעה הגיעה, גם השאלות יגיעו לשם. כדאי לבדוק גם בספאם.</span>`
-        : `<span style="color:#c1362f">✕ ${esc(r.error)}</span>`;
+      // מדווחים על כל כתובת בנפרד — כך רואים מיד אם רק אחת מהשתיים עברה
+      const lines = (r.results || []).map((x) => (x.sent
+        ? `<span style="color:#12805c">✔ נשלח ל${esc(x.to)}</span>`
+        : `<span style="color:#c1362f">✕ ${esc(x.to)}: ${esc(x.error)}</span>`));
+      box.innerHTML = lines.length
+        ? lines.join('<br>') + (r.ok ? '<br><span class="muted">אם ההודעה הגיעה, גם השאלות יגיעו לשם. כדאי לבדוק גם בספאם.</span>' : '')
+        : (r.ok ? `<span style="color:#12805c">✔ נשלח ל${esc(r.to)}</span>` : `<span style="color:#c1362f">✕ ${esc(r.error)}</span>`);
     } catch (e) { box.innerHTML = `<span style="color:#c1362f">✕ ${esc(e.message || 'הבדיקה נכשלה')}</span>`; }
   });
   $('#si-add-stage').addEventListener('click', async () => {

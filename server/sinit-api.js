@@ -9,7 +9,9 @@ import { getCampaignSheetsCache, fetchSheetRows, POINTS_SHEET_ID } from './sheet
 import { parseDocx, extractPairsFromText } from './docx.js';
 import { sendMailTo, mailProvider, mailReady, mailFrom } from './integrations.js';
 
-const BUILTIN_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סירב'];
+// "סופי סופי" = העסק תרם, המוצר התקבל והנקודות עודכנו — אין יותר מה לעשות איתו.
+// הוא אחרי "תרם" בכוונה, כי זה הסוף של המסלול בלוח הסטטוסים.
+const BUILTIN_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סופי סופי', 'סירב'];
 // לשונית הדיווחים בגיליון הנקודות — כל גיוס שדווח דרך הטלפון נרשם שם
 export const REPORTS_SHEET_TAB = 'פרטי דיווחים';
 // הפלטה להדגשת עסק — צבעים רכים שנקראים טוב מתחת לטקסט שחור
@@ -188,23 +190,26 @@ function rawRowToBusiness(row) {
     const NOT_A_VALUE = ['אישור', 'סטטוס', 'תאריך'];
     const rawEmail = col(row, ['מייל העסק', 'אימייל העסק', 'מייל', 'אימייל', 'דוא'], NOT_A_VALUE);
     const rawPhone = col(row, ['טלפון העסק', 'נייד העסק', 'טלפון', 'נייד', 'פלאפון'], NOT_A_VALUE);
+    // כל שדה טקסט עלול להכיל נתיב הקלטה, לא רק השם: במערכת הטלפונית גם
+    // "המוצר שגויס" ו"שם המגייס" נשאלים בהקלטה. נתיב אף פעם אינו ערך להצגה.
+    const txt = (v) => (isRecordingPath(v) ? '' : v);
     return {
-        name: isRecordingPath(rawName) ? '' : rawName,
+        name: txt(rawName),
         recording: isRecordingPath(rawName) ? clean(rawName) : '',
         phone: clean(rawPhone).replace(/\D/g, '').length >= 7 ? rawPhone : '',
         email: /\S+@\S+\.\S+/.test(clean(rawEmail)) ? rawEmail : '',
-        contacted_by: col(row, ['שם המגייס', 'מי פנתה', 'מגייסת', 'אחראית', 'שם המדווח', 'מתנדבת']),
+        contacted_by: txt(col(row, ['שם המגייס', 'מי פנתה', 'מגייסת', 'אחראית', 'שם המדווח', 'מתנדבת'])),
         // שתי עמודות שונות מתארות את אותו מוצר: "המוצר שגויס" הוא בדרך כלל התיאור
         // המלא (ושם העסק מסתתר בתוכו), ו"תיאור המוצר" הוא הסוג. מאחדים כדי ששניהם
         // יופיעו בכרטיס ויימצאו בחיפוש.
         product: joinProduct(
-            col(row, ['המוצר שגויס', 'מוצר שגויס']),
-            col(row, ['תיאור המוצר', 'מוצר', 'תרומה', 'פרס']),
+            txt(col(row, ['המוצר שגויס', 'מוצר שגויס'])),
+            txt(col(row, ['תיאור המוצר', 'מוצר', 'תרומה', 'פרס'])),
         ),
-        value_nis: col(row, ['סכום עלות המוצר', 'שווי', 'סכום', 'עלות', 'ערך']),
-        pickup: col(row, ['איסוף המוצר', 'איסוף']),
-        response: col(row, ['תגובה', 'הערה', 'הערות']),
-        status: clean(col(row, ['סטטוס', 'מצב'])),
+        value_nis: txt(col(row, ['סכום עלות המוצר', 'שווי', 'סכום', 'עלות', 'ערך'])),
+        pickup: txt(col(row, ['איסוף המוצר', 'איסוף'])),
+        response: txt(col(row, ['תגובה', 'הערה', 'הערות'])),
+        status: clean(txt(col(row, ['סטטוס', 'מצב']))),
     };
 }
 
@@ -216,18 +221,32 @@ function repairRecordingNames() {
         WHERE email IS NOT NULL AND email != '' AND email NOT LIKE '%@%'`).run().changes;
     if (badMail) console.log(`נוקו ${badMail} ערכי מייל שגויים`);
 
-    const rows = db.prepare('SELECT id, name, phone, email, extra FROM campaign_businesses').all();
+    const rows = db.prepare('SELECT * FROM campaign_businesses').all();
     let fixed = 0;
     for (const b of rows) {
-        if (!isRecordingPath(b.name)) continue;
-        const idPart = clean(b.phone) || clean(b.email);
+        // נתיב הקלטה יכול לשבת בכל שדה טקסט, לא רק בשם
+        const dirty = ['name', 'contacted_by', 'product', 'value_nis', 'pickup', 'response']
+            .filter((f) => isRecordingPath(b[f]));
+        if (!dirty.length) continue;
         const extra = parseExtra(b);
-        extra['הקלטת שם העסק'] = clean(b.name);
-        db.prepare('UPDATE campaign_businesses SET name = ?, extra = ? WHERE id = ?')
-            .run(idPart ? `ללא שם · ${idPart}` : 'ללא שם', JSON.stringify(extra), b.id);
+        const sets = [];
+        const vals = [];
+        for (const f of dirty) {
+            extra[f === 'name' ? 'הקלטת שם העסק' : `הקלטה (${f})`] = clean(b[f]);
+            if (f === 'name') {
+                const idPart = clean(b.phone) || clean(b.email);
+                sets.push('name = ?');
+                vals.push(idPart ? `ללא שם · ${idPart}` : 'ללא שם');
+            } else {
+                sets.push(`${f} = NULL`);
+            }
+        }
+        sets.push('extra = ?');
+        vals.push(JSON.stringify(extra), b.id);
+        db.prepare(`UPDATE campaign_businesses SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
         fixed++;
     }
-    if (fixed) console.log(`תוקנו ${fixed} עסקים ששמם היה נתיב הקלטה`);
+    if (fixed) console.log(`תוקנו ${fixed} עסקים עם נתיב הקלטה בשדות טקסט`);
     return fixed;
 }
 
@@ -581,6 +600,31 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         || (shareName(req) ? `${shareName(req)} (קישור ${req.share?.label || ''})`.trim() : `קישור ${req.share?.label || 'שיתוף'}`);
 
     const adminEmail = () => getAllCampaignSettings().campaign_admin_email || getSetting('report_email') || '';
+    // אפשר להגדיר כתובת שנייה שתקבל את אותן התראות. שולחים לכל אחת בנפרד,
+    // כי כישלון באחת (למשל Resend במצב בדיקה) לא צריך למנוע את השנייה.
+    const adminEmails = () => {
+        const s = getAllCampaignSettings();
+        return [adminEmail(), clean(s.campaign_admin_email_2)].filter(Boolean)
+            .filter((v, i, a) => a.indexOf(v) === i);
+    };
+
+    // שולחת לכל הכתובות ומחזירה סיכום: למי הגיע, למי לא ולמה.
+    async function mailAdmins({ subject, html }) {
+        const targets = adminEmails();
+        if (!targets.length) throw new Error('לא הוגדרה כתובת מייל למנהלת המערכת (בהגדרות הלשונית)');
+        const results = [];
+        for (const to of targets) {
+            try { await sendMailTo({ to, subject, html }); results.push({ to, sent: true }); }
+            catch (e) { results.push({ to, sent: false, error: mailErrorText(e), raw: e.message }); }
+        }
+        const sent = results.filter((r) => r.sent);
+        if (!sent.length) {
+            const err = new Error(results[0].raw || 'שליחת המייל נכשלה');
+            err.results = results;
+            throw err;
+        }
+        return results;
+    }
 
     router.get('/overview', gate('any'), (req, res) => {
         const businesses = businessesWithStages();
@@ -597,7 +641,11 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             kbDocs: db.prepare('SELECT COUNT(*) AS c FROM campaign_kb_docs').get().c,
             kbPairs: db.prepare('SELECT COUNT(*) AS c FROM campaign_kb_pairs').get().c,
             adminEmail: adminEmail(),
+            adminEmail2: clean(getAllCampaignSettings().campaign_admin_email_2),
             adminName: getAllCampaignSettings().campaign_admin_name,
+            // Resend שולח מ-onboarding@resend.dev עד שמאמתים דומיין, ואז רק
+            // לכתובת של בעל החשבון. זה מה שמאפשר להזהיר במסך הניהול.
+            mailDomainVerified: mailProvider() === 'resend' && !/@resend\.dev$/i.test(mailFrom() || ''),
             aiReady: !!getSetting('anthropic_api_key'),
             mailReady: mailReady(),
             mailProvider: mailProvider(),
@@ -877,13 +925,11 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
             .run(id, 'השאלה נרשמה במערכת', actor(req));
 
-        let mail = { sent: false, to: adminEmail(), error: null };
+        let mail = { sent: false, to: adminEmails().join(', '), error: null };
         if (req.body?.send_email) {
             const biz = businessId ? db.prepare('SELECT name FROM campaign_businesses WHERE id = ?').get(businessId) : null;
             try {
-                if (!mail.to) throw new Error('לא הוגדרה כתובת מייל למנהלת המערכת (בהגדרות הלשונית)');
-                await sendMailTo({
-                    to: mail.to,
+                const results = await mailAdmins({
                     subject: `שאלה חדשה מ${actor(req)} — קמפיין המכירה הסינית`,
                     html: `<p>${actor(req)} שאלה:</p><blockquote>${text}</blockquote>
                            ${biz ? `<p>בהקשר של העסק: <b>${biz.name}</b></p>` : ''}
@@ -892,10 +938,16 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                            <p>אפשר גם לענות ישירות במערכת, בלשונית "מכירה סינית" ← שאלות ושלבי מענה.</p>`,
                 });
                 mail.sent = true;
+                mail.results = results;
+                const okTo = results.filter((r) => r.sent).map((r) => r.to).join(', ');
                 db.prepare("UPDATE campaign_questions SET email_sent_at = datetime('now','localtime'), email_to = ?, status = 'נשלחה למנהלת' WHERE id = ?")
-                    .run(mail.to, id);
+                    .run(okTo, id);
                 db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-                    .run(id, `נשלח מייל למנהלת המערכת (${mail.to})`, actor(req));
+                    .run(id, `נשלח מייל למנהלת המערכת (${okTo})`, actor(req));
+                for (const r of results.filter((x) => !x.sent)) {
+                    db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
+                        .run(id, `המייל לא נשלח ל-${r.to}: ${r.error}`, actor(req));
+                }
             } catch (e) {
                 mail.error = mailErrorText(e);
                 db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
@@ -1102,12 +1154,10 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             .run(qid, 'השאלה נשאלה את המענה האוטומטי ולא נמצאה לה תשובה בחומר', actor(req));
         db.prepare('UPDATE campaign_ai_log SET question_id = ? WHERE id = ?').run(qid, entry.id);
 
-        const to = adminEmail();
+        const to = adminEmails().join(', ');
         let mail = { sent: false, to, error: null };
         try {
-            if (!to) throw new Error('לא הוגדרה כתובת מייל למנהלת המערכת (בהגדרות הלשונית)');
-            await sendMailTo({
-                to,
+            const results = await mailAdmins({
                 subject: `שאלה שה-AI לא ידע לענות — ${actor(req)}`,
                 html: `<p>${actor(req)} שאלה את המענה האוטומטי של לשונית "מכירה סינית":</p>
                        <blockquote>${entry.question}</blockquote>
@@ -1116,10 +1166,17 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                        <p>אפשר גם לענות ישירות במערכת: קמפיין ← מכירה סינית ← שאלות ושלבי מענה.</p>`,
             });
             mail.sent = true;
+            mail.results = results;
+            const okTo = results.filter((r) => r.sent).map((r) => r.to).join(', ');
             db.prepare("UPDATE campaign_questions SET email_sent_at = datetime('now','localtime'), email_to = ?, status = 'נשלחה למנהלת' WHERE id = ?")
-                .run(to, qid);
+                .run(okTo, qid);
             db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
-                .run(qid, `נשלח מייל למנהלת המערכת (${to})`, actor(req));
+                .run(qid, `נשלח מייל למנהלת המערכת (${okTo})`, actor(req));
+            // כתובת שנכשלה לא מפילה את השליחה, אבל כן נרשמת כדי שלא תיעלם בשקט
+            for (const r of results.filter((x) => !x.sent)) {
+                db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
+                    .run(qid, `המייל לא נשלח ל-${r.to}: ${r.error}`, actor(req));
+            }
         } catch (e) {
             mail.error = mailErrorText(e);
             db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
@@ -1132,9 +1189,14 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
 
     // ----- הגדרות הלשונית -----
     router.put('/settings', mustLogin, requireFeature('campaign_settings'), (req, res) => {
+        const valid = (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
         const email = clean(req.body?.campaign_admin_email);
-        if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        if (email && !valid(email)) {
             return res.status(400).json({ error: 'כתובת המייל אינה תקינה' });
+        }
+        const email2 = clean(req.body?.campaign_admin_email_2);
+        if (email2 && !valid(email2)) {
+            return res.status(400).json({ error: 'כתובת המייל השנייה אינה תקינה' });
         }
         const docUrl = clean(req.body?.campaign_answers_doc_url);
         if (docUrl && !/\/document\/d\/[a-zA-Z0-9-_]+/.test(docUrl)) {
@@ -1143,11 +1205,13 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         setCampaignSettings({
             campaign_admin_email: email,
             campaign_admin_name: clean(req.body?.campaign_admin_name) || 'מנהלת המערכת',
+            ...(req.body?.campaign_admin_email_2 !== undefined ? { campaign_admin_email_2: email2 } : {}),
             ...(req.body?.campaign_answers_doc_url !== undefined ? { campaign_answers_doc_url: docUrl } : {}),
         });
-        audit(actor(req), 'campaign.sinit.settings', 'campaign_settings', null, null, { campaign_admin_email: email });
+        audit(actor(req), 'campaign.sinit.settings', 'campaign_settings', null, null,
+            { campaign_admin_email: email, campaign_admin_email_2: email2 });
         touch();
-        res.json({ ok: true, adminEmail: adminEmail() });
+        res.json({ ok: true, adminEmail: adminEmail(), adminEmails: adminEmails() });
     });
 
     // בדיקת מייל: שולחת מייל אמיתי לכתובת המנהלת ומחזירה בדיוק מה נכשל, כדי שלא
@@ -1160,18 +1224,29 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         if (!mailReady()) {
             return res.json({ ok: false, to, error: 'כתובת המייל מוגדרת, אבל אין ערוץ שליחה. יש להגדיר מפתח Resend (הדרך הפשוטה — מפתח אחד, בלי חשבון Gmail) או כתובת Gmail עם סיסמת אפליקציה, בלשונית "חיבורים".' });
         }
-        try {
-            await sendMailTo({
-                to,
-                subject: 'בדיקת מייל — לשונית מכירה סינית',
-                html: `<p>זו הודעת בדיקה ממערכת אמא במשמרת.</p>
-                       <p>אם הגיעה אליך — שאלות שנשלחות מלשונית "מכירה סינית" יגיעו לכאן.</p>`,
-            });
-            audit(actor(req), 'campaign.sinit.test_mail', 'campaign_settings', null, null, { to, via: mailProvider() });
-            res.json({ ok: true, to, via: mailProvider(), from: mailFrom() });
-        } catch (e) {
-            res.json({ ok: false, to, error: mailErrorText(e) });
+        // בודקים כל כתובת בנפרד ומדווחים לכל אחת מה קרה — כך רואים מיד
+        // אם הכתובת השנייה נדחית (קורה ב-Resend לפני אימות דומיין)
+        const results = [];
+        for (const addr of adminEmails()) {
+            try {
+                await sendMailTo({
+                    to: addr,
+                    subject: 'בדיקת מייל — לשונית מכירה סינית',
+                    html: `<p>זו הודעת בדיקה ממערכת אמא במשמרת.</p>
+                           <p>אם הגיעה אליך — שאלות שנשלחות מלשונית "מכירה סינית" יגיעו לכאן.</p>`,
+                });
+                results.push({ to: addr, sent: true });
+            } catch (e) {
+                results.push({ to: addr, sent: false, error: mailErrorText(e) });
+            }
         }
+        const okList = results.filter((r) => r.sent);
+        audit(actor(req), 'campaign.sinit.test_mail', 'campaign_settings', null, null,
+            { to: okList.map((r) => r.to), via: mailProvider() });
+        res.json({
+            ok: okList.length > 0, to, results, via: mailProvider(), from: mailFrom(),
+            error: okList.length ? null : (results[0]?.error || 'שליחת המייל נכשלה'),
+        });
     });
 
     // ----- קישורי שיתוף למתנדבות -----
