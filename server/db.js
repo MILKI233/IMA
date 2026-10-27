@@ -348,6 +348,11 @@ for (const stmt of [
   `ALTER TABLE campaign_businesses ADD COLUMN reported_at TEXT`,
   // עסק שהועבר לטיפול ב"שאלות ומענה" יוצא מרשימת העסקים ומטופל שם
   `ALTER TABLE campaign_businesses ADD COLUMN moved_to_questions INTEGER NOT NULL DEFAULT 0`,
+  // הסתרה קבועה: מחיקה של עסק שמגיע מסנכרון לא מחזיקה — השליפה הבאה
+  // מהגיליון מחזירה אותו. השורה נשארת כדי "לתפוס" את המקום, ומסומנת כמוסתרת.
+  `ALTER TABLE campaign_businesses ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE campaign_businesses ADD COLUMN hidden_at TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN hidden_by TEXT`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

@@ -159,7 +159,7 @@ function sinitPrompt({ title, hint = '', value = '', placeholder = '', okLabel =
 function renderStats() {
     if (!el('sinitStats')) return;
     const o = S.overview || {};
-    const biz = S.businesses;
+    const biz = S.businesses.filter((b) => !b.hidden);   // מוסתרים לא נספרים בשום מונה
     const donated = biz.filter((b) => b.status === 'תרם').length;
     const closed = biz.filter((b) => b.stages_total && b.stages_done === b.stages_total).length;
     const cards = [
@@ -214,7 +214,8 @@ function fillSelects() {
     if (el('sbizColorFilter')) el('sbizColorFilter').value = S.f.color;
     if (el('squestionBiz')) {
         el('squestionBiz').innerHTML = '<option value="">ללא קשר לעסק מסוים</option>'
-            + S.businesses.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+            + S.businesses.filter((b) => !b.hidden)
+                .map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
     }
 }
 
@@ -222,7 +223,10 @@ function fillSelects() {
 function filteredBusinesses() {
     const q = S.f.q.toLowerCase();
     return S.businesses.filter((b) => {
+        // עסק שהוסתר נעלם מכל התצוגות, אלא אם המנהלת פתחה במפורש את רשימת המוסתרים
+        if (S.f.hidden ? !b.hidden : !!b.hidden) return false;
         // עסק שהועבר ל"שאלות ומענה" מטופל שם, ולא מופיע כאן אלא אם ביקשו לראות אותו
+        if (S.f.hidden) return true;
         if (S.f.moved ? !b.moved_to_questions : !!b.moved_to_questions) return false;
         if (q && ![b.name, b.contacted_by, b.phone, b.reporter_phone, b.email, b.product, b.response]
             .some((v) => String(v || '').toLowerCase().includes(q))) return false;
@@ -254,6 +258,16 @@ function stageBar(b, big = false) {
 // פעולות על עסק: העברה ללשונית השאלות לטיפול, ומחיקה (למנהלת בלבד)
 function rowActions(b) {
     const parts = [];
+    if (b.hidden) {
+        // ברשימת המוסתרים יש רק שתי אפשרויות: להחזיר, או למחוק סופית
+        if (S.overview?.isManager) {
+            parts.push(`<button class="btn act-btn" title="החזרת העסק לרשימה"
+                onclick="event.stopPropagation();sinitUnhideBiz(${b.id})">↩ החזרה</button>`);
+            parts.push(`<button class="btn danger act-btn" title="מחיקה סופית מהמסד — הסנכרון עשוי להחזיר את העסק מהגיליון"
+                onclick="event.stopPropagation();sinitDeleteBiz(${b.id})">מחיקה סופית</button>`);
+        }
+        return parts.join(' ');
+    }
     if (canWrite() && isUnnamed(b)) {
         parts.push(`<button class="btn act-btn" title="מתן שם לעסק שנקלט מדיווח טלפוני"
             onclick="event.stopPropagation();sinitRename(${b.id})">✎ שם</button>`);
@@ -285,14 +299,19 @@ function renderBusinesses() {
     if (!host) return;
     const rows = filteredBusinesses();
     if (el('sbizCount')) {
-        const active = S.businesses.filter((b) => !b.moved_to_questions);
-        const moved = S.businesses.length - active.length;
+        const visible = S.businesses.filter((b) => !b.hidden);
+        const hidden = S.businesses.length - visible.length;
+        const active = visible.filter((b) => !b.moved_to_questions);
+        const moved = visible.length - active.length;
         const unnamed = active.filter(isUnnamed).length;
-        el('sbizCount').innerHTML = `מוצגים ${rows.length} מתוך ${S.f.moved ? moved : active.length}`
-            + (unnamed && !S.f.moved ? ` · <button class="chip-filter${S.f.unnamed ? ' on' : ''}" onclick="sinitToggleUnnamed()"
+        const total = S.f.hidden ? hidden : (S.f.moved ? moved : active.length);
+        el('sbizCount').innerHTML = `מוצגים ${rows.length} מתוך ${total}`
+            + (unnamed && !S.f.moved && !S.f.hidden ? ` · <button class="chip-filter${S.f.unnamed ? ' on' : ''}" onclick="sinitToggleUnnamed()"
                  title="עסקים שנוצרו מדיווח טלפוני בלי שם תורם — ממתינים לשם">ללא שם (${unnamed})</button>` : '')
-            + (moved ? ` · <button class="chip-filter${S.f.moved ? ' on' : ''}" onclick="sinitToggleMoved()"
-                 title="עסקים שהועברו לטיפול בלשונית שאלות ומענה">בטיפול בשאלות (${moved})</button>` : '');
+            + (moved && !S.f.hidden ? ` · <button class="chip-filter${S.f.moved ? ' on' : ''}" onclick="sinitToggleMoved()"
+                 title="עסקים שהועברו לטיפול בלשונית שאלות ומענה">בטיפול בשאלות (${moved})</button>` : '')
+            + (hidden && S.overview?.isManager ? ` · <button class="chip-filter${S.f.hidden ? ' on' : ''}" onclick="sinitToggleHidden()"
+                 title="עסקים שהוסתרו מהתוכנה — לא מופיעים בשום מקום ולא חוזרים בסנכרון">מוסתרים (${hidden})</button>` : '');
     }
     if (el('sbizEmpty')) el('sbizEmpty').style.display = rows.length ? 'none' : 'block';
     document.querySelectorAll('.view-switch button').forEach((b) => b.classList.toggle('on', b.dataset.view === S.view));
@@ -376,8 +395,23 @@ function sinitToggleUnnamed() {
 // מעבר בין רשימת העסקים הפעילים לבין אלה שהועברו לטיפול בשאלות
 function sinitToggleMoved() {
     S.f.moved = !S.f.moved;
-    if (S.f.moved) S.f.unnamed = false;
+    if (S.f.moved) { S.f.unnamed = false; S.f.hidden = false; }
     renderBusinesses();
+}
+
+// רשימת המוסתרים — פתוחה למנהלת בלבד, כדי שתוכל להחזיר אם הסתירה בטעות
+function sinitToggleHidden() {
+    S.f.hidden = !S.f.hidden;
+    if (S.f.hidden) { S.f.unnamed = false; S.f.moved = false; }
+    renderBusinesses();
+}
+
+async function sinitUnhideBiz(id) {
+    try {
+        await api(`/api/sinit/businesses/${id}/unhide`, { method: 'POST' });
+        await sinitLoadOverview();
+        sinitToast('העסק הוחזר לרשימה');
+    } catch (e) { sinitToast(e.message, 'err'); }
 }
 
 async function sinitReturnBiz(id) {
@@ -497,12 +531,21 @@ async function sinitToggleHighlight(id) {
 
 async function sinitDeleteBiz(id) {
     const b = S.businesses.find((x) => x.id === id);
-    if (!confirm(`למחוק את "${b?.name || 'העסק'}"? יימחקו גם כל התגובות וההיסטוריה שלו, וזה בלתי הפיך.`)) return;
+    const name = b?.name || 'העסק';
+    // עסק שמגיע מגיליון לא נמחק באמת — הוא מוסתר, אחרת הסנכרון מחזיר אותו
+    const fromSync = b && (b.source && b.source !== 'ידני');
+    const msg = b?.hidden
+        ? `למחוק סופית את "${name}" מהמסד? אם הוא מופיע בגיליון, הסנכרון הבא עשוי להחזיר אותו.`
+        : (fromSync
+            ? `להסתיר את "${name}"? הוא ייעלם מהתוכנה לגמרי ולא יחזור בסנכרון.\n\nהעסק מגיע מ"${b.source}", ולכן מחיקה רגילה לא מחזיקה — השליפה הבאה מהגיליון הייתה מחזירה אותו.`
+            : `למחוק את "${name}"? יימחקו גם כל התגובות וההיסטוריה שלו, וזה בלתי הפיך.`);
+    if (!confirm(msg)) return;
     try {
-        await api(`/api/sinit/businesses/${id}`, { method: 'DELETE' });
+        const r = await api(`/api/sinit/businesses/${id}`, { method: 'DELETE' });
         if (S.modalId === id) { S.modalId = null; el('sbizModalOverlay')?.classList.add('hidden'); }
         await sinitLoadOverview();
-    } catch (e) { alert(e.message); }
+        sinitToast(r.hidden ? 'העסק הוסתר ולא יחזור בסנכרון' : 'העסק נמחק');
+    } catch (e) { sinitToast(e.message, 'err'); }
 }
 
 // העברת עסק לטיפול בלשונית "שאלות ומענה" — נפתחת שאלה מקושרת לעסק, עם שלבי מענה

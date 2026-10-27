@@ -48,6 +48,7 @@ function businessesWithStages() {
         return {
             ...b,
             moved_to_questions: b.moved_to_questions ? 1 : 0,
+            hidden: b.hidden ? 1 : 0,
             notes_count: noteMap.get(b.id) || 0,
             stages_done: done.size,
             stages_total: stages.length,
@@ -87,8 +88,10 @@ function upsertFromSource(rec, sourceName) {
     let existing = db.prepare('SELECT * FROM campaign_businesses WHERE external_key = ?').get(key);
     if (!existing) {
         // אותו עסק אולי הוקלד ידנית לפני שהטופס סונכרן, או נקלט קודם לפי שם —
-        // מזהים לפי טלפון או לפי שם מנורמל, כדי לא ליצור כפילות
-        const all = db.prepare('SELECT * FROM campaign_businesses').all();
+        // מזהים לפי טלפון או לפי שם מנורמל, כדי לא ליצור כפילות.
+        // עסקים מוסתרים לא משתתפים בהתאמה המשוערת הזו, כדי ששורה חדשה
+        // לא תיבלע לתוך רשומה שהמנהלת הסתירה (ההתאמה המדויקת לפי המפתח כן תופסת).
+        const all = db.prepare('SELECT * FROM campaign_businesses WHERE hidden = 0').all();
         existing = (phoneKey && all.find((b) => String(b.phone || '').replace(/\D/g, '') === phoneKey))
             || all.find((b) => normName(b.name) === normName(name));
     }
@@ -886,10 +889,33 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         res.json({ ok: true });
     });
 
+    // החזרת עסק שהוסתר
+    router.post('/businesses/:id/unhide', mustLogin, mustManager, (req, res) => {
+        const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
+        if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });
+        db.prepare('UPDATE campaign_businesses SET hidden = 0, hidden_at = NULL, hidden_by = NULL WHERE id = ?').run(before.id);
+        audit(actor(req), 'campaign.business.unhide', 'campaign_businesses', before.id, { hidden: 1 }, { hidden: 0 });
+        touch();
+        res.json({ ok: true });
+    });
+
     router.delete('/businesses/:id', mustLogin, mustManager, (req, res) => {
         const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
         if (!before) return res.status(404).json({ error: 'העסק לא נמצא' });
         const who = actor(req);
+
+        // עסק שמגיע מגיליון: מחיקה אמיתית לא מחזיקה — הסנכרון הבא יחזיר אותו.
+        // לכן משאירים את השורה (כדי שהסנכרון ימצא אותה ולא ייצור חדשה) ומסמנים
+        // אותה כמוסתרת. מבחינת המשתמשת העסק נעלם מהתוכנה לגמרי.
+        const fromSync = !!clean(before.external_key) || (before.source && before.source !== 'ידני');
+        if (fromSync && !before.hidden) {
+            db.prepare(`UPDATE campaign_businesses
+                SET hidden = 1, hidden_at = datetime('now','localtime'), hidden_by = ? WHERE id = ?`).run(who, before.id);
+            const linked = db.prepare('SELECT id FROM campaign_questions WHERE business_id = ?').all(before.id);
+            audit(who, 'campaign.business.hide', 'campaign_businesses', before.id, { hidden: 0 }, { hidden: 1 });
+            touch();
+            return res.json({ ok: true, hidden: true, linkedQuestions: linked.length });
+        }
         // שאלות שנפתחו על העסק נשארות — הן עשויות להיות באמצע טיפול. מנתקים את הקישור
         // ומוסיפים שלב שמתעד שהעסק נמחק, כדי שלא יישאר הקשר חסר. בלי זה המחיקה נכשלת
         // על אילוץ המפתח הזר שבין השאלות לעסקים.
@@ -1421,10 +1447,11 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
     // ----- ייצוא לאקסל -----
     router.get('/businesses/export.xlsx', mustLogin, (req, res) => {
         const stages = stageList();
-        const rows = businessesWithStages();
+        const rows = businessesWithStages().filter((b) => !b.hidden);   // מוסתרים לא יוצאים לאקסל
         const data = rows.map((b) => {
             const base = {
-                'שם העסק': b.name, 'מי פנתה': b.contacted_by || '', 'טלפון': b.phone || '', 'מייל': b.email || '',
+                'שם העסק': b.name, 'מי פנתה': b.contacted_by || '',
+                'טלפון העסק': b.phone || '', 'דווח מהטלפון': b.reporter_phone || '', 'מייל': b.email || '',
                 'סטטוס': b.status, 'שלב נוכחי': b.current_stage || '', 'שלבים שהושלמו': `${b.stages_done}/${b.stages_total}`,
                 'מוצר': b.product || '', 'שווי': b.value_nis || '', 'תגובה אחרונה': b.response || '',
                 'מס\' פנייה': b.contact_number || '', 'מס\' הודעה': b.message_number || '',
