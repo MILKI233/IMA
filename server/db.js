@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS attendance (
   check_in TEXT NOT NULL,
   check_out TEXT
 );
+-- last_activity מאפשר לסגור משמרת שנשכחה פתוחה לפי הפעולה האחרונה בפועל,
+-- ולא לפי הרגע שבו שמנו לב. auto_closed מסמן שהסגירה לא נעשתה בידי העובדת.
 CREATE TABLE IF NOT EXISTS task_templates (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
@@ -353,6 +355,9 @@ for (const stmt of [
   `ALTER TABLE campaign_businesses ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE campaign_businesses ADD COLUMN hidden_at TEXT`,
   `ALTER TABLE campaign_businesses ADD COLUMN hidden_by TEXT`,
+  // נוכחות: מתי הייתה הפעולה האחרונה, וסימון שהמשמרת נסגרה אוטומטית
+  `ALTER TABLE attendance ADD COLUMN last_activity TEXT`,
+  `ALTER TABLE attendance ADD COLUMN auto_closed INTEGER NOT NULL DEFAULT 0`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

@@ -51,8 +51,40 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use((req, res, next) => {
   const uid = req.header('x-user-id');
   if (uid) req.user = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(uid);
+  if (req.user) touchAttendance(req.user.id);
   next();
 });
+
+// ---------- סגירה אוטומטית של שעות ----------
+// משמרת נפתחת בכניסה ונסגרת ביציאה. מי שפשוט סוגרת את הדפדפן השאירה
+// משמרת פתוחה שממשיכה "לרוץ" — ולכן סוגרים אותה לבד אחרי שעה בלי פעילות,
+// ובשעת הפעולה האחרונה בפועל, כדי שלא ייזקפו שעות שלא נעבדו.
+const IDLE_MINUTES = 60;
+
+function touchAttendance(userId) {
+  // רישום כל בקשה היה יוצר עומס כתיבה מיותר — מעדכנים רק אם עברה דקה
+  db.prepare(`UPDATE attendance SET last_activity = datetime('now','localtime')
+              WHERE user_id = ? AND check_out IS NULL
+                AND (last_activity IS NULL OR last_activity <= datetime('now','localtime','-1 minute'))`)
+    .run(userId);
+}
+
+function closeIdleAttendance() {
+  const stale = db.prepare(`SELECT a.id, a.user_id, u.name,
+             COALESCE(a.last_activity, a.check_in) AS last_seen
+      FROM attendance a JOIN users u ON u.id = a.user_id
+      WHERE a.check_out IS NULL
+        AND COALESCE(a.last_activity, a.check_in) <= datetime('now','localtime','-${IDLE_MINUTES} minutes')`).all();
+  for (const row of stale) {
+    db.prepare('UPDATE attendance SET check_out = ?, auto_closed = 1 WHERE id = ?').run(row.last_seen, row.id);
+    audit(row.name, 'attendance.auto_close', 'attendance', row.id, null,
+      { closedAt: row.last_seen, reason: `אין פעילות ${IDLE_MINUTES} דקות` });
+  }
+  if (stale.length) console.log(`נסגרו אוטומטית ${stale.length} משמרות ללא פעילות`);
+  return stale.length;
+}
+setInterval(closeIdleAttendance, 5 * 60 * 1000);
+closeIdleAttendance();
 const mustLogin = (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'נדרשת כניסה' }));
 // פעולות ניהול רגילות — מנהלת ומעלה
 const mustManager = (req, res, next) =>
@@ -72,9 +104,13 @@ app.post('/api/login', (req, res) => {
   const { code } = req.body || {};
   const user = db.prepare('SELECT * FROM users WHERE code = ? AND active = 1').get(String(code || ''));
   if (!user) return res.status(401).json({ error: 'קוד עובדת שגוי' });
+  closeIdleAttendance();   // משמרת ישנה שנשכחה פתוחה נסגרת לפני שנפתחת חדשה
   const open = db.prepare('SELECT id FROM attendance WHERE user_id = ? AND check_out IS NULL').get(user.id);
   if (!open) {
-    db.prepare(`INSERT INTO attendance(user_id, check_in) VALUES (?, datetime('now','localtime'))`).run(user.id);
+    db.prepare(`INSERT INTO attendance(user_id, check_in, last_activity)
+                VALUES (?, datetime('now','localtime'), datetime('now','localtime'))`).run(user.id);
+  } else {
+    db.prepare("UPDATE attendance SET last_activity = datetime('now','localtime') WHERE id = ?").run(open.id);
   }
   audit(user.name, 'login', 'attendance', user.id);
   res.json({ id: user.id, name: user.name, role: user.role, features: featuresFor(user.role) });
