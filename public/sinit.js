@@ -774,12 +774,88 @@ function renderQuestions() {
                 <button class="btn secondary" onclick="sinitOpenBiz(${x.business_id})">📋 פרטי הדיווח של ${esc(x.business_name || 'העסק')}</button>
             </div>` : ''}
             ${canWrite() ? `<div class="q-actions">
+                ${x.status !== 'נענתה' && x.status !== 'נסגרה'
+        ? `<button class="btn ok-btn" title="סימון שכבר ענו, בלי לכתוב את התשובה"
+                           onclick="sinitMarkAnswered(${x.id})">✔ כבר ענו</button>` : ''}
                 <button class="btn secondary" onclick="sinitAddStep(${x.id})">➕ שלב מענה</button>
                 <button class="btn" onclick="sinitAnswer(${x.id})">✍ ${x.answer ? 'עדכון התשובה' : 'כתיבת תשובה'}</button>
                 ${x.status !== 'נסגרה' ? `<button class="btn secondary" onclick="sinitCloseQuestion(${x.id})">סגירה</button>` : ''}
                 ${S.overview?.isManager ? `<button class="btn danger" onclick="sinitDeleteQuestion(${x.id})">מחיקה</button>` : ''}
             </div>` : ''}
         </div>`).join('');
+}
+
+// סימון שכבר ענו, בלי להקליד את התשובה
+async function sinitMarkAnswered(id) {
+    try {
+        await api(`/api/sinit/questions/${id}`, { method: 'PUT', body: { status: 'נענתה' } });
+        await sinitLoadQuestions();
+        sinitToast('השאלה סומנה כנענתה');
+    } catch (e) { sinitToast(e.message, 'err'); }
+}
+
+/* ---------- התראה על תשובה חדשה ---------- */
+// כל מי שפתוח אצלו המסך (מנהלת או מתנדבת בקישור) מקבל חלונית כשנכתבת תשובה
+// חדשה. שומרים מה כבר נראה, כדי שאותה תשובה לא תקפוץ שוב ושוב.
+const SEEN_KEY = 'sinit_seen_answers';
+let answersTimer = null;
+
+function seenAnswers() {
+    try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); } catch { return new Set(); }
+}
+function rememberAnswers(ids) {
+    // שומרים רק את האחרונות, כדי שהרשימה לא תגדל בלי סוף
+    localStorage.setItem(SEEN_KEY, JSON.stringify([...ids].slice(-200)));
+}
+
+function sinitShowNewAnswers(items) {
+    let box = el('sinitAnswerPop');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'sinitAnswerPop';
+        box.className = 'modal-overlay';
+        box.addEventListener('click', (e) => { if (e.target.id === 'sinitAnswerPop') sinitCloseAnswerPop(); });
+        document.body.appendChild(box);
+    }
+    box.innerHTML = `<div class="modal-box answer-pop">
+        <div class="modal-head">
+            <h3>${items.length > 1 ? `יש ${items.length} תשובות חדשות` : 'יש תשובה חדשה'} 🔔</h3>
+            <button class="modal-close" onclick="sinitCloseAnswerPop()">✕</button>
+        </div>
+        ${items.map((x) => `<div class="answer-pop-item">
+            <div class="answer-pop-q">${esc(x.text)}</div>
+            <div class="answer-pop-a">${x.answer ? esc(x.answer) : 'סומן שכבר ענו על השאלה'}</div>
+            <div class="hint">${esc(x.answered_by || '')} · ${fmtDate(x.answered_at)}</div>
+        </div>`).join('')}
+        <div class="row" style="margin-top:14px;justify-content:flex-end">
+            <button class="btn" onclick="sinitCloseAnswerPop()">הבנתי</button>
+        </div>
+    </div>`;
+    box.classList.remove('hidden');
+}
+
+function sinitCloseAnswerPop() {
+    el('sinitAnswerPop')?.classList.add('hidden');
+}
+
+async function sinitCheckNewAnswers(firstRun = false) {
+    if (!showsSection('questions')) return;
+    try {
+        const rows = await api('/api/sinit/questions/answered');
+        const key = (x) => `${x.id}:${x.answered_at || ''}`;
+        const seen = seenAnswers();
+        const fresh = rows.filter((x) => !seen.has(key(x)));
+        const all = new Set([...seen, ...rows.map(key)]);
+        rememberAnswers(all);
+        // בטעינה הראשונה רק מסמנים מה קיים — אחרת כל כניסה הייתה מקפיצה הכל
+        if (!firstRun && fresh.length) sinitShowNewAnswers(fresh.slice(0, 5));
+    } catch { /* בעיית רשת רגעית — ננסה שוב בפעם הבאה */ }
+}
+
+function sinitStartAnswerWatch() {
+    sinitCheckNewAnswers(true);
+    if (answersTimer) clearInterval(answersTimer);
+    answersTimer = setInterval(() => sinitCheckNewAnswers(false), 30000);
 }
 
 async function sinitAddQuestion() {
@@ -992,6 +1068,7 @@ window.sinitInit = function sinitInit() {
     if (!shareMode() && (!USER || !(USER.features || []).includes('campaign'))) return;
     wireSinit();
     sinitLoadAll();
+    sinitStartAnswerWatch();
 };
 window.sinitActivate = window.sinitInit;
 

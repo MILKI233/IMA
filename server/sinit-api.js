@@ -223,7 +223,11 @@ function rawRowToBusiness(row, opts = {}) {
     return {
         name: txt(rawName),
         recording: isRecordingPath(rawName) ? clean(rawName) : '',
-        phone: clean(rawPhone).replace(/\D/g, '').length >= 7 ? rawPhone : '',
+        // 0500000000 הוא מילוי אוטומטי של ימות כשלא הוקלד מספר, לא טלפון אמיתי
+        phone: (() => {
+            const d = clean(rawPhone).replace(/\D/g, '');
+            return (d.length >= 7 && !/^0?50{8,}$/.test(d)) ? rawPhone : '';
+        })(),
         reporter_phone: clean(reporterPhone).replace(/\D/g, '').length >= 7 ? reporterPhone : '',
         reported_at: clean(col(row, ['תאריך ושעה', 'תאריך'])),
         srcRow: row.__row || null,
@@ -348,6 +352,52 @@ function clearReporterPhoneUsedAsBusiness(reportRows) {
     return cleared;
 }
 
+// ניקוי חד-פעמי: עסקים שנוצרו מדיווחים מוקלטים, לפני שהוחלט לא לרשום אותם.
+// אחד שכבר טופל (תגובה, שלב סגירה, שאלה או עריכה ידנית) לא נמחק — רק מוסתר,
+// כדי שהעבודה שנעשתה עליו לא תיעלם בלי שהמנהלת תדע.
+function purgeRecordedReports() {
+    const rows = db.prepare('SELECT * FROM campaign_businesses WHERE source = ?').all(REPORTS_SHEET_TAB);
+    let removed = 0, kept = 0;
+    for (const b of rows) {
+        const extra = parseExtra(b);
+        // רשומה שנוצרה מהקלטה, או כזו שאין בה שם אמיתי, מוצר וטלפון —
+        // שתיהן נולדו מדיווחים שאין בהם מידע, ושוב לא ייווצרו
+        const emptyShell = /^ללא שם/.test(clean(b.name)) && !clean(b.product) && !clean(b.phone);
+        if (!extra['הקלטת שם העסק'] && !emptyShell) continue;
+        const touched = db.prepare('SELECT COUNT(*) c FROM campaign_business_notes WHERE business_id = ?').get(b.id).c
+            || db.prepare('SELECT COUNT(*) c FROM campaign_business_stages WHERE business_id = ?').get(b.id).c
+            || db.prepare('SELECT COUNT(*) c FROM campaign_questions WHERE business_id = ?').get(b.id).c
+            || manualSet(b).size > 0;
+        if (touched) {
+            if (!b.hidden) {
+                db.prepare(`UPDATE campaign_businesses SET hidden = 1,
+                    hidden_at = datetime('now','localtime'), hidden_by = 'ניקוי דיווחים מוקלטים' WHERE id = ?`).run(b.id);
+            }
+            kept++;
+            continue;
+        }
+        db.prepare('DELETE FROM campaign_business_stages WHERE business_id = ?').run(b.id);
+        db.prepare('DELETE FROM campaign_business_notes WHERE business_id = ?').run(b.id);
+        db.prepare('DELETE FROM campaign_businesses WHERE id = ?').run(b.id);
+        removed++;
+    }
+    if (removed || kept) console.log(`דיווחים מוקלטים: ${removed} הוסרו, ${kept} הוסתרו (היה עליהם טיפול)`);
+
+    // שם זמני לפי הטלפון של המדווחת לא עוזר לזהות עסק. כשיש תיאור מוצר —
+    // הוא כמעט תמיד מכיל את שם העסק ("בת מלך", "קורס צילום") ולכן עדיף.
+    let renamed = 0;
+    const unnamed = db.prepare(`SELECT id, name, product, manual_fields FROM campaign_businesses
+        WHERE source = ? AND name LIKE 'ללא שם · דווח מ-%' AND product IS NOT NULL AND product != ''`).all(REPORTS_SHEET_TAB);
+    for (const b of unnamed) {
+        if (manualSet(b).has('name')) continue;
+        db.prepare('UPDATE campaign_businesses SET name = ? WHERE id = ?')
+            .run(`ללא שם · ${clean(b.product).slice(0, 45)}`, b.id);
+        renamed++;
+    }
+    if (renamed) console.log(`${renamed} עסקים קיבלו שם זמני לפי המוצר במקום לפי הטלפון`);
+    return { removed, kept, renamed };
+}
+
 export async function syncSinitBusinesses() {
     const result = { sources: [], added: 0, updated: 0, errors: [] };
     result.repairedNames = repairRecordingNames();
@@ -374,14 +424,30 @@ export async function syncSinitBusinesses() {
     try {
         const rows = await fetchSheetRows(POINTS_SHEET_ID, REPORTS_SHEET_TAB);
         result.mergedFix = repairMergedReports(rows);
+        result.recordedPurge = purgeRecordedReports();
         let a = 0, u = 0;
+        let skippedRecordings = 0, skippedEmpty = 0;
         for (const row of rows) {
             // "טלפון" כאן הוא המספר שממנו התקבל הדיווח, לא של העסק
             const rec = rowToBusiness(row, { reporterPhoneColumn: 'טלפון' });
-            if (!clean(rec.name)) continue;   // דיווח בלי שום מזהה — אין ממה ליצור עסק
+            // דיווח שבו שם העסק הוקלט ולא הוקלד אינו נרשם כעסק: ימות מעתיקה
+            // את אותו נתיב הקלטה לכל השדות (שם, מייל, מוצר), כך שאין בשורה
+            // שום מידע שמישהי יכולה לעבוד איתו.
+            if (clean(rec.recording)) { skippedRecordings++; continue; }
+            // דיווח "פנייה לעסקים" בלי שם אמיתי, בלי מוצר ובלי טלפון עסק הוא
+            // רישום נקודות של המתנדבת — לא עסק. rec.unnamed מסמן ששם העסק
+            // לא הוקלד והשם הוא זמני, ולכן בודקים אותו ולא את rec.name.
+            if (rec.unnamed && !clean(rec.product) && !clean(rec.phone)) { skippedEmpty++; continue; }
+            // יש מוצר או טלפון אבל אין שם — שם זמני לפי מה שבאמת קיים
+            if (rec.unnamed) {
+                rec.name = clean(rec.phone) ? `ללא שם · ${clean(rec.phone)}`
+                    : `ללא שם · ${clean(rec.product).slice(0, 40)}`;
+            }
             const res = upsertFromSource(rec, 'פרטי דיווחים');
             if (res.outcome === 'added') a++; else if (res.outcome === 'updated') u++;
         }
+        result.skippedRecordings = skippedRecordings;
+        result.skippedEmpty = skippedEmpty;
         result.clearedReporterPhones = clearReporterPhoneUsedAsBusiness(rows);
         result.sources.push({ name: 'פרטי דיווחים', rows: rows.length, added: a, updated: u });
         result.added += a; result.updated += u;
@@ -1118,18 +1184,34 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const answer = req.body?.answer === undefined ? q.answer : (clean(req.body.answer) || null);
         const STATUSES = ['נשאלה', 'נשלחה למנהלת', 'בטיפול', 'נענתה', 'נסגרה'];
         const status = STATUSES.includes(req.body?.status) ? req.body.status : (answer && !q.answer ? 'נענתה' : q.status);
+        // גם סימון "כבר ענו" בלי טקסט מחתים מי ומתי — אחרת העדכון לא נספר כחדש
+        const marks = !!answer || (status === 'נענתה' && q.status !== 'נענתה');
         db.prepare(`UPDATE campaign_questions SET answer = ?, status = ?,
-                    answered_by = CASE WHEN ? IS NOT NULL THEN ? ELSE answered_by END,
-                    answered_at = CASE WHEN ? IS NOT NULL THEN datetime('now','localtime') ELSE answered_at END
+                    answered_by = CASE WHEN ? THEN ? ELSE answered_by END,
+                    answered_at = CASE WHEN ? THEN datetime('now','localtime') ELSE answered_at END
                     WHERE id = ?`)
-            .run(answer, status, answer, actor(req), answer, q.id);
+            .run(answer, status, marks ? 1 : 0, actor(req), marks ? 1 : 0, q.id);
         if (answer && answer !== q.answer) {
             db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
                 .run(q.id, `נכתבה תשובה: ${answer}`, actor(req));
+        } else if (status === 'נענתה' && q.status !== 'נענתה') {
+            // סימון "כבר ענו" בלי לכתוב תשובה — עדיין רוצים תיעוד מי סימן ומתי
+            db.prepare('INSERT INTO campaign_question_steps (question_id, text, created_by) VALUES (?, ?, ?)')
+                .run(q.id, 'סומן שכבר ענו על השאלה', actor(req));
         }
         audit(actor(req), 'campaign.sinit.question_update', 'campaign_questions', q.id, { status: q.status }, { status, answer });
         touch();
         res.json({ ok: true });
+    });
+
+    // תשובות אחרונות — הלקוח נשען על זה כדי לקפוץ עם "יש תשובה חדשה".
+    // מחזיר גם שאלות שסומנו כנענו בלי טקסט תשובה, כי גם זה עדכון.
+    router.get('/questions/answered', gate('questions'), (req, res) => {
+        const rows = db.prepare(`SELECT id, text, answer, answered_by, answered_at, status, business_id
+            FROM campaign_questions
+            WHERE answered_at IS NOT NULL OR status = 'נענתה'
+            ORDER BY COALESCE(answered_at, created_at) DESC LIMIT 20`).all();
+        res.json(rows);
     });
 
     router.delete('/questions/:id', mustLogin, mustManager, (req, res) => {
