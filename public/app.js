@@ -2505,6 +2505,16 @@ async function renderSinitAdminCards(main) {
     </div>
     <div id="si-test-mail-result" class="sub muted" style="margin-top:6px"></div>
 
+    <div class="section-title">בדיקת כפילויות בעסקים</div>
+    <p class="sub muted">מאתר עסקים שמופיעים יותר מפעם אחת — לפי אותו טלפון עסק או בדיוק אותו שם.
+      הרשומה המלאה ביותר (הכי הרבה תגובות, שלבים ופרטים) נשמרת, והשאר מוסתרות.
+      הסתרה היא הפיכה: הכל זמין תחת "מוסתרים" בלשונית העסקים.</p>
+    <div class="row">
+      <button class="btn-secondary" id="si-dup-check">🔍 בדיקה מה כפול</button>
+      <button class="btn-secondary" id="si-dup-hide" style="display:none">הסתרת הכפילויות</button>
+    </div>
+    <div id="si-dup-result" class="sub" style="margin-top:8px"></div>
+
     <div class="section-title">מסמך התשובות (Google Docs)</div>
     <p class="sub muted">כששאלה לא מקבלת מענה מה-AI, המייל שנשלח אלייך יכלול קישור למסמך הזה ואת השאלה מוכנה להדבקה.
       מה שתכתבי שם נכנס לבסיס הידע תוך כמה דקות, וה-AI יענה לפיו בפעם הבאה.
@@ -2605,6 +2615,33 @@ async function renderSinitAdminCards(main) {
       toast('הגדרות Resend נשמרו', 'ok');
       render();
     } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+  });
+  $('#si-dup-check').addEventListener('click', async () => {
+    const box = $('#si-dup-result');
+    box.textContent = 'בודקת...';
+    try {
+      const r = await api('/api/sinit/businesses/duplicates');
+      if (!r.totalGroups) {
+        box.innerHTML = '<span style="color:#12805c">✔ לא נמצאו כפילויות</span>';
+        $('#si-dup-hide').style.display = 'none';
+        return;
+      }
+      box.innerHTML = `<b>נמצאו ${r.totalGroups} קבוצות כפולות — ${r.totalToHide} רשומות יוסתרו:</b>`
+        + r.groups.slice(0, 20).map((g) => `<div style="margin:8px 0;padding:8px 10px;background:#f6f7f9;border-radius:8px">
+            <div>נשמר: <b>${esc(g.keep.name)}</b>${g.keep.phone ? ` · ${esc(g.keep.phone)}` : ''}${g.keep.notes ? ` · ${g.keep.notes} תגובות` : ''}</div>
+            ${g.hide.map((h) => `<div style="color:#c1362f">יוסתר: ${esc(h.name)}${h.phone ? ` · ${esc(h.phone)}` : ''}${h.notes ? ` · ${h.notes} תגובות` : ''}</div>`).join('')}
+          </div>`).join('')
+        + (r.totalGroups > 20 ? `<div class="muted">...ועוד ${r.totalGroups - 20} קבוצות</div>` : '');
+      $('#si-dup-hide').style.display = '';
+    } catch (e) { box.innerHTML = `<span style="color:#c1362f">${esc(e.message || 'הבדיקה נכשלה')}</span>`; }
+  });
+  $('#si-dup-hide').addEventListener('click', async () => {
+    if (!confirm('להסתיר את כל הכפילויות שנמצאו? אפשר להחזיר כל אחת מהן מתוך "מוסתרים".')) return;
+    try {
+      const r = await api('/api/sinit/businesses/duplicates/hide', { method: 'POST' });
+      $('#si-dup-result').innerHTML = `<span style="color:#12805c">✔ הוסתרו ${r.hidden} רשומות כפולות מתוך ${r.groups} קבוצות</span>`;
+      $('#si-dup-hide').style.display = 'none';
+    } catch (e) { toast(e.message || 'ההסתרה נכשלה', 'err'); }
   });
   $('#si-test-mail').addEventListener('click', async () => {
     const box = $('#si-test-mail-result');

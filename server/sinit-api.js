@@ -987,6 +987,73 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         res.json({ ok: true });
     });
 
+    // ----- איתור כפילויות -----
+    // כפילות מזוהה רק בשתי דרכים בטוחות: אותו טלפון עסק, או בדיוק אותו שם.
+    // דמיון חלקי לא נחשב — עדיף להחמיץ כפילות מאשר להסתיר שני עסקים שונים.
+    function duplicateGroups() {
+        const rows = businessesWithStages().filter((b) => !b.hidden);
+        const groups = new Map();
+        const add = (key, b) => {
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(b);
+        };
+        for (const b of rows) {
+            const phone = clean(b.phone).replace(/\D/g, '');
+            if (phone.length >= 9) add(`tel:${phone}`, b);
+            else {
+                const n = normName(b.name);
+                if (n && n !== 'ללא שם') add(`name:${n}`, b);
+            }
+        }
+        // כמה מידע יש ברשומה — הכי מלאה נשמרת, השאר מוסתרות
+        const score = (b) => (b.notes_count * 100) + (b.stages_done * 50) + manualSet(b).size * 40
+            + ['name', 'phone', 'email', 'product', 'value_nis', 'response', 'contacted_by']
+                .filter((f) => clean(b[f])).length;
+        const out = [];
+        for (const [key, list] of groups) {
+            if (list.length < 2) continue;
+            const linked = new Set(db.prepare('SELECT DISTINCT business_id FROM campaign_questions WHERE business_id IS NOT NULL')
+                .all().map((r) => r.business_id));
+            const sorted = [...list].sort((a, b) => (score(b) - score(a))
+                || (linked.has(b.id) ? 1 : 0) - (linked.has(a.id) ? 1 : 0) || a.id - b.id);
+            out.push({ key, keep: sorted[0], hide: sorted.slice(1) });
+        }
+        return out;
+    }
+
+    router.get('/businesses/duplicates', mustLogin, mustManager, (req, res) => {
+        const groups = duplicateGroups();
+        res.json({
+            groups: groups.map((g) => ({
+                key: g.key,
+                keep: { id: g.keep.id, name: g.keep.name, phone: g.keep.phone, product: g.keep.product, notes: g.keep.notes_count },
+                hide: g.hide.map((b) => ({ id: b.id, name: b.name, phone: b.phone, product: b.product, notes: b.notes_count })),
+            })),
+            totalGroups: groups.length,
+            totalToHide: groups.reduce((s, g) => s + g.hide.length, 0),
+        });
+    });
+
+    router.post('/businesses/duplicates/hide', mustLogin, mustManager, (req, res) => {
+        const who = actor(req);
+        const groups = duplicateGroups();
+        let hidden = 0;
+        const run = db.transaction(() => {
+            for (const g of groups) {
+                for (const b of g.hide) {
+                    db.prepare(`UPDATE campaign_businesses SET hidden = 1,
+                        hidden_at = datetime('now','localtime'), hidden_by = ? WHERE id = ?`).run(`${who} · כפילות`, b.id);
+                    audit(who, 'campaign.business.hide_duplicate', 'campaign_businesses', b.id,
+                        { name: b.name }, { keptId: g.keep.id, keptName: g.keep.name });
+                    hidden++;
+                }
+            }
+        });
+        run();
+        touch();
+        res.json({ ok: true, groups: groups.length, hidden });
+    });
+
     // החזרת עסק שהוסתר
     router.post('/businesses/:id/unhide', mustLogin, mustManager, (req, res) => {
         const before = db.prepare('SELECT * FROM campaign_businesses WHERE id = ?').get(req.params.id);
