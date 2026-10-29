@@ -81,10 +81,15 @@ function upsertFromSource(rec, sourceName) {
     // הזיהוי מול המקור מבוסס על הטלפון כשהוא קיים, ולא על השם: שם יכול להשתנות
     // (למשל כשמחליפים "ללא שם · 05..." בשם האמיתי) ואז סנכרון חוזר היה יוצר כפילות.
     const phoneKey = clean(rec.phone).replace(/\D/g, '');
-    // בלי טלפון של העסק אין מזהה יציב, ואז כל דיווח הוא רשומה בפני עצמה לפי
-    // מספר השורה בגיליון. בלי זה כל הדיווחים של אותה מתנדבת נדרסו לעסק אחד.
+    // בלי טלפון של העסק אין מזהה טבעי, ואז כל דיווח הוא רשומה בפני עצמה.
+    // המזהה הוא הטלפון שדיווח + מועד הדיווח — צמד שלא משתנה לעולם. מספר
+    // השורה לא מתאים: הוספה או מחיקה של שורה בגיליון מזיזה את כל מה שאחריה,
+    // וכל הדיווחים היו נוצרים מחדש ככפילויות.
+    const stable = clean(rec.reporter_phone) && clean(rec.reported_at)
+        ? `${sourceName}|rep:${clean(rec.reporter_phone).replace(/\D/g, '')}@${clean(rec.reported_at)}`
+        : null;
     const key = phoneKey ? `${sourceName}|tel:${phoneKey}`
-        : (rec.srcRow ? `${sourceName}|row:${rec.srcRow}` : `${sourceName}|${normName(name)}`);
+        : (stable || (rec.srcRow ? `${sourceName}|row:${rec.srcRow}` : `${sourceName}|${normName(name)}`));
     let existing = db.prepare('SELECT * FROM campaign_businesses WHERE external_key = ?').get(key);
     if (!existing) {
         // אותו עסק אולי הוקלד ידנית לפני שהטופס סונכרן, או נקלט קודם לפי שם —
@@ -302,7 +307,10 @@ function repairMergedReports(reportRows) {
         const tel = b.external_key.slice(prefix.length);
         if (bizPhones.has(tel)) continue;          // מזהה תקין לפי טלפון העסק
 
-        const touched = db.prepare('SELECT COUNT(*) c FROM campaign_business_notes WHERE business_id = ?').get(b.id).c
+        // עסק שהוסתר בידי המנהלת לא נמחק כאן לעולם: מחיקה שלו הייתה גורמת
+        // לסנכרון ליצור אותו מחדש כרשומה גלויה — כלומר עסק שנמחק "חוזר".
+        const touched = b.hidden
+            || db.prepare('SELECT COUNT(*) c FROM campaign_business_notes WHERE business_id = ?').get(b.id).c
             || db.prepare('SELECT COUNT(*) c FROM campaign_business_stages WHERE business_id = ?').get(b.id).c
             || db.prepare('SELECT COUNT(*) c FROM campaign_questions WHERE business_id = ?').get(b.id).c
             || manualSet(b).size > 0;
@@ -359,6 +367,7 @@ function purgeRecordedReports() {
     const rows = db.prepare('SELECT * FROM campaign_businesses WHERE source = ?').all(REPORTS_SHEET_TAB);
     let removed = 0, kept = 0;
     for (const b of rows) {
+        if (b.hidden) continue;   // הסתרה בידי המנהלת גוברת על כל ניקוי אוטומטי
         const extra = parseExtra(b);
         // רשומה שנוצרה מהקלטה, או כזו שאין בה שם אמיתי, מוצר וטלפון —
         // שתיהן נולדו מדיווחים שאין בהם מידע, ושוב לא ייווצרו
@@ -398,6 +407,28 @@ function purgeRecordedReports() {
     return { removed, kept, renamed };
 }
 
+// מעבר ממזהה לפי מספר שורה למזהה יציב (טלפון המדווחת + מועד הדיווח).
+// בלי זה, הוספת שורה באמצע הגיליון הייתה מזיזה את כל השורות שאחריה וכל
+// הדיווחים היו נוצרים מחדש — כולל כאלה שהמנהלת הסתירה.
+function rekeyReportsToStableKey(reportRows) {
+    let moved = 0;
+    for (const row of reportRows) {
+        const rep = clean(row['טלפון']).replace(/\D/g, '');
+        const when = clean(row['תאריך ושעה']);
+        if (!rep || !when || !row.__row) continue;
+        const oldKey = `${REPORTS_SHEET_TAB}|row:${row.__row}`;
+        const newKey = `${REPORTS_SHEET_TAB}|rep:${rep}@${when}`;
+        const b = db.prepare('SELECT id FROM campaign_businesses WHERE external_key = ?').get(oldKey);
+        if (!b) continue;
+        // אם כבר קיימת רשומה עם המזהה היציב, מוותרים כדי לא ליצור התנגשות
+        if (db.prepare('SELECT id FROM campaign_businesses WHERE external_key = ?').get(newKey)) continue;
+        db.prepare('UPDATE campaign_businesses SET external_key = ? WHERE id = ?').run(newKey, b.id);
+        moved++;
+    }
+    if (moved) console.log(`${moved} דיווחים עברו למזהה יציב`);
+    return moved;
+}
+
 export async function syncSinitBusinesses() {
     const result = { sources: [], added: 0, updated: 0, errors: [] };
     result.repairedNames = repairRecordingNames();
@@ -424,6 +455,7 @@ export async function syncSinitBusinesses() {
     try {
         const rows = await fetchSheetRows(POINTS_SHEET_ID, REPORTS_SHEET_TAB);
         result.mergedFix = repairMergedReports(rows);
+        result.rekeyedStable = rekeyReportsToStableKey(rows);
         result.recordedPurge = purgeRecordedReports();
         let a = 0, u = 0;
         let skippedRecordings = 0, skippedEmpty = 0;
