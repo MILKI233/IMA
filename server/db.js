@@ -358,6 +358,9 @@ for (const stmt of [
   // נוכחות: מתי הייתה הפעולה האחרונה, וסימון שהמשמרת נסגרה אוטומטית
   `ALTER TABLE attendance ADD COLUMN last_activity TEXT`,
   `ALTER TABLE attendance ADD COLUMN auto_closed INTEGER NOT NULL DEFAULT 0`,
+  // סטטוס ברירת מחדל לעסקים שנכנסים ממקור סנכרון מסוים (למשל "סופי סופי"
+  // לטופס של עסקים שכבר תרמו והנקודות עודכנו)
+  `ALTER TABLE campaign_sync_sources ADD COLUMN default_status TEXT`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

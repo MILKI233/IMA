@@ -2556,11 +2556,12 @@ async function renderSinitAdminCards(main) {
 
     <div class="section-title">מקורות סנכרון נוספים</div>
     <p class="sub muted">כל גיליון או טופס גוגל שמשותף לצפייה. העמודות מזוהות לפי הכותרת: שם העסק, טלפון, מייל, מי פנתה, מוצר, שווי, סטטוס, הערה.</p>
-    <table class="data" id="si-sources"><tr><th>שם</th><th>לשונית</th><th>סונכרן</th><th>שורות</th><th>תקלה</th><th></th></tr>${
+    <table class="data" id="si-sources"><tr><th>שם</th><th>לשונית</th><th>סטטוס</th><th>סונכרן</th><th>שורות</th><th>תקלה</th><th></th></tr>${
       ov.sources.map((s) => `<tr>
         <td>${esc(s.name)}</td><td>${esc(s.sheet_name)}</td>
+        <td>${esc(s.default_status || '—')}</td>
         <td>${esc(s.last_synced_at || '—')}</td><td>${s.last_rows ?? ''}</td>
-        <td>${s.last_error ? `<span style="color:#c1362f">${esc(s.last_error)}</span>` : ''}</td>
+        <td>${s.last_error ? `<span style="color:#c1362f">${esc(s.last_error)}${/401|403/.test(s.last_error) ? ' — הגיליון לא משותף לצפייה' : ''}</span>` : ''}</td>
         <td><button class="btn-danger btn-sm" data-src="${s.id}">מחיקה</button></td></tr>`).join('')
     }</table>
     ${!ov.sources.length ? '<div class="empty-state">אין עדיין מקורות נוספים</div>' : ''}
@@ -2568,8 +2569,15 @@ async function renderSinitAdminCards(main) {
       <input class="in" id="si-src-name" placeholder="שם המקור" style="max-width:190px">
       <input class="in" id="si-src-url" placeholder="קישור לגיליון גוגל" style="flex:1;min-width:220px">
       <input class="in" id="si-src-sheet" placeholder="שם הלשונית בגיליון" style="max-width:180px">
+      <select class="in" id="si-src-status" style="max-width:170px">
+        <option value="">סטטוס ברירת מחדל…</option>
+        ${(ov.statuses || []).map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('')}
+      </select>
       <button class="btn-secondary" id="si-add-src">הוספת מקור</button>
-    </div>`;
+    </div>
+    <p class="sub muted" style="margin-top:6px">הקישור צריך להיות ל<b>גיליון התגובות</b> של הטופס, לא לטופס עצמו
+      (בטופס: "תשובות" ← סמל הגיליון הירוק). הגיליון חייב להיות משותף ב"כל מי שיש לו הקישור — מציג",
+      אחרת המערכת לא תוכל לקרוא ממנו. סטטוס ברירת המחדל נקבע לכל עסק שנכנס מהמקור הזה.</p>`;
   main.append(setCard);
 
   $('#si-save-mail').addEventListener('click', async () => {
@@ -2672,6 +2680,7 @@ async function renderSinitAdminCards(main) {
     try {
       await api('/api/sinit/sources', { method: 'POST', body: {
         name: $('#si-src-name').value, sheet_url: $('#si-src-url').value, sheet_name: $('#si-src-sheet').value,
+        default_status: $('#si-src-status').value,
       } });
       toast('המקור נוסף — בלשונית אפשר ללחוץ "סנכרון עכשיו"', 'ok');
       render();

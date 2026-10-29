@@ -497,6 +497,8 @@ export async function syncSinitBusinesses() {
             for (const row of rows) {
                 const rec = rowToBusiness(row);
                 if (!clean(rec.name)) continue;
+                // סטטוס שהוגדר למקור גובר, אלא אם השורה עצמה נושאת סטטוס מוכר
+                if (src.default_status && !allStatuses().includes(clean(rec.status))) rec.status = src.default_status;
                 const res = upsertFromSource(rec, src.name);
                 if (res.outcome === 'added') a++; else if (res.outcome === 'updated') u++;
             }
@@ -888,12 +890,19 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const raw = clean(req.body?.sheet_url);
         const sheetName = clean(req.body?.sheet_name) || 'תגובות לטופס 1';
         if (!name) return res.status(400).json({ error: 'יש להזין שם למקור (למשל: טופס פניות לעסקים)' });
+        // קישור לטופס אינו קישור לגיליון: הטופס הוא /forms/d/e/..., והנתונים
+        // יושבים בגיליון התגובות שלו. בלי ההבחנה הזו ההודעה הייתה מבלבלת.
+        if (/\/forms\//.test(raw)) {
+            return res.status(400).json({ error: 'זה קישור לטופס עצמו ולא לגיליון התגובות שלו. '
+                + 'בטופס: לשונית "תשובות" ← סמל הגיליון הירוק ← ומשם להעתיק את הקישור.' });
+        }
         const m = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) || raw.match(/^([a-zA-Z0-9-_]{20,})$/);
         if (!m) return res.status(400).json({ error: 'יש להדביק קישור לגיליון גוגל (או את מזהה הגיליון עצמו)' });
+        const defStatus = allStatuses().includes(clean(req.body?.default_status)) ? clean(req.body.default_status) : null;
         try {
-            const r = db.prepare('INSERT INTO campaign_sync_sources (name, sheet_id, sheet_name, created_by) VALUES (?, ?, ?, ?)')
-                .run(name, m[1], sheetName, actor(req));
-            audit(actor(req), 'campaign.sinit.source_add', 'campaign_sync_sources', r.lastInsertRowid, null, { name, sheet_name: sheetName });
+            const r = db.prepare('INSERT INTO campaign_sync_sources (name, sheet_id, sheet_name, default_status, created_by) VALUES (?, ?, ?, ?, ?)')
+                .run(name, m[1], sheetName, defStatus, actor(req));
+            audit(actor(req), 'campaign.sinit.source_add', 'campaign_sync_sources', r.lastInsertRowid, null, { name, sheet_name: sheetName, default_status: defStatus });
             touch();
             res.json({ ok: true, id: r.lastInsertRowid });
         } catch { res.status(400).json({ error: 'המקור הזה (אותו גיליון ואותה לשונית) כבר מוגדר' }); }
