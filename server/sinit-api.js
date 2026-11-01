@@ -12,6 +12,8 @@ import { sendMailTo, mailProvider, mailReady, mailFrom } from './integrations.js
 // "סופי סופי" = העסק תרם, המוצר התקבל והנקודות עודכנו — אין יותר מה לעשות איתו.
 // הוא אחרי "תרם" בכוונה, כי זה הסוף של המסלול בלוח הסטטוסים.
 const BUILTIN_STATUSES = ['ממתין', 'נוצר קשר', 'תרם', 'סופי סופי', 'סירב'];
+// הסטטוס של עסק שהמוצר שלו כבר גויס בפועל (טופס "תודה על תרומתך")
+const RECRUITED_STATUS = 'סופי סופי';
 // לשונית הדיווחים בגיליון הנקודות — כל גיוס שדווח דרך הטלפון נרשם שם
 export const REPORTS_SHEET_TAB = 'פרטי דיווחים';
 // הפלטה להדגשת עסק — צבעים רכים שנקראים טוב מתחת לטקסט שחור
@@ -62,7 +64,7 @@ function businessesWithStages() {
 // רק משלים שדות ריקים ומרענן את פרטי המוצר מהטופס.
 // השדות שאפשר לערוך ידנית בכרטיס העסק. השדות החופשיים (extra) נשמרים בנפרד.
 const EDITABLE_FIELDS = ['name', 'contacted_by', 'phone', 'email', 'product', 'value_nis',
-    'pickup', 'validity', 'logo_url', 'contact_number', 'message_number', 'response'];
+    'pickup', 'validity', 'logo_url', 'contact_number', 'message_number', 'response', 'status'];
 
 function manualSet(biz) {
     try { return new Set(JSON.parse(biz.manual_fields || '[]')); } catch { return new Set(); }
@@ -429,9 +431,25 @@ function rekeyReportsToStableKey(reportRows) {
     return moved;
 }
 
+// מוצרים שגויסו נכנסו בעבר כ"תרם". הם סוף המסלול, ולכן עוברים ל"סופי סופי" —
+// אבל רק אלה שעדיין על ברירת המחדל הישנה ושהמנהלת לא שינתה להם סטטוס ביד.
+function upgradeRecruitedStatus() {
+    const rows = db.prepare(`SELECT id, manual_fields FROM campaign_businesses
+        WHERE source = 'טופס תרומות' AND status = 'תרם'`).all();
+    let moved = 0;
+    for (const b of rows) {
+        if (manualSet(b).has('status')) continue;
+        db.prepare('UPDATE campaign_businesses SET status = ? WHERE id = ?').run(RECRUITED_STATUS, b.id);
+        moved++;
+    }
+    if (moved) console.log(`${moved} מוצרים שגויסו עברו לסטטוס "${RECRUITED_STATUS}"`);
+    return moved;
+}
+
 export async function syncSinitBusinesses() {
     const result = { sources: [], added: 0, updated: 0, errors: [] };
     result.repairedNames = repairRecordingNames();
+    result.recruitedUpgraded = upgradeRecruitedStatus();
 
     // (1) טופס "תודה על תרומתך" — כבר נשלף כל 3 דקות ללוח הבקרה
     const cache = getCampaignSheetsCache();
@@ -442,7 +460,9 @@ export async function syncSinitBusinesses() {
         const res = upsertFromSource({
             name: r.businessName, phone: r.businessPhone, email: r.businessEmail,
             contacted_by: r.recruiterName, product: r.productDescription, value_nis: r.productValue,
-            pickup: r.pickup, validity: r.validity, logo_url: r.logoUrl, status: 'תרם',
+            // מוצר שגויס בפועל הוא סוף המסלול: העסק תרם, המוצר התקבל
+            // והנקודות עודכנו. לכן הוא נכנס ישירות כ"סופי סופי".
+            pickup: r.pickup, validity: r.validity, logo_url: r.logoUrl, status: RECRUITED_STATUS,
             response: r.notes,
         }, 'טופס תרומות');
         if (res.outcome === 'added') added++; else if (res.outcome === 'updated') updated++;
@@ -950,7 +970,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const highlight = b.highlight === undefined ? before.highlight : (b.highlight ? 1 : 0);
 
         // כל שדה שנשלח במפורש נרשם כ"ידני" ומוגן מפני דריסה בסנכרון הבא.
-        // שינוי צבע או סטטוס לבדו לא נוגע ברשימה הזו.
+        // סטטוס כלול: אם המנהלת שינתה אותו ביד, מקור סנכרון לא יחזיר אותו.
         const locked = manualSet(before);
         for (const f of EDITABLE_FIELDS) {
             if (b[f] === undefined) continue;
