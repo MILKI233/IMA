@@ -580,5 +580,15 @@ async function downloadFile(endpoint, filename) {
 
 document.getElementById('kitRecipientsExportBtn').addEventListener('click', () => downloadFile('/api/campaign/sheets-data/kit-recipients.xlsx', 'מקבלי ערכות.xlsx'));
 document.getElementById('recruitedExportBtn').addEventListener('click', () => downloadFile('/api/campaign/sheets-data/recruited-products.xlsx', 'מוצרים שגויסו.xlsx'));
+// ייצוא נפרד לכל קטגוריה
+for (const [id, path, file] of [
+    ['participantsExportBtn', '/api/campaign/sheets-data/participants.xlsx', 'משתתפות ונקודות.xlsx'],
+    ['txExportBtn', '/api/campaign/sheets-data/transactions.xlsx', 'תנועות.xlsx'],
+    ['hubsExportBtn', '/api/campaign/sheets-data/hubs.xlsx', 'מוקדים ומלאי.xlsx'],
+    ['mpExportBtn', '/api/campaign/sheets-data/manual-points.xlsx', 'נקודות ידניות.xlsx'],
+    ['activityExportBtn', '/api/campaign/activity.xlsx', 'יומן פעולות.xlsx'],
+]) {
+    document.getElementById(id)?.addEventListener('click', () => downloadFile(path, file));
+}
 
 if (USER) startApp(); else initLogin();

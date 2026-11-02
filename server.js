@@ -983,6 +983,59 @@ app.get('/api/campaign/sheets-data/recruited-products.xlsx', mustLogin, requireF
   res.send(buf);
 });
 
+// ייצוא לאקסל לכל שאר הקטגוריות, כל אחת בנפרד. מוגדר בטבלה אחת כדי
+// שהוספת קטגוריה בעתיד תהיה שורה אחת ולא עוד נתיב שלם.
+const CAMPAIGN_EXPORTS = {
+  participants: {
+    file: 'משתתפות ונקודות', sheet: 'משתתפות',
+    rows: (c) => (c.participants || []).map((p) => ({
+      'שם': p['שם (אפשר למלא ידנית)'] || '', 'טלפון': p['טלפון'] || '',
+      'נקודות השבוע': p['נקודות השבוע'] || '', 'יעד שבועי': p['יעד שבועי'] || '',
+      'סך נצבר': p['סך נצבר'] || '', 'סך מומש': p['סך מומש'] || '',
+      'מספר דיווחים': p['מספר דיווחים'] || '', 'עודכן לאחרונה': p['עודכן לאחרונה'] || '',
+    })),
+  },
+  transactions: {
+    file: 'תנועות', sheet: 'תנועות',
+    rows: (c) => (c.transactions || []).map((t) => ({ ...t, __row: undefined })),
+  },
+  hubs: {
+    file: 'מוקדים ומלאי', sheet: 'מוקדים',
+    rows: (c) => (c.hubs || []).map((h) => ({ ...h, __row: undefined })),
+  },
+  'manual-points': {
+    file: 'נקודות ידניות', sheet: 'נקודות ידניות',
+    rows: (c) => (c.manualPoints || []).map((m) => ({ ...m, __row: undefined })),
+  },
+};
+
+app.get('/api/campaign/sheets-data/:kind.xlsx', mustLogin, requireFeature('campaign'), async (req, res) => {
+  const def = CAMPAIGN_EXPORTS[req.params.kind];
+  if (!def) return res.status(404).json({ error: 'אין ייצוא לקטגוריה הזו' });
+  const { utils, write } = await import('xlsx');
+  const wb = utils.book_new();
+  utils.book_append_sheet(wb, utils.json_to_sheet(def.rows(getCampaignSheetsCache())), def.sheet);
+  const buf = write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition',
+    `attachment; filename=${req.params.kind}.xlsx; filename*=UTF-8''${encodeURIComponent(def.file + '.xlsx')}`);
+  res.send(buf);
+});
+
+// יומן הפעולות — מי עשתה מה ומתי
+app.get('/api/campaign/activity.xlsx', mustLogin, requireFeature('campaign'), async (req, res) => {
+  const { utils, write } = await import('xlsx');
+  const rows = db.prepare(`SELECT at AS 'תאריך', user_name AS 'מי', action AS 'פעולה',
+      entity AS 'אזור', entity_id AS 'מזהה' FROM audit_log
+      WHERE action LIKE 'campaign%' ORDER BY id DESC LIMIT 5000`).all();
+  const wb = utils.book_new();
+  utils.book_append_sheet(wb, utils.json_to_sheet(rows), 'יומן פעולות');
+  const buf = write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=activity.xlsx; filename*=UTF-8''${encodeURIComponent('יומן פעולות.xlsx')}`);
+  res.send(buf);
+});
+
 app.post('/api/campaign/sheets-write/hub', mustLogin, requireFeature('campaign_hubs'), async (req, res) => {
   try {
     checkSyncPassword(req.body?.syncPassword);

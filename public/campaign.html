@@ -59,7 +59,7 @@
         <div class="card">
             <div class="card-head-row">
                 <h2 id="hd-volunteers">משתתפות ונקודות</h2>
-                <input id="volunteerSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם או טלפון">
+                <div style="display:flex;gap:8px;align-items:center"><input id="volunteerSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם או טלפון"><button class="btn secondary" id="participantsExportBtn">⬇ אקסל</button></div>
             </div>
             <table id="volunteersTable"><thead><tr>
                 <th>שם</th><th>טלפון</th><th>נקודות השבוע</th><th>יעד שבועי</th><th>סך נצבר</th><th>סך מומש</th><th>דיווחים</th><th></th>
@@ -69,7 +69,7 @@
         <div class="card">
             <div class="card-head-row">
                 <h2 id="hd-tx">תנועות אחרונות</h2>
-                <input id="txSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/טלפון/פעולה">
+                <div style="display:flex;gap:8px;align-items:center"><input id="txSearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/טלפון/פעולה"><button class="btn secondary" id="txExportBtn">⬇ אקסל</button></div>
             </div>
             <table id="activityTable"><thead><tr>
                 <th>תאריך</th><th>מי</th><th>פעולה / מוצר</th><th>נקודות</th><th>בונוס</th>
@@ -77,7 +77,7 @@
             <div class="empty" id="txEmpty" style="display:none">אין עדיין תנועות</div>
         </div>
         <div class="card">
-            <h2 id="hd-kitsstock">מוקדים ומלאי</h2>
+            <div class="card-head-row"><h2 id="hd-kitsstock">מוקדים ומלאי</h2><button class="btn secondary" id="hubsExportBtn">⬇ אקסל</button></div>
             <div class="stat-row" id="kitsSummaryRow" style="margin-bottom:14px"></div>
             <div class="hub-cards" id="sheetHubCards"></div>
             <div class="empty" id="sheetHubsEmpty" style="display:none">אין עדיין מוקדים</div>
@@ -109,7 +109,7 @@
                     <input id="sbizSearch" class="search-box" type="search" placeholder="🔍 שם עסק / טלפון / מי פנתה / מוצר">
                     <button class="btn" id="sbizSyncBtn" title="שליפה מיידית מכל הטפסים והגליונות">⟳ סנכרון עכשיו</button>
                     <button class="btn secondary write-only" id="sbizAddToggle">➕ הוספת עסק</button>
-                    <button class="btn secondary" id="sbizExportBtn">⬇ אקסל</button>
+                    <button class="btn secondary" id="sbizExportBtn" title="מוריד בדיוק את מה שמוצג אחרי הסינון — למשל רק 'סופי סופי'">⬇ אקסל</button>
                 </div>
             </div>
 
@@ -160,7 +160,7 @@
         <div class="card">
             <div class="card-head-row">
                 <h2 id="hd-squestions">שאלות שנשאלו ושלבי המענה</h2>
-                <input id="squestionSearch" class="search-box" type="search" placeholder="🔍 חיפוש בשאלות">
+                <div style="display:flex;gap:8px;align-items:center"><input id="squestionSearch" class="search-box" type="search" placeholder="🔍 חיפוש בשאלות"><button class="btn secondary" id="squestionsExportBtn">⬇ אקסל</button></div>
             </div>
             <div class="add-box write-only">
                 <div class="row">
@@ -182,7 +182,7 @@
         <div class="card">
             <div class="card-head-row">
                 <h2 id="hd-sai">מענה AI</h2>
-                <span class="hint" id="saiReadyHint"></span>
+                <div style="display:flex;gap:8px;align-items:center"><span class="hint" id="saiReadyHint"></span><button class="btn secondary" id="saiExportBtn">⬇ אקסל</button></div>
             </div>
             <div class="chat">
                 <div class="chat-log" id="saiChat"></div>
@@ -261,7 +261,7 @@
         <div class="card">
             <div class="card-head-row">
                 <h2 id="hd-manualpointslist">רשומות שהוזנו</h2>
-                <input id="mpSearch" class="search-box" type="search" placeholder="🔍 טלפון / שם / תיאור">
+                <div style="display:flex;gap:8px;align-items:center"><input id="mpSearch" class="search-box" type="search" placeholder="🔍 טלפון / שם / תיאור"><button class="btn secondary" id="mpExportBtn">⬇ אקסל</button></div>
             </div>
             <table id="mpTable"><thead><tr>
                 <th>טלפון</th><th>שם המתנדבת</th><th>על מה</th><th>נקודות</th><th>סטטוס</th>
@@ -294,7 +294,10 @@
         <div class="card">
             <div class="card-head-row">
                 <h2 id="hd-activity">יומן פעולות — מי עשה מה</h2>
-                <input id="activitySearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/פעולה">
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input id="activitySearch" class="search-box" type="search" placeholder="🔍 חיפוש לפי שם/פעולה">
+                    <button class="btn secondary" id="activityExportBtn">⬇ אקסל</button>
+                </div>
             </div>
             <p class="hint">כולל פעולות ניהול (אישורים, הוספת מתנות/מוקדים, שינוי הגדרות) ופעולות מתנדבות בטלפון. מציג 200 אחרונות.</p>
             <table id="activityLogTable"><thead><tr>

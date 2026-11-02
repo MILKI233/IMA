@@ -1655,9 +1655,50 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
     });
 
     // ----- ייצוא לאקסל -----
+    // ייצוא השאלות עם כל שלבי המענה — כל שלב בשורה משלו, כדי שאפשר יהיה
+    // לעקוב בגיליון אחרי מה נעשה בכל שאלה
+    router.get('/questions/export.xlsx', mustLogin, (req, res) => {
+        const rows = [];
+        for (const q of questionsWithSteps()) {
+            const base = {
+                'שאלה': q.text, 'סטטוס': q.status, 'נשאלה על ידי': q.asked_by || '',
+                'מקור': q.origin === 'AI' ? 'מענה AI' : 'ידני', 'עסק': q.business_name || '',
+                'נפתחה': q.created_at, 'התשובה': q.answer || '',
+                'ענתה': q.answered_by || '', 'נענתה בתאריך': q.answered_at || '',
+                'מייל נשלח ל': q.email_to || '', 'מייל נשלח בתאריך': q.email_sent_at || '',
+            };
+            if (!(q.steps || []).length) { rows.push(base); continue; }
+            q.steps.forEach((s, i) => rows.push({ ...base, 'שלב': i + 1, 'תיאור השלב': s.text, 'מי': s.created_by || '', 'מתי': s.created_at }));
+        }
+        const wb = utils.book_new();
+        utils.book_append_sheet(wb, utils.json_to_sheet(rows), 'שאלות ומענה');
+        const buf = write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=questions.xlsx; filename*=UTF-8''${encodeURIComponent('שאלות ומענה.xlsx')}`);
+        res.send(buf);
+    });
+
+    router.get('/ai/export.xlsx', mustLogin, (req, res) => {
+        const rows = db.prepare(`SELECT created_at AS 'תאריך', asked_by AS 'מי שאלה', question AS 'השאלה',
+            answer AS 'התשובה', outcome AS 'תוצאה', source_doc AS 'מתוך הקובץ',
+            question_id AS 'הועברה לשאלה' FROM campaign_ai_log ORDER BY id DESC`).all();
+        const wb = utils.book_new();
+        utils.book_append_sheet(wb, utils.json_to_sheet(rows), 'מענה AI');
+        const buf = write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=ai-log.xlsx; filename*=UTF-8''${encodeURIComponent('מענה AI.xlsx')}`);
+        res.send(buf);
+    });
+
     router.get('/businesses/export.xlsx', mustLogin, (req, res) => {
         const stages = stageList();
-        const rows = businessesWithStages().filter((b) => !b.hidden);   // מוסתרים לא יוצאים לאקסל
+        // ids — בדיוק מה שמוצג על המסך אחרי הסינון, כדי שהאקסל יהיה זהה לתצוגה
+        // (למשל רק "סופי סופי"). בלי ids מייצאים הכל חוץ ממוסתרים.
+        const only = clean(req.query.ids)
+            ? new Set(String(req.query.ids).split(',').map((n) => Number(n)).filter(Boolean))
+            : null;
+        const rows = businessesWithStages()
+            .filter((b) => (only ? only.has(b.id) : !b.hidden));
         const data = rows.map((b) => {
             const base = {
                 'שם העסק': b.name, 'מי פנתה': b.contacted_by || '',

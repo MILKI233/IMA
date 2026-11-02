@@ -1021,7 +1021,18 @@ function wireSinit() {
         finally { btn.disabled = false; btn.textContent = '⟳ סנכרון עכשיו'; }
     });
 
-    on('sbizExportBtn', 'click', () => downloadFile('/api/sinit/businesses/export.xlsx', 'עסקים — מכירה סינית.xlsx'));
+    // האקסל מייצא בדיוק את מה שמוצג אחרי הסינון — כך מקבלים קובץ נפרד
+    // לכל קטגוריה (סוננת ל"סופי סופי" → אקסל של סופי סופי בלבד)
+    on('sbizExportBtn', 'click', () => {
+        const rows = filteredBusinesses();
+        if (!rows.length) { sinitToast('אין עסקים בתצוגה הנוכחית', 'err'); return; }
+        const label = [S.f.status, S.f.source, S.f.hidden ? 'מוסתרים' : '', S.f.moved ? 'בטיפול בשאלות' : '']
+            .filter(Boolean).join(' · ');
+        downloadFile(`/api/sinit/businesses/export.xlsx?ids=${rows.map((b) => b.id).join(',')}`,
+            `עסקים${label ? ` — ${label}` : ''}.xlsx`);
+    });
+    on('squestionsExportBtn', 'click', () => downloadFile('/api/sinit/questions/export.xlsx', 'שאלות ומענה.xlsx'));
+    on('saiExportBtn', 'click', () => downloadFile('/api/sinit/ai/export.xlsx', 'מענה AI.xlsx'));
 
     const closeModal = () => { S.modalId = null; el('sbizModalOverlay').classList.add('hidden'); };
     on('sbizModalClose', 'click', closeModal);
