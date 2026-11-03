@@ -451,6 +451,7 @@ const BIZ_FIELDS = [
     { k: 'email', label: 'מייל העסק', type: 'email' },
     { k: 'contacted_by', label: 'מי פנתה' },
     { k: 'product', label: 'המוצר שגויס', wide: true },
+    { k: 'address', label: 'כתובת לשליחת הקטלוג', wide: true },
     { k: 'value_nis', label: 'שווי בש"ח' },
     { k: 'pickup', label: 'איסוף' },
     { k: 'validity', label: 'תוקף' },
@@ -476,6 +477,10 @@ function sinitEditFields(d) {
         </div>`).join('');
     return `
         <div class="biz-fields">${rows}</div>
+        <label class="biz-approval">
+            <input type="checkbox" id="bf-wants-approval" ${b.wants_approval ? 'checked' : ''}>
+            <span>העסק ביקש שישלחו לו את הפרסום לאישור לפני שיוצא</span>
+        </label>
         <div class="biz-extra">
             <div class="hint">שדות נוספים משלך — אפשר להוסיף כל פרט שחסר (שעות פתיחה, איש קשר, כתובת…)</div>
             ${extraRows}
@@ -493,6 +498,7 @@ async function sinitSaveBizFields() {
         if (input) body[k] = input.value.trim();
     }
     if (!body.name) { el('bizFieldsHint').textContent = 'שם העסק לא יכול להישאר ריק'; return; }
+    body.wants_approval = el('bf-wants-approval')?.checked ? 1 : 0;
     document.querySelectorAll('.biz-extra-row').forEach((row) => {
         const k = row.querySelector('.bx-k').value.trim();
         const v = row.querySelector('.bx-v').value.trim();
@@ -593,6 +599,7 @@ function renderBizModal(d) {
         b.reported_at ? `מועד הדיווח: ${esc(b.reported_at)}` : '',
         b.email ? `מייל: ${esc(b.email)}` : '',
         b.product ? `מוצר: ${esc(b.product)}` : '',
+        b.address ? `כתובת לקטלוג: ${esc(b.address)}` : '',
         b.value_nis ? `שווי: ${esc(b.value_nis)} ₪` : '',
         b.pickup ? `איסוף: ${esc(b.pickup)}` : '',
         b.validity ? `תוקף: ${esc(b.validity)}` : '',
@@ -602,6 +609,7 @@ function renderBizModal(d) {
         b.synced_at ? `סונכרן: ${fmtDate(b.synced_at)}` : '',
     ].filter(Boolean).join(' · ')
         + ` <span class="badge ${STATUS_CLASS[b.status] || ''}">${esc(b.status)}</span>`
+        + (b.wants_approval ? ' <span class="badge warn">ביקש לאשר פרסום</span>' : '')
         + (b.logo_url ? ` · <a href="${esc(b.logo_url)}" target="_blank" rel="noopener">לוגו</a>` : '');
 
     if (el('sbizModalFields')) {

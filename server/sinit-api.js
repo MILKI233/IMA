@@ -69,7 +69,7 @@ function businessesWithStages() {
 // רק משלים שדות ריקים ומרענן את פרטי המוצר מהטופס.
 // השדות שאפשר לערוך ידנית בכרטיס העסק. השדות החופשיים (extra) נשמרים בנפרד.
 const EDITABLE_FIELDS = ['name', 'contacted_by', 'phone', 'email', 'product', 'value_nis',
-    'pickup', 'validity', 'logo_url', 'contact_number', 'message_number', 'response', 'status'];
+    'pickup', 'validity', 'logo_url', 'contact_number', 'message_number', 'response', 'status', 'address'];
 
 function manualSet(biz) {
     try { return new Set(JSON.parse(biz.manual_fields || '[]')); } catch { return new Set(); }
@@ -126,11 +126,12 @@ function upsertFromSource(rec, sourceName) {
 
     if (!existing) {
         const r = db.prepare(`INSERT INTO campaign_businesses
-            (name, contacted_by, phone, email, response, status, source, external_key, product, value_nis, pickup, validity, logo_url, created_at, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`)
+            (name, contacted_by, phone, email, response, status, source, external_key, product, value_nis, address, pickup, validity, logo_url, created_at, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`)
             .run(name, clean(rec.contacted_by) || null, clean(rec.phone) || null, clean(rec.email) || null,
                 clean(rec.response) || null, allStatuses().includes(rec.status) ? rec.status : 'תרם',
                 sourceName, key, clean(rec.product) || null, clean(rec.value_nis) || null,
+                clean(rec.address) || null,
                 clean(rec.pickup) || null, clean(rec.validity) || null, clean(rec.logo_url) || null);
         withRecording(r.lastInsertRowid);
         return { outcome: 'added', id: r.lastInsertRowid };
@@ -149,13 +150,15 @@ function upsertFromSource(rec, sourceName) {
             email        = COALESCE(NULLIF(email,''), ?),
             product      = COALESCE(?, product),
             value_nis    = COALESCE(?, value_nis),
+            address      = COALESCE(?, address),
             pickup       = COALESCE(?, pickup),
             validity     = COALESCE(?, validity),
             logo_url     = COALESCE(?, logo_url),
             synced_at    = datetime('now','localtime')
         WHERE id = ?`)
         .run(key, fillOnly('contacted_by', rec.contacted_by), fillOnly('phone', rec.phone), fillOnly('email', rec.email),
-            srcWins('product', rec.product), srcWins('value_nis', rec.value_nis), srcWins('pickup', rec.pickup),
+            srcWins('product', rec.product), srcWins('value_nis', rec.value_nis), srcWins('address', rec.address),
+            srcWins('pickup', rec.pickup),
             srcWins('validity', rec.validity), srcWins('logo_url', rec.logo_url),
             existing.id);
     withRecording(existing.id);
@@ -253,6 +256,8 @@ function rawRowToBusiness(row, opts = {}) {
             txt(col(row, ['תיאור המוצר', 'מוצר', 'תרומה', 'פרס'])),
         ),
         value_nis: txt(col(row, ['סכום עלות המוצר', 'שווי', 'סכום', 'עלות', 'ערך'])),
+        // ברגע שתתווסף שאלת כתובת לטופס, העמודה תיקלט לבד לפי הכותרת
+        address: txt(col(row, ['כתובת לשליחת הקטלוג', 'כתובת למשלוח', 'כתובת פיזית', 'כתובת', 'מען'])),
         pickup: txt(col(row, ['איסוף המוצר', 'איסוף'])),
         response: txt(col(row, ['תגובה', 'הערה', 'הערות'])),
         status: clean(txt(col(row, ['סטטוס', 'מצב']))),
@@ -974,6 +979,8 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         const status = allStatuses().includes(b.status) ? b.status : before.status;
         const color = b.color === undefined ? before.color : (clean(b.color) || null);
         const highlight = b.highlight === undefined ? before.highlight : (b.highlight ? 1 : 0);
+        // "ביקש לראות לאישור" — סימון ידני בלבד, לא מגיע משום מקור סנכרון
+        const wantsApproval = b.wants_approval === undefined ? before.wants_approval : (b.wants_approval ? 1 : 0);
 
         // כל שדה שנשלח במפורש נרשם כ"ידני" ומוגן מפני דריסה בסנכרון הבא.
         // סטטוס כלול: אם המנהלת שינתה אותו ביד, מקור סנכרון לא יחזיר אותו.
@@ -996,15 +1003,15 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         }
 
         db.prepare(`UPDATE campaign_businesses SET name=?, contacted_by=?, phone=?, email=?, response=?, status=?,
-                    contact_number=?, message_number=?, product=?, value_nis=?, pickup=?, validity=?, logo_url=?,
-                    color=?, highlight=?, manual_fields=?, extra=?,
+                    contact_number=?, message_number=?, product=?, value_nis=?, address=?, pickup=?, validity=?, logo_url=?,
+                    color=?, highlight=?, wants_approval=?, manual_fields=?, extra=?,
                     updated_at=datetime('now','localtime') WHERE id=?`)
             .run(clean(b.name) || before.name, pick('contacted_by', before.contacted_by), pick('phone', before.phone),
                 pick('email', before.email), pick('response', before.response), status,
                 pick('contact_number', before.contact_number), pick('message_number', before.message_number),
-                pick('product', before.product), pick('value_nis', before.value_nis),
+                pick('product', before.product), pick('value_nis', before.value_nis), pick('address', before.address),
                 pick('pickup', before.pickup), pick('validity', before.validity), pick('logo_url', before.logo_url),
-                color, highlight, JSON.stringify([...locked]), JSON.stringify(extra), before.id);
+                color, highlight, wantsApproval, JSON.stringify([...locked]), JSON.stringify(extra), before.id);
         audit(actor(req), 'campaign.business.update', 'campaign_businesses', before.id,
             { status: before.status, color: before.color, highlight: before.highlight },
             { status, color, highlight, response: pick('response', before.response) });
@@ -1730,7 +1737,9 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
                 'שם העסק': b.name, 'מי פנתה': b.contacted_by || '',
                 'טלפון העסק': b.phone || '', 'דווח מהטלפון': b.reporter_phone || '', 'מייל': b.email || '',
                 'סטטוס': b.status, 'שלב נוכחי': b.current_stage || '', 'שלבים שהושלמו': `${b.stages_done}/${b.stages_total}`,
-                'מוצר': b.product || '', 'שווי': b.value_nis || '', 'תגובה אחרונה': b.response || '',
+                'מוצר': b.product || '', 'שווי': b.value_nis || '',
+                'כתובת לשליחת הקטלוג': b.address || '', 'ביקש לאשר פרסום': b.wants_approval ? 'כן' : '',
+                'תגובה אחרונה': b.response || '',
                 'מס\' פנייה': b.contact_number || '', 'מס\' הודעה': b.message_number || '',
                 'מקור': b.source || '', 'מודגש': b.highlight ? 'כן' : '', 'נוצר': b.created_at,
             };

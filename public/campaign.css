@@ -143,6 +143,12 @@ tr.biz-row { cursor: pointer; }
 }
 .biz-field input:focus { outline: none; border-color: #9fb3cd; box-shadow: 0 0 0 3px rgba(159,179,205,.22); }
 .biz-field .lock { font-style: normal; color: #12805c; cursor: help; }
+.biz-approval {
+    display: flex; align-items: center; gap: 8px; margin-top: 12px;
+    background: #fbf6ea; border: 1px solid #efe4c9; border-radius: 10px; padding: 10px 12px;
+    font-size: .92rem; cursor: pointer;
+}
+.biz-approval input { width: 17px; height: 17px; cursor: pointer; }
 .biz-extra { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
 .biz-extra-row { display: flex; gap: 8px; }
 .biz-extra-row input { flex: 1; padding: 8px 11px; border: 1px solid #e6eaf1; border-radius: 9px; font: inherit; font-size: .9rem; }

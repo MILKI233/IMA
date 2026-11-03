@@ -361,6 +361,9 @@ for (const stmt of [
   // סטטוס ברירת מחדל לעסקים שנכנסים ממקור סנכרון מסוים (למשל "סופי סופי"
   // לטופס של עסקים שכבר תרמו והנקודות עודכנו)
   `ALTER TABLE campaign_sync_sources ADD COLUMN default_status TEXT`,
+  // כתובת פיזית לשליחת הקטלוג, וסימון שהעסק ביקש לראות את הפרסום לפני שיוצא
+  `ALTER TABLE campaign_businesses ADD COLUMN address TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN wants_approval INTEGER NOT NULL DEFAULT 0`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------
