@@ -86,6 +86,8 @@ tr:hover td { background: #f4f6fa; }
 .badge.danger { background: #fce8e6; color: #c1362f; }
 /* "סופי סופי" — סגור לגמרי, נבדל מ"תרם" שעדיין בטיפול */
 .badge.done { background: #1f6f54; color: #fff; }
+/* "האם רלוונטי?" — שאלת מיון שעדיין לא הוכרעה */
+.badge.ask { background: #efe6fa; color: #6b4fa0; }
 /* חלוקת השאלות לממתינות / שטופלו */
 .q-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
 .btn.ok-btn { background: #12805c; }
