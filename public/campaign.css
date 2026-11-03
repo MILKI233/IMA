@@ -90,6 +90,8 @@ tr:hover td { background: #f4f6fa; }
 .badge.ask { background: #efe6fa; color: #6b4fa0; }
 /* "לעדכן נקודות" — תרם, אבל המתנדבת עוד לא זוכתה */
 .badge.pts { background: #fdeccd; color: #a9641a; }
+/* "עסק שרק פנו אליו" — יצאה פנייה, עוד לא חזרה תגובה */
+.badge.reached { background: #e6f2f6; color: #2a6e86; }
 
 /* עדכון נקודות מתוך כרטיס העסק */
 .biz-points { background: #faf8f3; border: 1px solid #efe7d8; border-radius: 10px; padding: 12px 14px; }

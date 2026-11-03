@@ -21,7 +21,7 @@ const el = (id) => document.getElementById(id);
 const on = (id, ev, fn) => el(id)?.addEventListener(ev, fn);
 
 const STATUS_CLASS = { 'האם רלוונטי?': 'ask', 'לא רלוונטי צריך לעדכן את המתרימה': 'bad',
-    'ממתין': 'warn', 'תרם': 'ok', 'לעדכן נקודות': 'pts',
+    'ממתין': 'warn', 'עסק שרק פנו אליו': 'reached', 'תרם': 'ok', 'לעדכן נקודות': 'pts',
     'סופי סופי': 'done', 'סירב': 'bad', 'נוצר קשר': '' };
 const Q_STATUS_CLASS = { 'נשאלה': 'warn', 'נשלחה למנהלת': 'warn', 'בטיפול': '', 'נענתה': 'ok', 'נסגרה': 'ok' };
 const AI_OUTCOME_CLASS = { 'מהחומר': 'ok', 'AI מהחומר': 'ok', 'אין מענה': 'bad' };
