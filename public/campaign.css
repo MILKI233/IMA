@@ -88,6 +88,13 @@ tr:hover td { background: #f4f6fa; }
 .badge.done { background: #1f6f54; color: #fff; }
 /* "האם רלוונטי?" — שאלת מיון שעדיין לא הוכרעה */
 .badge.ask { background: #efe6fa; color: #6b4fa0; }
+/* "לעדכן נקודות" — תרם, אבל המתנדבת עוד לא זוכתה */
+.badge.pts { background: #fdeccd; color: #a9641a; }
+
+/* עדכון נקודות מתוך כרטיס העסק */
+.biz-points { background: #faf8f3; border: 1px solid #efe7d8; border-radius: 10px; padding: 12px 14px; }
+.biz-points .row { gap: 8px; }
+.biz-points input { padding: 8px 11px; border: 1px solid #e0d9c9; border-radius: 9px; font: inherit; font-size: .92rem; }
 /* חלוקת השאלות לממתינות / שטופלו */
 .q-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
 .btn.ok-btn { background: #12805c; }

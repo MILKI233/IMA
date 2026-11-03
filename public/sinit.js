@@ -20,7 +20,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 const el = (id) => document.getElementById(id);
 const on = (id, ev, fn) => el(id)?.addEventListener(ev, fn);
 
-const STATUS_CLASS = { 'האם רלוונטי?': 'ask', 'ממתין': 'warn', 'תרם': 'ok', 'סופי סופי': 'done', 'סירב': 'bad', 'נוצר קשר': '' };
+const STATUS_CLASS = { 'האם רלוונטי?': 'ask', 'ממתין': 'warn', 'תרם': 'ok', 'לעדכן נקודות': 'pts',
+    'סופי סופי': 'done', 'סירב': 'bad', 'נוצר קשר': '' };
 const Q_STATUS_CLASS = { 'נשאלה': 'warn', 'נשלחה למנהלת': 'warn', 'בטיפול': '', 'נענתה': 'ok', 'נסגרה': 'ok' };
 const AI_OUTCOME_CLASS = { 'מהחומר': 'ok', 'AI מהחומר': 'ok', 'אין מענה': 'bad' };
 
@@ -607,6 +608,29 @@ function renderBizModal(d) {
             : '<span class="hint">הקישור שלך הוא לצפייה בלבד</span>';
     }
 
+    // עדכון נקודות מתוך הכרטיס — אותה כתיבה לגיליון כמו בלשונית "נקודות".
+    // רק למנהלת: הכתיבה דורשת כניסה למערכת וסיסמת אישור.
+    // למתנדבת בקישור אין כניסה למערכת, ולכן גם הכותרת מוסתרת ולא נשאר קטע ריק
+    if (el('sbizModalPointsHead')) {
+        el('sbizModalPointsHead').style.display = S.overview?.isManager ? '' : 'none';
+    }
+    if (el('sbizModalPoints')) {
+        el('sbizModalPoints').innerHTML = S.overview?.isManager ? `
+            <div class="biz-points">
+                <div class="hint" style="margin-bottom:8px">הנקודות נרשמות ללשונית "נקודות ידניות" בגיליון,
+                    והמערכת של אוצרותינו מזכה את המתנדבת. אפשר מינוס כדי להוריד.</div>
+                <div class="row">
+                    <input id="bpPhone" placeholder="טלפון המתנדבת" style="width:160px" inputmode="numeric"
+                           value="${esc(b.reporter_phone || '')}">
+                    <input id="bpDesc" placeholder="על מה הנקודות" style="flex:1;min-width:220px"
+                           value="${esc(b.product ? `גיוס: ${String(b.product).slice(0, 60)}` : `גיוס מהעסק ${b.name}`)}">
+                    <input id="bpPoints" type="number" placeholder="נקודות" style="width:100px">
+                    <button class="btn" onclick="sinitAddPoints()">הוספה לגיליון</button>
+                </div>
+                <div class="row"><span class="hint" id="bpHint"></span></div>
+            </div>` : '';
+    }
+
     // פרטים חופשיים שנוספו ידנית מוצגים גם בשורת הכותרת
     const extraPairs = Object.entries(b.extra || {});
     if (el('sbizModalExtra')) {
@@ -792,6 +816,31 @@ async function sinitMarkAnswered(id) {
         await sinitLoadQuestions();
         sinitToast('השאלה סומנה כנענתה');
     } catch (e) { sinitToast(e.message, 'err'); }
+}
+
+// זיכוי מתנדבת בנקודות ישירות מכרטיס העסק
+async function sinitAddPoints() {
+    const phone = el('bpPhone').value.trim();
+    const description = el('bpDesc').value.trim();
+    const points = el('bpPoints').value.trim();
+    const hint = el('bpHint');
+    if (!phone || !description || !points) {
+        hint.innerHTML = '<span style="color:#c1362f">צריך טלפון, תיאור ומספר נקודות</span>';
+        return;
+    }
+    const pw = prompt('סיסמת מנהל לאישור כתיבה לגיליון:');
+    if (pw === null) return;
+    hint.textContent = 'כותבת לגיליון...';
+    try {
+        const r = await api('/api/campaign/sheets-write/manual-points', { method: 'POST', body: {
+            phone, description, points, syncPassword: pw,
+        } });
+        el('bpPoints').value = '';
+        hint.innerHTML = `<span style="color:#12805c">נכתב לגיליון (שורה ${r.row}). הזיכוי מתבצע תוך כמה שניות.</span>`;
+        sinitToast('הנקודות נרשמו');
+    } catch (e) {
+        hint.innerHTML = `<span style="color:#c1362f">${esc(e.message || 'הכתיבה נכשלה')}</span>`;
+    }
 }
 
 /* ---------- התראה על תשובה חדשה ---------- */
