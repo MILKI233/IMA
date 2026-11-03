@@ -44,6 +44,7 @@
     <button data-tab="sinit" data-target="hd-sbiz" title="כל העסקים מכל הטפסים, שלבי סגירה וצביעה">עסקים</button>
     <button data-tab="sinit" data-target="hd-squestions" title="שאלות שנשאלו ושלבי המענה על כל שאלה">שאלות ומענה</button>
     <button data-tab="sinit" data-target="hd-sai" title="מענה אוטומטי מתוך קבצי הוורד שהועלו">מענה AI</button>
+    <button data-tab="points" data-target="hd-leaderboard" title="מי מובילה בצבירת הנקודות">מובילות</button>
     <button data-tab="points" data-target="hd-manualpoints" title="הזנת נקודות ידנית לגיליון">נקודות ידניות</button>
     <button data-tab="recruited" data-target="hd-recruited">מוצרים שגויסו</button>
     <button data-tab="activity" data-target="hd-activity">יומן פעולות</button>
@@ -243,6 +244,24 @@
 
     <section id="points" class="c-section">
         <div class="stat-row" id="pointsStats"></div>
+        <div class="card">
+            <div class="card-head-row">
+                <h2 id="hd-leaderboard">מובילות בצבירת נקודות</h2>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <select id="lbMode" style="width:170px">
+                        <option value="total">לפי סך נצבר</option>
+                        <option value="week">לפי נקודות השבוע</option>
+                    </select>
+                    <input id="lbSearch" class="search-box" type="search" placeholder="🔍 שם או טלפון">
+                    <button class="btn secondary" id="lbExportBtn">⬇ אקסל</button>
+                </div>
+            </div>
+            <table id="lbTable"><thead><tr>
+                <th style="width:70px">מקום</th><th>מתנדבת</th><th>סך נצבר</th>
+                <th>נקודות השבוע</th><th>יעד שבועי</th><th>דיווחים</th>
+            </tr></thead><tbody></tbody></table>
+            <div class="empty" id="lbEmpty" style="display:none">אין עדיין נקודות</div>
+        </div>
         <div class="card">
             <h2 id="hd-manualpoints">הזנת נקודות ידנית</h2>
             <p class="hint">הרשומה נכתבת ישירות ללשונית "נקודות ידניות" בגיליון, והמערכת של אוצרותינו

@@ -407,3 +407,7 @@ td.act-cell { white-space: nowrap; }
     border-radius: 999px; padding: 3px 12px; font-size: .8rem; cursor: pointer;
 }
 .chip-filter.on { background: var(--c-dark); color: #fff; border-color: var(--c-dark); }
+
+/* שלוש המובילות מודגשות בטבלת הדירוג */
+.lb-top td { background: #fffaf0; font-weight: 600; }
+#lbTable td:first-child { font-size: 1.05rem; text-align: center; }

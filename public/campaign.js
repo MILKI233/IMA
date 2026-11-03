@@ -140,6 +140,14 @@ function startApp() {
         recruitedQuery = e.target.value.trim();
         if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
     });
+    document.getElementById('lbSearch').addEventListener('input', (e) => {
+        lbQuery = e.target.value.trim();
+        if (lastSheetsData) renderLeaderboard(lastSheetsData);
+    });
+    document.getElementById('lbMode').addEventListener('change', (e) => {
+        lbMode = e.target.value;
+        if (lastSheetsData) renderLeaderboard(lastSheetsData);
+    });
     document.getElementById('mpSearch').addEventListener('input', (e) => {
         mpQuery = e.target.value.trim();
         if (lastSheetsData) renderManualPoints(lastSheetsData);
@@ -401,6 +409,52 @@ function renderSheetsDashboard(data) {
     setNavTooltip('hd-recruited', `מוצרים שגויסו: ${(data.recruitedProducts || []).length}`);
 
     renderManualPoints(data);
+    renderLeaderboard(data);
+}
+
+/* ---- מובילות בצבירת נקודות ---- */
+let lbQuery = '';
+let lbMode = 'total';
+
+function renderLeaderboard(data) {
+    const tbody = document.querySelector('#lbTable tbody');
+    if (!tbody) return;
+    const num = (v) => parseInt(String(v ?? '').replace(/[^\d-]/g, ''), 10) || 0;
+    const key = lbMode === 'week' ? 'נקודות השבוע' : 'סך נצבר';
+
+    // מתנדבת בלי נקודות כלל לא מעניינת בטבלת מובילות
+    const rows = (data.participants || [])
+        .filter((p) => num(p[key]) > 0)
+        .sort((a, b) => num(b[key]) - num(a[key]) || num(b['סך נצבר']) - num(a['סך נצבר']));
+
+    const q = lbQuery.toLowerCase();
+    const shown = rows.filter((p) => !q
+        || String(p['טלפון'] || '').includes(q)
+        || String(p['שם (אפשר למלא ידנית)'] || '').toLowerCase().includes(q));
+
+    document.getElementById('lbEmpty').style.display = shown.length ? 'none' : 'block';
+    const medal = ['🥇', '🥈', '🥉'];
+    tbody.innerHTML = shown.map((p) => {
+        // הדירוג נקבע לפי כל הרשימה, לא לפי מה ששרד את החיפוש
+        const place = rows.indexOf(p) + 1;
+        const name = String(p['שם (אפשר למלא ידנית)'] || '').trim();
+        const goal = num(p['יעד שבועי']);
+        const week = num(p['נקודות השבוע']);
+        const reached = goal > 0 && week >= goal;
+        return `<tr${place <= 3 ? ' class="lb-top"' : ''}>
+            <td>${medal[place - 1] || place}</td>
+            <td>${name ? esc(name) : `<span class="hint">ללא שם · </span>${esc(p['טלפון'] || '')}`}</td>
+            <td style="font-weight:600">${num(p['סך נצבר'])}</td>
+            <td>${week}${reached ? ' <span class="badge ok">הגיעה ליעד</span>' : ''}</td>
+            <td>${goal || '—'}</td>
+            <td>${num(p['מספר דיווחים'])}</td>
+        </tr>`;
+    }).join('');
+
+    const top = rows[0];
+    setNavTooltip('hd-leaderboard', top
+        ? `מובילה: ${String(top['שם (אפשר למלא ידנית)'] || top['טלפון'])} · ${num(top[key])} נקודות`
+        : 'אין עדיין נקודות');
 }
 
 /* ---- נקודות ידניות: נקראות מהגיליון ונכתבות אליו ---- */
@@ -586,6 +640,7 @@ for (const [id, path, file] of [
     ['txExportBtn', '/api/campaign/sheets-data/transactions.xlsx', 'תנועות.xlsx'],
     ['hubsExportBtn', '/api/campaign/sheets-data/hubs.xlsx', 'מוקדים ומלאי.xlsx'],
     ['mpExportBtn', '/api/campaign/sheets-data/manual-points.xlsx', 'נקודות ידניות.xlsx'],
+    ['lbExportBtn', '/api/campaign/sheets-data/leaderboard.xlsx', 'מובילות בצבירת נקודות.xlsx'],
     ['activityExportBtn', '/api/campaign/activity.xlsx', 'יומן פעולות.xlsx'],
 ]) {
     document.getElementById(id)?.addEventListener('click', () => downloadFile(path, file));

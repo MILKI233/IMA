@@ -1003,6 +1003,22 @@ const CAMPAIGN_EXPORTS = {
     file: 'מוקדים ומלאי', sheet: 'מוקדים',
     rows: (c) => (c.hubs || []).map((h) => ({ ...h, __row: undefined })),
   },
+  // טבלת המובילות — ממוינת מהגבוה לנמוך, עם מספר מקום
+  leaderboard: {
+    file: 'מובילות בצבירת נקודות', sheet: 'מובילות',
+    rows: (c) => {
+      const num = (v) => parseInt(String(v ?? '').replace(/[^\d-]/g, ''), 10) || 0;
+      return (c.participants || [])
+        .filter((p) => num(p['סך נצבר']) > 0)
+        .sort((a, b) => num(b['סך נצבר']) - num(a['סך נצבר']))
+        .map((p, i) => ({
+          'מקום': i + 1, 'שם': p['שם (אפשר למלא ידנית)'] || '', 'טלפון': p['טלפון'] || '',
+          'סך נצבר': num(p['סך נצבר']), 'נקודות השבוע': num(p['נקודות השבוע']),
+          'יעד שבועי': num(p['יעד שבועי']), 'סך מומש': num(p['סך מומש']),
+          'מספר דיווחים': num(p['מספר דיווחים']),
+        }));
+    },
+  },
   'manual-points': {
     file: 'נקודות ידניות', sheet: 'נקודות ידניות',
     rows: (c) => (c.manualPoints || []).map((m) => ({ ...m, __row: undefined })),
