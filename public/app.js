@@ -2505,6 +2505,14 @@ async function renderSinitAdminCards(main) {
     </div>
     <div id="si-test-mail-result" class="sub muted" style="margin-top:6px"></div>
 
+    <div class="section-title">סטטוסים של עסקים</div>
+    <p class="sub muted">הסטטוסים הקבועים של המערכת מופיעים ראשונים ואי אפשר למחוק אותם.
+      סטטוס שהוספת בעצמך אפשר להסיר — עסקים שהיו בו יעברו ל"ממתין".</p>
+    <div id="si-statuses" class="chip-row">${(ov.statuses || []).map((s) => `
+      <span class="chip-tag">${esc(s)}${(ov.builtinStatuses || []).includes(s) ? ''
+        : ` <button class="chip-x" data-status="${esc(s)}" title="הסרת הסטטוס">✕</button>`}</span>`).join('')}
+    </div>
+
     <div class="section-title">בדיקת כפילויות בעסקים</div>
     <p class="sub muted">מאתר עסקים שמופיעים יותר מפעם אחת — לפי אותו טלפון עסק או בדיוק אותו שם.
       הרשומה המלאה ביותר (הכי הרבה תגובות, שלבים ופרטים) נשמרת, והשאר מוסתרות.
@@ -2624,6 +2632,15 @@ async function renderSinitAdminCards(main) {
       render();
     } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
   });
+  setCard.querySelectorAll('#si-statuses .chip-x').forEach((btn) => btn.addEventListener('click', async () => {
+    const name = btn.dataset.status;
+    if (!confirm(`להסיר את הסטטוס "${name}"? עסקים שנמצאים בו יעברו ל"ממתין".`)) return;
+    try {
+      const r = await api(`/api/sinit/statuses/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      toast(r.moved ? `הסטטוס הוסר · ${r.moved} עסקים הועברו ל"ממתין"` : 'הסטטוס הוסר', 'ok');
+      render();
+    } catch (e) { toast(e.message || 'ההסרה נכשלה', 'err'); }
+  }));
   $('#si-dup-check').addEventListener('click', async () => {
     const box = $('#si-dup-result');
     box.textContent = 'בודקת...';

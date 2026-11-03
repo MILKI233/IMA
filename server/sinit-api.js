@@ -15,7 +15,8 @@ import { sendMailTo, mailProvider, mailReady, mailFrom } from './integrations.js
 // האם בכלל שווה להשקיע בעסק הזה.
 // "לעדכן נקודות" יושב בין "תרם" ל"סופי סופי": העסק כבר תרם, אבל המתנדבת
 // עדיין לא זוכתה. "סופי סופי" הוא רק אחרי שגם הנקודות עודכנו.
-const BUILTIN_STATUSES = ['האם רלוונטי?', 'ממתין', 'נוצר קשר', 'תרם', 'לעדכן נקודות', 'סופי סופי', 'סירב'];
+const BUILTIN_STATUSES = ['האם רלוונטי?', 'לא רלוונטי צריך לעדכן את המתרימה',
+    'ממתין', 'נוצר קשר', 'תרם', 'לעדכן נקודות', 'סופי סופי', 'סירב'];
 // הסטטוס של עסק שהמוצר שלו כבר גויס בפועל (טופס "תודה על תרומתך")
 const RECRUITED_STATUS = 'סופי סופי';
 // לשונית הדיווחים בגיליון הנקודות — כל גיוס שדווח דרך הטלפון נרשם שם
@@ -860,6 +861,7 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
             businesses,
             stages,
             statuses: allStatuses(),
+            builtinStatuses: BUILTIN_STATUSES,
             colors: HIGHLIGHT_COLORS,
             sources: db.prepare('SELECT * FROM campaign_sync_sources ORDER BY id ASC').all(),
             questionsOpen: questions.filter((q) => q.status !== 'נענתה' && q.status !== 'נסגרה').length,
@@ -1233,6 +1235,26 @@ export function sinitApiRouter({ mustLogin, mustManager, requireFeature, events 
         audit(actor(req), 'campaign.business_status.create', 'campaign_business_statuses', null, null, { name });
         touch();
         res.json({ ok: true, statuses: allStatuses() });
+    });
+
+    // מחיקת סטטוס מותאם. סטטוסים מובנים לא נמחקים — הם חלק מהמסלול.
+    // עסקים שהיו בסטטוס שנמחק עוברים ל"ממתין", כדי שלא יישארו עם סטטוס שלא קיים.
+    router.delete('/statuses/:name', mustLogin, mustManager, (req, res) => {
+        const name = clean(req.params.name);
+        if (BUILTIN_STATUSES.includes(name)) {
+            return res.status(400).json({ error: 'אי אפשר למחוק סטטוס קבוע של המערכת' });
+        }
+        const row = db.prepare('SELECT id FROM campaign_business_statuses WHERE name = ?').get(name);
+        if (!row) return res.status(404).json({ error: 'הסטטוס לא נמצא' });
+        const inUse = db.prepare('SELECT COUNT(*) c FROM campaign_businesses WHERE status = ?').get(name).c;
+        const move = db.transaction(() => {
+            if (inUse) db.prepare("UPDATE campaign_businesses SET status = 'ממתין' WHERE status = ?").run(name);
+            db.prepare('DELETE FROM campaign_business_statuses WHERE id = ?').run(row.id);
+        });
+        move();
+        audit(actor(req), 'campaign.business_status.delete', 'campaign_business_statuses', row.id, { name }, { movedToWaiting: inUse });
+        touch();
+        res.json({ ok: true, moved: inUse, statuses: allStatuses() });
     });
 
     // ----- שאלות למנהלת המערכת + שלבי המענה -----
