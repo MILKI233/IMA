@@ -364,6 +364,10 @@ for (const stmt of [
   // כתובת פיזית לשליחת הקטלוג, וסימון שהעסק ביקש לראות את הפרסום לפני שיוצא
   `ALTER TABLE campaign_businesses ADD COLUMN address TEXT`,
   `ALTER TABLE campaign_businesses ADD COLUMN wants_approval INTEGER NOT NULL DEFAULT 0`,
+  // סימון שהמתנדבת כבר זוכתה בנקודות על העסק הזה — מונע זיכוי כפול בהרצה חוזרת
+  `ALTER TABLE campaign_businesses ADD COLUMN points_credited INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE campaign_businesses ADD COLUMN points_credited_at TEXT`,
+  `ALTER TABLE campaign_businesses ADD COLUMN points_credited_amount INTEGER`,
 ]) { try { db.exec(stmt); } catch { /* העמודה כבר קיימת */ } }
 
 // ---------- מיזוג השיוך "כללי" אל "תחילת משמרת" ----------

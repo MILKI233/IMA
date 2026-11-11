@@ -3,7 +3,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { db, audit, hasFeature, featuresFor, permissionMatrix, setPermission, inventoryEnabled,
-         FEATURES, ROLES, TASK_SCOPES, SCOPE_KEYS, DEFAULT_SCOPE, TASK_STATUSES, TASK_IRRELEVANT, TOP_ROLE, isTop, isManagerOrAbove } from './server/db.js';
+         FEATURES, ROLES, TASK_SCOPES, SCOPE_KEYS, DEFAULT_SCOPE, TASK_STATUSES, TASK_IRRELEVANT, TOP_ROLE, isTop, isManagerOrAbove, getAllCampaignSettings } from './server/db.js';
 import { hebInfo, isoDate, dayInfo, hebMonthTitle } from './server/hebrew.js';
 import { ensureInstances, tasksForScope, FREQS, visibilityClause } from './server/tasks.js';
 import { inventoryRouter } from './server/inventory.js';
@@ -1036,6 +1036,76 @@ app.get('/api/campaign/sheets-data/:kind.xlsx', mustLogin, requireFeature('campa
   res.setHeader('Content-Disposition',
     `attachment; filename=${req.params.kind}.xlsx; filename*=UTF-8''${encodeURIComponent(def.file + '.xlsx')}`);
   res.send(buf);
+});
+
+// ---------- זיכוי נקודות מרוכז לפי שווי התרומה ----------
+// כל עסק שתרם מזכה את המתנדבת שדיווחה עליו באחוז משווי התרומה.
+// points_credited מסמן מי כבר זוכה, כך שהרצה חוזרת לא תכפיל נקודות.
+const POINTS_RATE_DEFAULT = 10;
+
+function pointsBatchPlan(percent, status) {
+  const num = (v) => parseInt(String(v ?? '').replace(/[^\d]/g, ''), 10) || 0;
+  const rows = db.prepare(`SELECT * FROM campaign_businesses
+      WHERE hidden = 0 AND status = ? AND points_credited = 0`).all(status);
+  const ready = [];
+  const skipped = [];
+  for (const b of rows) {
+    const value = num(b.value_nis);
+    const phone = String(b.reporter_phone || b.phone || '').replace(/\D/g, '');
+    if (!value) { skipped.push({ id: b.id, name: b.name, reason: 'אין שווי לתרומה' }); continue; }
+    if (phone.length < 9) { skipped.push({ id: b.id, name: b.name, reason: 'אין טלפון לזיכוי' }); continue; }
+    const points = Math.round(value * (percent / 100));
+    if (points <= 0) { skipped.push({ id: b.id, name: b.name, reason: 'החישוב יוצא 0 נקודות' }); continue; }
+    ready.push({ id: b.id, name: b.name, value, phone, points, product: b.product || '' });
+  }
+  return { ready, skipped, totalPoints: ready.reduce((s, r) => s + r.points, 0) };
+}
+
+app.get('/api/campaign/points-batch/plan', mustLogin, requireFeature('campaign'), (req, res) => {
+  const percent = Number(req.query.percent) || POINTS_RATE_DEFAULT;
+  const status = String(req.query.status || 'תרם');
+  const settings = getAllCampaignSettings();
+  res.json({
+    percent, status, ...pointsBatchPlan(percent, status),
+    // בלי סקריפט הכתיבה אי אפשר לבצע בפועל — עדיף שזה יתברר כאן ולא באמצע
+    sheetReady: !!(settings.campaign_sheets_write_url && settings.campaign_sheets_write_secret),
+    alreadyCredited: db.prepare('SELECT COUNT(*) c FROM campaign_businesses WHERE points_credited = 1').get().c,
+  });
+});
+
+app.post('/api/campaign/points-batch/apply', mustLogin, requireFeature('campaign'), async (req, res) => {
+  try {
+    const percent = Number(req.body?.percent) || POINTS_RATE_DEFAULT;
+    const status = String(req.body?.status || 'תרם');
+    const plan = pointsBatchPlan(percent, status);
+    const only = Array.isArray(req.body?.ids) && req.body.ids.length ? new Set(req.body.ids.map(Number)) : null;
+    const targets = only ? plan.ready.filter((r) => only.has(r.id)) : plan.ready;
+    if (!targets.length) return res.status(400).json({ error: 'אין עסקים לזיכוי לפי התנאים האלה' });
+    checkSyncPassword(req.body?.syncPassword);
+
+    const done = []; const failed = [];
+    let row = (getCampaignSheetsCache().manualPoints || []).reduce((m, r) => Math.max(m, r.__row || 1), 1);
+    for (const t of targets) {
+      try {
+        row += 1;
+        const desc = `${percent}% משווי ${t.value} ₪ — ${String(t.product || t.name).slice(0, 60)}`;
+        await pushSheetUpdate({ spreadsheetId: POINTS_SHEET_ID, sheetName: MANUAL_POINTS_TAB, row,
+          updates: { [MANUAL_POINTS_COLS.phone]: t.phone, [MANUAL_POINTS_COLS.description]: desc } });
+        await pushSheetUpdate({ spreadsheetId: POINTS_SHEET_ID, sheetName: MANUAL_POINTS_TAB, row,
+          updates: { [MANUAL_POINTS_COLS.points]: t.points } });
+        db.prepare(`UPDATE campaign_businesses SET points_credited = 1,
+            points_credited_at = datetime('now','localtime'), points_credited_amount = ?,
+            status = 'סופי סופי' WHERE id = ?`).run(t.points, t.id);
+        done.push({ ...t, row });
+      } catch (e) {
+        failed.push({ ...t, error: e.message });
+      }
+    }
+    audit(req.user.name, 'campaign.points_batch', 'campaign_businesses', null, null,
+      { percent, credited: done.length, points: done.reduce((s, d) => s + d.points, 0), failed: failed.length });
+    const data = await syncCampaignSheets();
+    res.json({ ok: true, credited: done.length, failed, totalPoints: done.reduce((s, d) => s + d.points, 0), syncedAt: data.syncedAt });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // יומן הפעולות — מי עשתה מה ומתי

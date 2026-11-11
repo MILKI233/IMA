@@ -2505,6 +2505,22 @@ async function renderSinitAdminCards(main) {
     </div>
     <div id="si-test-mail-result" class="sub muted" style="margin-top:6px"></div>
 
+    <div class="section-title">זיכוי נקודות מרוכז לפי שווי התרומה</div>
+    <p class="sub muted">מזכה את המתנדבת שדיווחה על כל עסק באחוז משווי התרומה.
+      כל עסק מזוכה פעם אחת בלבד — הרצה חוזרת לא תכפיל נקודות — והעסק עובר ל"סופי סופי".
+      קודם בודקים מה ייכתב, ורק אחר כך מבצעים.</p>
+    <div class="row">
+      <div><label class="sub muted">אחוז מהשווי</label><br>
+        <input type="number" class="in" id="si-pb-percent" value="10" style="max-width:90px"></div>
+      <div><label class="sub muted">סטטוס לזיכוי</label><br>
+        <select class="in" id="si-pb-status" style="max-width:180px">
+          ${(ov.statuses || []).map((s) => `<option value="${esc(s)}"${s === 'תרם' ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+        </select></div>
+      <div style="align-self:end"><button class="btn-secondary" id="si-pb-check">🔍 בדיקה מה ייכתב</button></div>
+      <div style="align-self:end"><button class="btn-secondary" id="si-pb-apply" style="display:none">ביצוע הזיכוי</button></div>
+    </div>
+    <div id="si-pb-result" class="sub" style="margin-top:8px"></div>
+
     <div class="section-title">סטטוסים של עסקים</div>
     <p class="sub muted">הסטטוסים הקבועים של המערכת מופיעים ראשונים ואי אפשר למחוק אותם.
       סטטוס שהוספת בעצמך אפשר להסיר — עסקים שהיו בו יעברו ל"ממתין".</p>
@@ -2631,6 +2647,45 @@ async function renderSinitAdminCards(main) {
       toast('הגדרות Resend נשמרו', 'ok');
       render();
     } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
+  });
+  $('#si-pb-check').addEventListener('click', async () => {
+    const box = $('#si-pb-result');
+    box.textContent = 'בודקת...';
+    try {
+      const p = Number($('#si-pb-percent').value) || 10;
+      const st = $('#si-pb-status').value;
+      const r = await api(`/api/campaign/points-batch/plan?percent=${p}&status=${encodeURIComponent(st)}`);
+      if (!r.ready.length) {
+        box.innerHTML = `<span style="color:#b26a00">אין עסקים לזיכוי ב"${esc(st)}".</span>`
+          + (r.skipped.length ? `<br><span class="muted">${r.skipped.length} דולגו: ${esc(r.skipped.slice(0, 3).map((s) => s.reason).join(', '))}</span>` : '');
+        $('#si-pb-apply').style.display = 'none';
+        return;
+      }
+      box.innerHTML = `<b>${r.ready.length} עסקים יזוכו · סך הכל ${r.totalPoints} נקודות</b>`
+        + (r.sheetReady ? '' : '<br><span style="color:#c1362f">⚠ סנכרון הכתיבה לגיליון לא מוגדר — הביצוע ייכשל. יש להשלים את הסקריפט בהגדרות למעלה.</span>')
+        + (r.alreadyCredited ? `<br><span class="muted">${r.alreadyCredited} עסקים כבר זוכו בעבר ולא ייכללו.</span>` : '')
+        + `<div style="max-height:260px;overflow:auto;margin-top:8px">${r.ready.map((x) => `
+            <div style="padding:6px 10px;background:#f6f7f9;border-radius:8px;margin-bottom:5px">
+              ${esc(x.name)} · שווי ${x.value} ₪ → <b>${x.points} נק'</b> · לטלפון ${esc(x.phone)}
+            </div>`).join('')}</div>`
+        + (r.skipped.length ? `<div class="muted" style="margin-top:8px">${r.skipped.length} דולגו — ${esc([...new Set(r.skipped.map((s) => s.reason))].join(' · '))}</div>` : '');
+      $('#si-pb-apply').style.display = '';
+    } catch (e) { box.innerHTML = `<span style="color:#c1362f">${esc(e.message || 'הבדיקה נכשלה')}</span>`; }
+  });
+  $('#si-pb-apply').addEventListener('click', async () => {
+    const p = Number($('#si-pb-percent').value) || 10;
+    const st = $('#si-pb-status').value;
+    if (!confirm(`לזכות את כל העסקים ב"${st}" ב-${p}% משווי התרומה?\n\nהנקודות נכתבות לגיליון והמתנדבות מזוכות בפועל. כל עסק מזוכה פעם אחת.`)) return;
+    const pw = prompt('סיסמת מנהל לאישור כתיבה לגיליון:');
+    if (pw === null) return;
+    const box = $('#si-pb-result');
+    box.textContent = 'כותבת לגיליון... זה עשוי לקחת כמה שניות';
+    try {
+      const r = await api('/api/campaign/points-batch/apply', { method: 'POST', body: { percent: p, status: st, syncPassword: pw } });
+      box.innerHTML = `<span style="color:#12805c">✔ זוכו ${r.credited} עסקים · ${r.totalPoints} נקודות</span>`
+        + (r.failed.length ? `<br><span style="color:#c1362f">${r.failed.length} נכשלו: ${esc(r.failed[0].error)}</span>` : '');
+      $('#si-pb-apply').style.display = 'none';
+    } catch (e) { box.innerHTML = `<span style="color:#c1362f">${esc(e.message || 'הזיכוי נכשל')}</span>`; }
   });
   setCard.querySelectorAll('#si-statuses .chip-x').forEach((btn) => btn.addEventListener('click', async () => {
     const name = btn.dataset.status;
