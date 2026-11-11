@@ -140,6 +140,13 @@ function startApp() {
         recruitedQuery = e.target.value.trim();
         if (lastSheetsData) renderSheetsDashboard(lastSheetsData);
     });
+    document.getElementById('pbCheckBtn').addEventListener('click', pbCheck);
+    document.getElementById('pbApplyBtn').addEventListener('click', pbApply);
+    // רשימת הסטטוסים נטענת מהשרת כדי שתכלול גם סטטוסים שנוספו ידנית
+    api('/api/sinit/statuses').then((list) => {
+        const sel = document.getElementById('pbStatus');
+        if (sel) sel.innerHTML = list.map((s) => `<option${s === 'תרם' ? ' selected' : ''}>${esc(s)}</option>`).join('');
+    }).catch(() => { /* הלשונית עדיין שמישה גם בלי */ });
     document.getElementById('lbSearch').addEventListener('input', (e) => {
         lbQuery = e.target.value.trim();
         if (lastSheetsData) renderLeaderboard(lastSheetsData);
@@ -410,6 +417,73 @@ function renderSheetsDashboard(data) {
 
     renderManualPoints(data);
     renderLeaderboard(data);
+}
+
+/* ---- זיכוי נקודות מרוכז ---- */
+// בודקים ומסמנים כאן, בלשונית הנקודות, כי כאן חושבים על נקודות.
+async function pbCheck() {
+    const box = document.getElementById('pbResult');
+    box.textContent = 'בודקת...';
+    document.getElementById('pbApplyBtn').style.display = 'none';
+    const percent = Number(document.getElementById('pbPercent').value) || 10;
+    const status = document.getElementById('pbStatus').value;
+    try {
+        const r = await api(`/api/campaign/points-batch/plan?percent=${percent}&status=${encodeURIComponent(status)}`);
+        if (!r.ready.length) {
+            box.innerHTML = `<div style="color:#b26a00">אין עסקים לזיכוי ב"${status}".</div>`
+                + (r.skipped.length ? `<div class="hint">${r.skipped.length} דולגו — ${[...new Set(r.skipped.map((s) => s.reason))].join(' · ')}</div>` : '');
+            return;
+        }
+        box.innerHTML = (r.sheetReady ? '' : '<div style="color:#c1362f;margin-bottom:6px">⚠ סנכרון הכתיבה לגיליון לא מוגדר — הביצוע ייכשל.</div>')
+            + (r.alreadyCredited ? `<div class="hint">${r.alreadyCredited} עסקים כבר זוכו בעבר ולא ייכללו.</div>` : '')
+            + `<div class="row" style="margin:8px 0">
+                 <button class="btn secondary" id="pbAll">סימון הכל</button>
+                 <button class="btn secondary" id="pbNone">ניקוי הכל</button>
+                 <b id="pbSum"></b>
+               </div>
+               <div style="max-height:340px;overflow:auto">${r.ready.map((x) => `
+                <label class="pb-row">
+                  <input type="checkbox" class="pb-pick" data-id="${x.id}" data-points="${x.points}" checked>
+                  <span class="pb-name">${esc(x.name)}</span>
+                  <span class="pb-what">${x.product ? esc(String(x.product).slice(0, 70)) : '<span class="hint">לא צוין מה נתרם</span>'}</span>
+                  <span class="pb-val">${x.value} ₪</span>
+                  <span class="pb-pts">${x.points} נק'</span>
+                  <span class="hint">${esc(x.phone)}</span>
+                </label>`).join('')}</div>`
+            + (r.skipped.length ? `<div class="hint" style="margin-top:8px">${r.skipped.length} דולגו — ${[...new Set(r.skipped.map((s) => s.reason))].join(' · ')}</div>` : '');
+
+        const refresh = () => {
+            const picked = [...box.querySelectorAll('.pb-pick:checked')];
+            document.getElementById('pbSum').textContent =
+                `${picked.length} מתוך ${r.ready.length} מסומנים · ${picked.reduce((s, c) => s + Number(c.dataset.points), 0)} נקודות`;
+            document.getElementById('pbApplyBtn').style.display = picked.length ? '' : 'none';
+        };
+        box.querySelectorAll('.pb-pick').forEach((c) => c.addEventListener('change', refresh));
+        document.getElementById('pbAll').addEventListener('click', () => { box.querySelectorAll('.pb-pick').forEach((c) => { c.checked = true; }); refresh(); });
+        document.getElementById('pbNone').addEventListener('click', () => { box.querySelectorAll('.pb-pick').forEach((c) => { c.checked = false; }); refresh(); });
+        refresh();
+    } catch (e) { box.innerHTML = `<span style="color:#c1362f">${e.message || 'הבדיקה נכשלה'}</span>`; }
+}
+
+async function pbApply() {
+    const box = document.getElementById('pbResult');
+    const picked = [...box.querySelectorAll('.pb-pick:checked')];
+    const ids = picked.map((c) => Number(c.dataset.id));
+    const pts = picked.reduce((s, c) => s + Number(c.dataset.points), 0);
+    if (!ids.length) return;
+    const percent = Number(document.getElementById('pbPercent').value) || 10;
+    const status = document.getElementById('pbStatus').value;
+    if (!confirm(`לזכות ${ids.length} עסקים ב-${percent}% משווי התרומה — ${pts} נקודות?\n\nהנקודות נכתבות לגיליון והמתנדבות מזוכות בפועל.`)) return;
+    const pw = prompt('סיסמת מנהל לאישור כתיבה לגיליון:');
+    if (pw === null) return;
+    box.textContent = 'כותבת לגיליון... זה עשוי לקחת כמה שניות';
+    try {
+        const r = await api('/api/campaign/points-batch/apply', { method: 'POST', body: { percent, status, ids, syncPassword: pw } });
+        box.innerHTML = `<span style="color:#12805c">✔ זוכו ${r.credited} עסקים · ${r.totalPoints} נקודות</span>`
+            + (r.failed.length ? `<br><span style="color:#c1362f">${r.failed.length} נכשלו: ${esc(r.failed[0].error)}</span>` : '');
+        document.getElementById('pbApplyBtn').style.display = 'none';
+        loadSheetsData();
+    } catch (e) { box.innerHTML = `<span style="color:#c1362f">${e.message || 'הזיכוי נכשל'}</span>`; }
 }
 
 /* ---- מובילות בצבירת נקודות ---- */

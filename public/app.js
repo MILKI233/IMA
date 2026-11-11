@@ -2505,21 +2505,7 @@ async function renderSinitAdminCards(main) {
     </div>
     <div id="si-test-mail-result" class="sub muted" style="margin-top:6px"></div>
 
-    <div class="section-title">זיכוי נקודות מרוכז לפי שווי התרומה</div>
-    <p class="sub muted">מזכה את המתנדבת שדיווחה על כל עסק באחוז משווי התרומה.
-      כל עסק מזוכה פעם אחת בלבד — הרצה חוזרת לא תכפיל נקודות — והעסק עובר ל"סופי סופי".
-      קודם בודקים מה ייכתב, ורק אחר כך מבצעים.</p>
-    <div class="row">
-      <div><label class="sub muted">אחוז מהשווי</label><br>
-        <input type="number" class="in" id="si-pb-percent" value="10" style="max-width:90px"></div>
-      <div><label class="sub muted">סטטוס לזיכוי</label><br>
-        <select class="in" id="si-pb-status" style="max-width:180px">
-          ${(ov.statuses || []).map((s) => `<option value="${esc(s)}"${s === 'תרם' ? ' selected' : ''}>${esc(s)}</option>`).join('')}
-        </select></div>
-      <div style="align-self:end"><button class="btn-secondary" id="si-pb-check">🔍 בדיקה מה ייכתב</button></div>
-      <div style="align-self:end"><button class="btn-secondary" id="si-pb-apply" style="display:none">ביצוע הזיכוי</button></div>
-    </div>
-    <div id="si-pb-result" class="sub" style="margin-top:8px"></div>
+    <p class="sub muted">זיכוי נקודות מרוכז לפי שווי התרומה עבר ללשונית <b>נקודות</b> בדף הקמפיין.</p>
 
     <div class="section-title">סטטוסים של עסקים</div>
     <p class="sub muted">הסטטוסים הקבועים של המערכת מופיעים ראשונים ואי אפשר למחוק אותם.
@@ -2647,70 +2633,6 @@ async function renderSinitAdminCards(main) {
       toast('הגדרות Resend נשמרו', 'ok');
       render();
     } catch (e) { toast(e.message || 'השמירה נכשלה', 'err'); }
-  });
-  $('#si-pb-check').addEventListener('click', async () => {
-    const box = $('#si-pb-result');
-    box.textContent = 'בודקת...';
-    try {
-      const p = Number($('#si-pb-percent').value) || 10;
-      const st = $('#si-pb-status').value;
-      const r = await api(`/api/campaign/points-batch/plan?percent=${p}&status=${encodeURIComponent(st)}`);
-      if (!r.ready.length) {
-        box.innerHTML = `<span style="color:#b26a00">אין עסקים לזיכוי ב"${esc(st)}".</span>`
-          + (r.skipped.length ? `<br><span class="muted">${r.skipped.length} דולגו: ${esc(r.skipped.slice(0, 3).map((s) => s.reason).join(', '))}</span>` : '');
-        $('#si-pb-apply').style.display = 'none';
-        return;
-      }
-      box.innerHTML = (r.sheetReady ? '' : '<div style="color:#c1362f;margin-bottom:6px">⚠ סנכרון הכתיבה לגיליון לא מוגדר — הביצוע ייכשל. יש להשלים את הסקריפט בהגדרות למעלה.</div>')
-        + (r.alreadyCredited ? `<div class="muted">${r.alreadyCredited} עסקים כבר זוכו בעבר ולא ייכללו.</div>` : '')
-        + `<div class="row" style="margin:6px 0">
-             <button class="btn-secondary btn-sm" id="si-pb-all">סימון הכל</button>
-             <button class="btn-secondary btn-sm" id="si-pb-none">ניקוי הכל</button>
-             <b id="si-pb-sum"></b>
-           </div>
-           <div style="max-height:320px;overflow:auto">${r.ready.map((x) => `
-            <label class="pb-row">
-              <input type="checkbox" class="pb-pick" data-id="${x.id}" data-points="${x.points}" checked>
-              <span class="pb-name">${esc(x.name)}</span>
-              <span class="pb-what">${x.product ? esc(String(x.product).slice(0, 70)) : '<span class="muted">לא צוין מה נתרם</span>'}</span>
-              <span class="pb-val">${x.value} ₪</span>
-              <span class="pb-pts">${x.points} נק'</span>
-              <span class="muted">${esc(x.phone)}</span>
-            </label>`).join('')}</div>`
-        + (r.skipped.length ? `<div class="muted" style="margin-top:8px">${r.skipped.length} דולגו — ${esc([...new Set(r.skipped.map((s) => s.reason))].join(' · '))}</div>` : '');
-
-      // סכום חי לפי מה שמסומן, כדי שתמיד ברור כמה באמת ייכתב
-      const refreshSum = () => {
-        const picked = [...box.querySelectorAll('.pb-pick:checked')];
-        const pts = picked.reduce((s, c) => s + Number(c.dataset.points), 0);
-        $('#si-pb-sum').textContent = `${picked.length} מתוך ${r.ready.length} מסומנים · ${pts} נקודות`;
-        $('#si-pb-apply').style.display = picked.length ? '' : 'none';
-      };
-      box.querySelectorAll('.pb-pick').forEach((c) => c.addEventListener('change', refreshSum));
-      $('#si-pb-all').addEventListener('click', () => { box.querySelectorAll('.pb-pick').forEach((c) => { c.checked = true; }); refreshSum(); });
-      $('#si-pb-none').addEventListener('click', () => { box.querySelectorAll('.pb-pick').forEach((c) => { c.checked = false; }); refreshSum(); });
-      refreshSum();
-    } catch (e) { box.innerHTML = `<span style="color:#c1362f">${esc(e.message || 'הבדיקה נכשלה')}</span>`; }
-  });
-  $('#si-pb-apply').addEventListener('click', async () => {
-    const p = Number($('#si-pb-percent').value) || 10;
-    const st = $('#si-pb-status').value;
-    const box = $('#si-pb-result');
-    // רק מי שסומן בפועל — ככה אפשר לדלג על עסק בלי לשנות לו סטטוס
-    const picked = [...box.querySelectorAll('.pb-pick:checked')];
-    const ids = picked.map((c) => Number(c.dataset.id));
-    const pts = picked.reduce((s, c) => s + Number(c.dataset.points), 0);
-    if (!ids.length) { toast('לא סומן אף עסק', 'err'); return; }
-    if (!confirm(`לזכות ${ids.length} עסקים ב-${p}% משווי התרומה — ${pts} נקודות בסך הכל?\n\nהנקודות נכתבות לגיליון והמתנדבות מזוכות בפועל. כל עסק מזוכה פעם אחת.`)) return;
-    const pw = prompt('סיסמת מנהל לאישור כתיבה לגיליון:');
-    if (pw === null) return;
-    box.textContent = 'כותבת לגיליון... זה עשוי לקחת כמה שניות';
-    try {
-      const r = await api('/api/campaign/points-batch/apply', { method: 'POST', body: { percent: p, status: st, ids, syncPassword: pw } });
-      box.innerHTML = `<span style="color:#12805c">✔ זוכו ${r.credited} עסקים · ${r.totalPoints} נקודות</span>`
-        + (r.failed.length ? `<br><span style="color:#c1362f">${r.failed.length} נכשלו: ${esc(r.failed[0].error)}</span>` : '');
-      $('#si-pb-apply').style.display = 'none';
-    } catch (e) { box.innerHTML = `<span style="color:#c1362f">${esc(e.message || 'הזיכוי נכשל')}</span>`; }
   });
   setCard.querySelectorAll('#si-statuses .chip-x').forEach((btn) => btn.addEventListener('click', async () => {
     const name = btn.dataset.status;

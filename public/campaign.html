@@ -45,6 +45,7 @@
     <button data-tab="sinit" data-target="hd-squestions" title="שאלות שנשאלו ושלבי המענה על כל שאלה">שאלות ומענה</button>
     <button data-tab="sinit" data-target="hd-sai" title="מענה אוטומטי מתוך קבצי הוורד שהועלו">מענה AI</button>
     <button data-tab="points" data-target="hd-leaderboard" title="מי מובילה בצבירת הנקודות">מובילות</button>
+    <button data-tab="points" data-target="hd-pointsbatch" title="זיכוי נקודות לפי אחוז משווי התרומה">זיכוי מרוכז</button>
     <button data-tab="points" data-target="hd-manualpoints" title="הזנת נקודות ידנית לגיליון">נקודות ידניות</button>
     <button data-tab="recruited" data-target="hd-recruited">מוצרים שגויסו</button>
     <button data-tab="activity" data-target="hd-activity">יומן פעולות</button>
@@ -262,6 +263,23 @@
             </tr></thead><tbody></tbody></table>
             <div class="empty" id="lbEmpty" style="display:none">אין עדיין נקודות</div>
         </div>
+        <div class="card" id="pbCard">
+            <div class="card-head-row">
+                <h2 id="hd-pointsbatch">זיכוי נקודות מרוכז לפי שווי התרומה</h2>
+            </div>
+            <p class="hint">מזכה את המתנדבת שדיווחה על כל עסק באחוז משווי התרומה.
+                כל עסק מזוכה פעם אחת בלבד — הרצה חוזרת לא תכפיל נקודות — והעסק עובר ל"סופי סופי".
+                קודם בודקים מה ייכתב, מסמנים למי כן ולמי לא, ורק אז מבצעים.</p>
+            <div class="row">
+                <input id="pbPercent" type="number" value="10" style="width:90px" title="אחוז מהשווי">
+                <span class="hint">% מהשווי</span>
+                <select id="pbStatus" style="width:180px"></select>
+                <button class="btn" id="pbCheckBtn">🔍 בדיקה מה ייכתב</button>
+                <button class="btn secondary" id="pbApplyBtn" style="display:none">ביצוע הזיכוי</button>
+            </div>
+            <div id="pbResult" class="sub"></div>
+        </div>
+
         <div class="card">
             <h2 id="hd-manualpoints">הזנת נקודות ידנית</h2>
             <p class="hint">הרשומה נכתבת ישירות ללשונית "נקודות ידניות" בגיליון, והמערכת של אוצרותינו

@@ -419,3 +419,16 @@ td.act-cell { white-space: nowrap; }
 /* שלוש המובילות מודגשות בטבלת הדירוג */
 .lb-top td { background: #fffaf0; font-weight: 600; }
 #lbTable td:first-child { font-size: 1.05rem; text-align: center; }
+
+/* זיכוי נקודות מרוכז — שורה לכל עסק עם סימון ידני */
+.pb-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+    padding: 8px 10px; background: #f6f7f9; border-radius: 8px;
+    margin-bottom: 5px; cursor: pointer; font-size: .88rem;
+}
+.pb-row:hover { background: #eef2f7; }
+.pb-row input { width: 16px; height: 16px; cursor: pointer; flex: none; }
+.pb-name { font-weight: 600; }
+.pb-what { color: #4a5a6e; flex: 1 1 160px; min-width: 0; }
+.pb-val { color: #6b7a90; }
+.pb-pts { font-weight: 700; color: #12805c; }
