@@ -607,3 +607,20 @@ button.task-check.disabled { cursor: not-allowed; }
 .chip-tag .chip-x { border: none; background: none; color: #c1362f; cursor: pointer; font-size: .72rem; padding: 0; }
 .kb-pairs { margin: 10px 0 0; padding-inline-start: 20px; font-size: .85rem; }
 .kb-pairs li { margin-bottom: 8px; }
+
+/* זיכוי נקודות מרוכז — שורה לכל עסק עם סימון ידני.
+   flex ולא grid: למערכת יש בורר גודל פונט עד 200%, ובגריד קשיח
+   העמודות האחרונות (נקודות, טלפון) היו נדחפות מחוץ לשורה. */
+.pb-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+    padding: 8px 10px; background: #f6f7f9; border-radius: 8px;
+    margin-bottom: 5px; cursor: pointer; font-size: .85rem;
+}
+.pb-row:hover { background: #eef2f7; }
+.pb-row input { width: 16px; height: 16px; cursor: pointer; flex: none; }
+.pb-name { font-weight: 600; flex: 0 1 auto; }
+.pb-what { color: #4a5a6e; flex: 1 1 160px; min-width: 0; }
+.pb-val  { color: #6b7a90; flex: none; }
+.pb-pts  { font-weight: 700; color: #12805c; flex: none; }
+.pb-row .muted { flex: none; }
+.btn-sm { padding: 4px 12px; font-size: .8rem; }

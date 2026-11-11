@@ -2661,27 +2661,52 @@ async function renderSinitAdminCards(main) {
         $('#si-pb-apply').style.display = 'none';
         return;
       }
-      box.innerHTML = `<b>${r.ready.length} עסקים יזוכו · סך הכל ${r.totalPoints} נקודות</b>`
-        + (r.sheetReady ? '' : '<br><span style="color:#c1362f">⚠ סנכרון הכתיבה לגיליון לא מוגדר — הביצוע ייכשל. יש להשלים את הסקריפט בהגדרות למעלה.</span>')
-        + (r.alreadyCredited ? `<br><span class="muted">${r.alreadyCredited} עסקים כבר זוכו בעבר ולא ייכללו.</span>` : '')
-        + `<div style="max-height:260px;overflow:auto;margin-top:8px">${r.ready.map((x) => `
-            <div style="padding:6px 10px;background:#f6f7f9;border-radius:8px;margin-bottom:5px">
-              ${esc(x.name)} · שווי ${x.value} ₪ → <b>${x.points} נק'</b> · לטלפון ${esc(x.phone)}
-            </div>`).join('')}</div>`
+      box.innerHTML = (r.sheetReady ? '' : '<div style="color:#c1362f;margin-bottom:6px">⚠ סנכרון הכתיבה לגיליון לא מוגדר — הביצוע ייכשל. יש להשלים את הסקריפט בהגדרות למעלה.</div>')
+        + (r.alreadyCredited ? `<div class="muted">${r.alreadyCredited} עסקים כבר זוכו בעבר ולא ייכללו.</div>` : '')
+        + `<div class="row" style="margin:6px 0">
+             <button class="btn-secondary btn-sm" id="si-pb-all">סימון הכל</button>
+             <button class="btn-secondary btn-sm" id="si-pb-none">ניקוי הכל</button>
+             <b id="si-pb-sum"></b>
+           </div>
+           <div style="max-height:320px;overflow:auto">${r.ready.map((x) => `
+            <label class="pb-row">
+              <input type="checkbox" class="pb-pick" data-id="${x.id}" data-points="${x.points}" checked>
+              <span class="pb-name">${esc(x.name)}</span>
+              <span class="pb-what">${x.product ? esc(String(x.product).slice(0, 70)) : '<span class="muted">לא צוין מה נתרם</span>'}</span>
+              <span class="pb-val">${x.value} ₪</span>
+              <span class="pb-pts">${x.points} נק'</span>
+              <span class="muted">${esc(x.phone)}</span>
+            </label>`).join('')}</div>`
         + (r.skipped.length ? `<div class="muted" style="margin-top:8px">${r.skipped.length} דולגו — ${esc([...new Set(r.skipped.map((s) => s.reason))].join(' · '))}</div>` : '');
-      $('#si-pb-apply').style.display = '';
+
+      // סכום חי לפי מה שמסומן, כדי שתמיד ברור כמה באמת ייכתב
+      const refreshSum = () => {
+        const picked = [...box.querySelectorAll('.pb-pick:checked')];
+        const pts = picked.reduce((s, c) => s + Number(c.dataset.points), 0);
+        $('#si-pb-sum').textContent = `${picked.length} מתוך ${r.ready.length} מסומנים · ${pts} נקודות`;
+        $('#si-pb-apply').style.display = picked.length ? '' : 'none';
+      };
+      box.querySelectorAll('.pb-pick').forEach((c) => c.addEventListener('change', refreshSum));
+      $('#si-pb-all').addEventListener('click', () => { box.querySelectorAll('.pb-pick').forEach((c) => { c.checked = true; }); refreshSum(); });
+      $('#si-pb-none').addEventListener('click', () => { box.querySelectorAll('.pb-pick').forEach((c) => { c.checked = false; }); refreshSum(); });
+      refreshSum();
     } catch (e) { box.innerHTML = `<span style="color:#c1362f">${esc(e.message || 'הבדיקה נכשלה')}</span>`; }
   });
   $('#si-pb-apply').addEventListener('click', async () => {
     const p = Number($('#si-pb-percent').value) || 10;
     const st = $('#si-pb-status').value;
-    if (!confirm(`לזכות את כל העסקים ב"${st}" ב-${p}% משווי התרומה?\n\nהנקודות נכתבות לגיליון והמתנדבות מזוכות בפועל. כל עסק מזוכה פעם אחת.`)) return;
+    const box = $('#si-pb-result');
+    // רק מי שסומן בפועל — ככה אפשר לדלג על עסק בלי לשנות לו סטטוס
+    const picked = [...box.querySelectorAll('.pb-pick:checked')];
+    const ids = picked.map((c) => Number(c.dataset.id));
+    const pts = picked.reduce((s, c) => s + Number(c.dataset.points), 0);
+    if (!ids.length) { toast('לא סומן אף עסק', 'err'); return; }
+    if (!confirm(`לזכות ${ids.length} עסקים ב-${p}% משווי התרומה — ${pts} נקודות בסך הכל?\n\nהנקודות נכתבות לגיליון והמתנדבות מזוכות בפועל. כל עסק מזוכה פעם אחת.`)) return;
     const pw = prompt('סיסמת מנהל לאישור כתיבה לגיליון:');
     if (pw === null) return;
-    const box = $('#si-pb-result');
     box.textContent = 'כותבת לגיליון... זה עשוי לקחת כמה שניות';
     try {
-      const r = await api('/api/campaign/points-batch/apply', { method: 'POST', body: { percent: p, status: st, syncPassword: pw } });
+      const r = await api('/api/campaign/points-batch/apply', { method: 'POST', body: { percent: p, status: st, ids, syncPassword: pw } });
       box.innerHTML = `<span style="color:#12805c">✔ זוכו ${r.credited} עסקים · ${r.totalPoints} נקודות</span>`
         + (r.failed.length ? `<br><span style="color:#c1362f">${r.failed.length} נכשלו: ${esc(r.failed[0].error)}</span>` : '');
       $('#si-pb-apply').style.display = 'none';
